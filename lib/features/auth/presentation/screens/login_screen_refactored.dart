@@ -5,14 +5,10 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final formVerticalPadding = screenHeight * 0.014;
-
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9F0),
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        top: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final headerHeight = constraints.maxHeight * 0.32;
@@ -27,10 +23,7 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: _buildFormBody(
-                    width: constraints.maxWidth,
-                    verticalPadding: formVerticalPadding,
-                  ),
+                  child: _buildFormBody(width: constraints.maxWidth),
                 ),
               ],
             );
@@ -64,10 +57,7 @@ class LoginScreen extends StatelessWidget {
                   gradient: RadialGradient(
                     center: const Alignment(0.50, 0.50),
                     radius: 0.71,
-                    colors: [
-                      const Color(0x593A7D3A),
-                      Colors.black.withValues(alpha: 0),
-                    ],
+                    colors: [const Color(0x593A7D3A), Colors.black.withValues(alpha: 0)],
                   ),
                   shape: BoxShape.circle,
                 ),
@@ -83,71 +73,71 @@ class LoginScreen extends StatelessWidget {
                   gradient: RadialGradient(
                     center: const Alignment(0.50, 0.50),
                     radius: 0.71,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.25),
-                      Colors.black.withValues(alpha: 0),
-                    ],
+                    colors: [Colors.white.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0)],
                   ),
                   shape: BoxShape.circle,
                 ),
               ),
             ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: ShapeDecoration(
-                        color: Colors.white.withValues(alpha: 0.30),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        shadows: const [
-                          BoxShadow(
-                            color: Color(0x19000000),
-                            blurRadius: 6,
-                            offset: Offset(0, 4),
-                            spreadRadius: -4,
+            SafeArea(
+              bottom: false,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: width - 48),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: ShapeDecoration(
+                          color: Colors.white.withValues(alpha: 0.30),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
                           ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: const Text(
-                          'Nikara',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 36,
-                            fontFamily: 'Playfair Display',
-                            fontWeight: FontWeight.w700,
-                            height: 1.11,
-                          ),
+                          shadows: const [
+                            BoxShadow(
+                              color: Color(0x19000000),
+                              blurRadius: 6,
+                              offset: Offset(0, 4),
+                              spreadRadius: -4,
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Turismo comunitario en Nicaragua',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontSize: 14,
-                            fontFamily: 'Nunito',
-                            fontWeight: FontWeight.w500,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: const Text(
+                            'Nikara',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 36,
+                              fontFamily: 'Playfair Display',
+                              fontWeight: FontWeight.w700,
+                              height: 1.11,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Turismo comunitario en Nicaragua',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontSize: 14,
+                              fontFamily: 'Nunito',
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -157,10 +147,10 @@ class LoginScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFormBody({required double width, required double verticalPadding}) {
+  Widget _buildFormBody({required double width}) {
     return Container(
       width: width,
-      padding: EdgeInsets.symmetric(horizontal: 24.0, vertical: verticalPadding),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -178,7 +168,7 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding * 0.6),
+            padding: const EdgeInsets.only(top: 8),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
@@ -194,14 +184,14 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding * 1.2),
+            padding: const EdgeInsets.only(top: 20),
             child: _buildInputField(
               label: 'CORREO ELECTRÓNICO',
               value: 'sofia@email.com',
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding),
+            padding: const EdgeInsets.only(top: 16),
             child: _buildInputField(label: 'CONTRASEÑA', value: '••••••••••••'),
           ),
           Align(
@@ -220,7 +210,7 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding * 0.8),
+            padding: const EdgeInsets.only(top: 10),
             child: Container(
               width: double.infinity,
               height: 56,
@@ -265,7 +255,7 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding * 0.8),
+            padding: const EdgeInsets.only(top: 18),
             child: Row(
               children: [
                 Expanded(child: Container(height: 1, color: const Color(0x3FFDBE02))),
@@ -289,7 +279,7 @@ class LoginScreen extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.only(top: verticalPadding * 0.8),
+            padding: const EdgeInsets.only(top: 18),
             child: Row(
               children: [
                 Expanded(
@@ -308,7 +298,7 @@ class LoginScreen extends StatelessWidget {
               ],
             ),
           ),
-          const Spacer(flex: 1),
+          const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -357,38 +347,38 @@ class LoginScreen extends StatelessWidget {
             letterSpacing: 0.50,
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: ShapeDecoration(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: ShapeDecoration(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shadows: const [
+                BoxShadow(
+                  color: Color(0x0CFDBE02),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
-            shadows: const [
-              BoxShadow(
-                color: Color(0x0CFDBE02),
-                blurRadius: 12,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(width: 20, height: 20, color: Colors.grey.shade300),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  value,
-                  style: const TextStyle(
-                    color: Color(0xFF1A1510),
-                    fontSize: 16,
-                    fontFamily: 'Nunito',
-                    fontWeight: FontWeight.w400,
+            child: Row(
+              children: [
+                Container(width: 20, height: 20, color: Colors.grey.shade300),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFF1A1510),
+                      fontSize: 16,
+                      fontFamily: 'Nunito',
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -427,13 +417,16 @@ class LoginScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF1A1510),
-                    fontSize: 14,
-                    fontFamily: 'Nunito',
-                    fontWeight: FontWeight.w700,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF1A1510),
+                      fontSize: 14,
+                      fontFamily: 'Nunito',
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
