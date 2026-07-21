@@ -140,11 +140,11 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'NIKARA',
-          style: GoogleFonts.playfairDisplaySc(
+          'Nikara',
+          style: GoogleFonts.leagueSpartan(
             color: Colors.white,
             fontSize: 64,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w900,
             height: 1.0,
           ),
         ),
