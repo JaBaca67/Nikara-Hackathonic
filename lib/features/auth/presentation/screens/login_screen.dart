@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/models/mock_data.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -13,13 +15,76 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+
+  static final RegExp _emailRegex = RegExp(
+    r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
+  );
+
+  static const Set<String> _weakPasswords = {
+    '123456',
+    '1234',
+    '12345',
+    '12345678',
+    '123456789',
+    'password',
+    'qwerty',
+    'abcdef',
+    '000000',
+    '111111',
+  };
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
     super.dispose();
+  }
+
+  String? _validateEmail(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Ingresa tu correo electrónico';
+    if (!_emailRegex.hasMatch(trimmed)) {
+      return 'Ingresa un correo electrónico válido';
+    }
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Ingresa tu contraseña';
+    if (trimmed.length < 6) return 'Debe tener al menos 6 caracteres';
+    if (_weakPasswords.contains(trimmed.toLowerCase())) {
+      return 'Elige una contraseña menos común';
+    }
+    if (_isSequentialOrRepeated(trimmed)) {
+      return 'Evita secuencias o caracteres repetidos';
+    }
+    return null;
+  }
+
+  /// Flags strings like '123456', 'abcdef', 'fedcba' or 'aaaaaa'.
+  bool _isSequentialOrRepeated(String value) {
+    var ascending = true;
+    var descending = true;
+    var repeated = true;
+    for (var i = 1; i < value.length; i++) {
+      final diff = value.codeUnitAt(i) - value.codeUnitAt(i - 1);
+      if (diff != 1) ascending = false;
+      if (diff != -1) descending = false;
+      if (diff != 0) repeated = false;
+    }
+    return value.length >= 4 && (ascending || descending || repeated);
+  }
+
+  void _submit() {
+    FocusScope.of(context).unfocus();
+    if (_formKey.currentState?.validate() ?? false) {
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    }
   }
 
   @override
@@ -60,9 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
+                    physics: const ClampingScrollPhysics(),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         minHeight: constraints.maxHeight,
@@ -111,54 +174,61 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 29, 24, 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Bienvenido de nuevo', style: AppTextStyles.heading),
-            const SizedBox(height: 8),
-            Text(
-              'Inicia sesión para continuar tu aventura',
-              style: AppTextStyles.body,
-            ),
-            const SizedBox(height: 20),
-            _InputField(
-              label: 'Correo electrónico',
-              hintText: 'ej: jose@example.com',
-              controller: emailController,
-              iconAsset: 'assets/images/icon_email.svg',
-            ),
-            const SizedBox(height: 14),
-            _InputField(
-              label: 'Contraseña',
-              hintText: '••••••••',
-              controller: passwordController,
-              iconAsset: 'assets/images/icon_lock.svg',
-              isPassword: true,
-              obscureText: _obscurePassword,
-              onToggleObscure: () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: Text(
-                  '¿Olvidaste tu contraseña?',
-                  style: AppTextStyles.link,
+        child: Form(
+          key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bienvenido de nuevo', style: AppTextStyles.heading),
+              const SizedBox(height: 8),
+              Text(
+                'Inicia sesión para continuar tu aventura',
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: 20),
+              _InputField(
+                label: 'Correo electrónico',
+                hintText: 'ej: jose@example.com',
+                controller: emailController,
+                iconAsset: 'assets/images/icon_email.svg',
+                keyboardType: TextInputType.emailAddress,
+                validator: _validateEmail,
+              ),
+              const SizedBox(height: 14),
+              _InputField(
+                label: 'Contraseña',
+                hintText: '••••••••',
+                controller: passwordController,
+                iconAsset: 'assets/images/icon_lock.svg',
+                isPassword: true,
+                obscureText: _obscurePassword,
+                onToggleObscure: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+                validator: _validatePassword,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () {},
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text(
+                    '¿Olvidaste tu contraseña?',
+                    style: AppTextStyles.link,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            _PrimaryButton(onPressed: () {}, label: 'Siguiente'),
-            const SizedBox(height: 40),
-            const _SocialAuthRow(),
-            const SizedBox(height: 24),
-            _buildRegisterPrompt(),
-          ],
+              const SizedBox(height: 4),
+              _PrimaryButton(onPressed: _submit, label: 'Siguiente'),
+              const SizedBox(height: 40),
+              const _SocialAuthRow(),
+              const SizedBox(height: 24),
+              _buildRegisterPrompt(),
+            ],
+          ),
         ),
       ),
     );
@@ -415,6 +485,8 @@ class _InputField extends StatelessWidget {
     this.isPassword = false,
     this.obscureText = false,
     this.onToggleObscure,
+    this.keyboardType,
+    this.validator,
   });
 
   final String label;
@@ -424,6 +496,8 @@ class _InputField extends StatelessWidget {
   final bool isPassword;
   final bool obscureText;
   final VoidCallback? onToggleObscure;
+  final TextInputType? keyboardType;
+  final FormFieldValidator<String>? validator;
 
   @override
   Widget build(BuildContext context) {
@@ -451,9 +525,11 @@ class _InputField extends StatelessWidget {
               SvgPicture.asset(iconAsset, width: 16, height: 16),
               const SizedBox(width: 12),
               Expanded(
-                child: TextField(
+                child: TextFormField(
                   controller: controller,
                   obscureText: isPassword && obscureText,
+                  keyboardType: keyboardType,
+                  validator: validator,
                   style: AppTextStyles.inputText,
                   decoration: InputDecoration(
                     isDense: true,
@@ -462,6 +538,11 @@ class _InputField extends StatelessWidget {
                       color: AppColors.neutral600,
                     ),
                     border: InputBorder.none,
+                    errorStyle: GoogleFonts.nunito(
+                      color: const Color(0xFFD64545),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),

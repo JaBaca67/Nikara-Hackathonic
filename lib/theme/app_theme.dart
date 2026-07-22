@@ -27,6 +27,38 @@ abstract class AppColors {
 
   /// Raw fill (not a bound variable in Figma) — cream card/app background.
   static const backgroundCream = Color(0xFFFFF9F0);
+
+  // --- Home screen tokens (Figma node 124:37, "Inicio") ---
+  // Same Local Variable collection as the login screen, but this frame
+  // binds a wider slice of the neutral/brown scale plus its own accents.
+
+  /// Variable "200" — light gray, used for the "Por región" divider rail.
+  static const surface200 = Color(0xFFE6E5E5);
+
+  /// Variable "400" — muted gray, status-bar time text.
+  static const neutral400 = Color(0xFFB7AEAE);
+
+  /// Variable "700" — secondary/caption text (card location, "Ver Mas").
+  static const neutral700 = Color(0xFF725E5A);
+
+  /// Variable "800" — dark brown, price text and thumbnail-selector borders.
+  static const neutral800 = Color(0xFF564343);
+
+  /// Variable "900" — near-black brown.
+  static const neutral900 = Color(0xFF3A2C2C);
+
+  /// Variable "500" (accent collection) — olive-lime ECO badge fill.
+  static const ecoGreen500 = Color(0xFFC2CA5B);
+
+  /// Variable "600" (gold collection — distinct from neutral600) — the
+  /// featured-card descriptive tag pill ("Laguna Volcánica").
+  static const tagGold600 = Color(0xFFFFCC33);
+
+  /// Variable "600" (lime collection) — notification-bell pill fill.
+  static const notificationPill = Color(0xFFD1D77E);
+
+  /// Raw fill — notification badge counter circle.
+  static const notificationBadge = Color(0xFF404413);
 }
 
 /// Text styles extracted from the Figma "Text Styles".
@@ -94,6 +126,124 @@ abstract class AppTextStyles {
     color: AppColors.accent300,
     fontSize: 15,
     height: 24 / 15,
+    fontWeight: FontWeight.w700,
+  );
+
+  // --- Home screen styles (Figma node 124:37) ---
+
+  /// Figma style "HL3": League Spartan Bold 32/48 — the "Nikara" wordmark.
+  static TextStyle get headingXL => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 32,
+    height: 48 / 32,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// League Spartan ExtraBold 16/24 — section titles ("Más visitados").
+  static TextStyle get sectionTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Figma style "Leyenda": Nunito Regular 12/18 — search placeholder.
+  static TextStyle get caption => GoogleFonts.nunito(
+    color: AppColors.neutral700,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get cardTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 11,
+    height: 13.75 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get cardLocation => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral700,
+    fontSize: 9,
+    height: 13.5 / 9,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get cardPrice => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral800,
+    fontSize: 14,
+    height: 1.0,
+    fontWeight: FontWeight.w900,
+  );
+
+  static TextStyle get cardPriceSuffix => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral700,
+    fontSize: 9,
+    height: 1.0,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get cardRating => GoogleFonts.leagueSpartan(
+    color: AppColors.surface100,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get tagPill => GoogleFonts.leagueSpartan(
+    color: AppColors.surface100,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w900,
+  );
+
+  static TextStyle get regionTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get seeMore => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral700,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get heroTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.surface100,
+    fontSize: 20,
+    height: 30 / 20,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get heroLocation => GoogleFonts.nunito(
+    color: AppColors.surface100,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get heroPrice => GoogleFonts.leagueSpartan(
+    color: AppColors.surface100,
+    fontSize: 20,
+    height: 1.0,
+    fontWeight: FontWeight.w900,
+  );
+
+  static TextStyle get ctaPill => GoogleFonts.leagueSpartan(
+    color: AppColors.surface100,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Bottom-nav label. Color is intentionally omitted — callers pick the
+  /// active (primary500) or inactive (neutral700) tint.
+  static TextStyle get navLabel => GoogleFonts.leagueSpartan(
+    fontSize: 10,
+    height: 15 / 10,
     fontWeight: FontWeight.w700,
   );
 }
