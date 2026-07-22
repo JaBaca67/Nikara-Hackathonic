@@ -24,31 +24,70 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    // Proportions lifted directly from the Figma frame (390x844, node 157:2):
-    // the card starts at y=235 and leaves a 16px gradient margin at the bottom.
-    final cardTop = size.height * (235 / 844);
-    final cardBottomMargin = size.height * (16 / 844);
+    // MediaQuery.sizeOf is the *physical* screen size — unlike the
+    // BoxConstraints Scaffold hands to `body`, it never shrinks when the
+    // keyboard opens, so it's the safe source for a background that must
+    // stay put.
+    final screenSize = MediaQuery.sizeOf(context);
+    // Proportions lifted directly from the Figma frame (390x844, node 157:2).
+    final logoAreaHeight = screenSize.height * (235 / 844);
+    final cardBottomGap = screenSize.height * (16 / 844);
 
     return Scaffold(
       backgroundColor: AppColors.primary500,
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          Positioned.fill(child: _GradientBackground(size: size)),
+          // Fondo fijo al 100%: se ancla con el alto físico real de la
+          // pantalla en vez de Positioned.fill, porque Positioned.fill
+          // heredaría el alto ya reducido que Scaffold le da a `body`
+          // cuando el teclado está abierto (eso era lo que comprimía y
+          // deformaba el degradado y la tarjeta). Cualquier sobrante queda
+          // oculto detrás del teclado, sin recortes visibles.
           Positioned(
             top: 0,
             left: 0,
-            right: 0,
-            height: cardTop,
-            child: const Center(child: _Logo()),
+            width: screenSize.width,
+            height: screenSize.height,
+            child: _GradientBackground(size: screenSize),
           ),
-          Positioned(
-            top: cardTop,
-            left: 27,
-            right: 27,
-            bottom: cardBottomMargin,
-            child: SafeArea(top: false, bottom: false, child: _buildCard()),
+          // Capa de contenido: se puede desplazar y se centra sola cuando
+          // sobra espacio (teclado cerrado).
+          SafeArea(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            height: logoAreaHeight,
+                            child: const Center(child: _Logo()),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 27,
+                            ),
+                            child: _buildCard(),
+                          ),
+                          SizedBox(height: cardBottomGap),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -70,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
-      child: SingleChildScrollView(
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 29, 24, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,17 +165,22 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildRegisterPrompt() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text('¿No tienes cuenta? ', style: AppTextStyles.registerPrompt),
-        GestureDetector(
-          onTap: () {},
-          child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
-        ),
-      ],
-    );
-  }
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      // 1. Quita el espacio en blanco al final del texto
+      Text('¿No tienes cuenta?', style: AppTextStyles.registerPrompt),
+      
+      // 2. Agrega un SizedBox para dar el espacio exacto que deseas (ej. 6 u 8 píxeles)
+      const SizedBox(width: 8), 
+      
+      GestureDetector(
+        onTap: () {},
+        child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
+      ),
+    ],
+  );
+}
 }
 
 class _Logo extends StatelessWidget {
