@@ -20,7 +20,7 @@ abstract class AppColors {
   static const neutral600 = Color(0xFF8C7373);
 
   /// Variable "700" — light gold, gradient end stop.
-  static const primary700 = Color(0xFFFFD966);
+  static const primary700 = Color(0xFFFFD866);
 
   /// Variable "1100" — pure black, used for primary text.
   static const neutral1100 = Color(0xFF000000);

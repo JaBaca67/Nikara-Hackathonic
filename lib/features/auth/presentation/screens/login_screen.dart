@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 20),
             _InputField(
               label: 'Correo electrónico',
-              hintText: 'bugnuelitos@email.com',
+              hintText: 'ej: jose@example.com',
               controller: emailController,
               iconAsset: 'assets/images/icon_email.svg',
             ),
@@ -147,15 +147,20 @@ class _Logo extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Image.asset(
-          'assets/images/flower.png',
-          width: 150,
-          height: 150,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
+        Transform.translate(
+          offset: const Offset(0, 8), // baja la imagen 8 px
+          child: Image.asset(
+            'assets/images/nikara_logo.png',
+            width: 150,
+            height: 150,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          ),
         ),
-        const SizedBox(height: 8),
-        Text('NIKARA', style: AppTextStyles.logoWordmark),
+        Transform.translate(
+          offset: const Offset(0, -1), // mueve el texto hacia arriba
+          child: Text('NIKARA', style: AppTextStyles.logoWordmark),
+        ),
       ],
     );
   }
@@ -198,6 +203,11 @@ class _GradientBackground extends StatelessWidget {
             ),
           ),
           Positioned(
+            right: size.width * (-30 / 390),
+            top: size.height * (-10 / 844),
+            child: _topRightGlow(diameter: size.width * (160 / 390)),
+          ),
+          Positioned(
             left: size.width * (-79 / 390),
             top: size.height * (97 / 844),
             child: _radialBlur(
@@ -223,6 +233,30 @@ class _GradientBackground extends StatelessWidget {
       ),
     );
   }
+
+  Widget _topRightGlow({required double diameter}) {
+    // A soft, warm bloom rather than a glassy disc: every stop fades the
+    // *same* hue down to zero alpha instead of mixing white toward
+    // black-at-zero-alpha, which is what produced the grayish "cristal" ring.
+    // A wide, gentle stop curve stands in for a real blur (cheaper and
+    // consistent across web renderers).
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.5),
+            Colors.white.withValues(alpha: 0.22),
+            AppColors.primary700.withValues(alpha: 0.10),
+            AppColors.primary700.withValues(alpha: 0),
+          ],
+          stops: const [0.0, 0.3, 0.65, 1.0],
+        ),
+      ),
+    );
+  }
 }
 
 class _PrimaryButton extends StatelessWidget {
@@ -238,8 +272,8 @@ class _PrimaryButton extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          begin: Alignment(-0.16, -0.99),
-          end: Alignment(0.16, 0.99),
+          begin: Alignment(0.00, 0.00),
+          end: Alignment(1.00, 1.00),
           colors: [AppColors.primary500, AppColors.primary700],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -312,11 +346,7 @@ class _SocialAuthButton extends StatelessWidget {
             ),
             child: Center(
               child: provider.assetPath.endsWith('.svg')
-                  ? SvgPicture.asset(
-                      provider.assetPath,
-                      width: 36,
-                      height: 36,
-                    )
+                  ? SvgPicture.asset(provider.assetPath, width: 36, height: 36)
                   : Image.asset(
                       provider.assetPath,
                       width: 36,
