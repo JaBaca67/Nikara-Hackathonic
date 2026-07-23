@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
@@ -77,6 +78,9 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _sessionService = UserSessionService();
+  UserData? _userData;
+
   Color? _avatarColor;
   final Set<String> _favoriteIds = {
     'isletas-de-granada',
@@ -87,6 +91,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<DestinationModel> get _favorites => mockDestinations
       .where((d) => _favoriteIds.contains(d.id))
       .toList(growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final userData = await _sessionService.getUserData();
+    if (!mounted) return;
+    setState(() => _userData = userData);
+  }
 
   void _toggleFavorite(String id) {
     setState(() {
@@ -120,6 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ProfileHeader(
+                userData: _userData,
                 avatarColor: _avatarColor,
                 onAvatarTap: _openAvatarPicker,
                 onSettingsTap: () {
@@ -189,17 +206,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
+    required this.userData,
     required this.avatarColor,
     required this.onAvatarTap,
     required this.onSettingsTap,
   });
 
+  final UserData? userData;
   final Color? avatarColor;
   final VoidCallback onAvatarTap;
   final VoidCallback onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
+    final fullName = userData == null || userData!.fullName.trim().isEmpty
+        ? 'Viajero Nikara'
+        : userData!.fullName;
+    final email = userData?.email ?? '—';
+    final phone = userData?.phone.isNotEmpty == true
+        ? userData!.phone
+        : '—';
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       decoration: const BoxDecoration(
@@ -255,13 +282,42 @@ class _ProfileHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Ixchel Galo', style: AppTextStyles.profileName),
+                      Text(
+                        fullName,
+                        style: AppTextStyles.profileName,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       const SizedBox(height: 6),
                       Text('lv 4/12', style: AppTextStyles.profileLevel),
-                      const SizedBox(height: 12),
-                      Text(
-                        'León, Nicaragua',
-                        style: AppTextStyles.profileLocation,
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.mail_outline,
+                            size: 12,
+                            color: AppColors.neutral900,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              email,
+                              style: AppTextStyles.profileLocation,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.call_outlined,
+                            size: 12,
+                            color: AppColors.neutral900,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(phone, style: AppTextStyles.profileLocation),
+                        ],
                       ),
                     ],
                   ),

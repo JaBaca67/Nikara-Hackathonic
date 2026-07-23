@@ -524,6 +524,32 @@ abstract class AppTextStyles {
     height: 20 / 14,
     fontWeight: FontWeight.w700,
   );
+
+  // --- Register screen styles (Figma nodes 157:96, 113:95) ---
+
+  /// League Spartan Bold 22/28 — "Crea una cuenta".
+  static TextStyle get registerHeading => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 22,
+    height: 28 / 22,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Nunito Regular 14 — the step-indicator digit inside each circle.
+  static TextStyle get stepIndicatorNumber => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Nunito Regular 12 — the step-indicator caption ("Datos Personales").
+  static TextStyle get stepIndicatorCaption => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w400,
+  );
 }
 
 abstract class AppTheme {

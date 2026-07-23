@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
 import 'package:nikara_app/models/mock_data.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
@@ -17,7 +19,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final _sessionService = UserSessionService();
   bool _obscurePassword = true;
+  bool _isSubmitting = false;
 
   /// Starts disabled so nothing is flagged while the user is still typing
   /// their first character; the very first failed "Siguiente" tap switches
@@ -80,7 +84,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return value.length >= 4 && (ascending || descending || repeated);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_isSubmitting) return;
     FocusScope.of(context).unfocus();
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
@@ -88,12 +93,34 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _autovalidateMode = AutovalidateMode.onUserInteraction);
       return;
     }
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) =>
-            const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
+
+    setState(() => _isSubmitting = true);
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+    final isValidLogin = await _sessionService.validateLogin(
+      email,
+      password,
     );
+    if (!mounted) return;
+
+    if (isValidLogin) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = false);
+    final userData = await _sessionService.getUserData();
+    if (!mounted) return;
+    final message = userData == null
+        ? 'No existe una cuenta registrada'
+        : 'Credenciales incorrectas';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -254,7 +281,11 @@ class _LoginScreenState extends State<LoginScreen> {
       const SizedBox(width: 8), 
       
       GestureDetector(
-        onTap: () {},
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+          );
+        },
         child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
       ),
     ],
