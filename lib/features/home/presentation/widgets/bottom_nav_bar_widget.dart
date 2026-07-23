@@ -16,19 +16,18 @@ const List<_NavItem> _kNavItems = [
   _NavItem(Icons.person_rounded, 'Perfil'),
 ];
 
-/// Fixed bottom navigation bar with 4 tabs. Only tracks which tab looks
-/// selected — no routing is wired up yet.
-class BottomNavBarWidget extends StatefulWidget {
-  const BottomNavBarWidget({super.key, this.initialIndex = 0});
+/// Fixed bottom navigation bar with 4 tabs. Fully controlled by the parent
+/// (typically a `MainLayout` driving an `IndexedStack`) — this widget holds
+/// no selection state of its own.
+class BottomNavBarWidget extends StatelessWidget {
+  const BottomNavBarWidget({
+    super.key,
+    required this.currentIndex,
+    required this.onTap,
+  });
 
-  final int initialIndex;
-
-  @override
-  State<BottomNavBarWidget> createState() => _BottomNavBarWidgetState();
-}
-
-class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
-  late int _selectedIndex = widget.initialIndex;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -54,8 +53,8 @@ class _BottomNavBarWidgetState extends State<BottomNavBarWidget> {
             for (var i = 0; i < _kNavItems.length; i++)
               _NavButton(
                 item: _kNavItems[i],
-                selected: i == _selectedIndex,
-                onTap: () => setState(() => _selectedIndex = i),
+                selected: i == currentIndex,
+                onTap: () => onTap(i),
               ),
           ],
         ),

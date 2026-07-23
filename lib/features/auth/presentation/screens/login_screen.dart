@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/models/mock_data.dart';
+import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,6 +18,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+
+  /// Starts disabled so nothing is flagged while the user is still typing
+  /// their first character; the very first failed "Siguiente" tap switches
+  /// this to onUserInteraction so fixes are reflected live from then on.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   static final RegExp _emailRegex = RegExp(
     r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
@@ -44,22 +50,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _validateEmail(String? value) {
     final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa tu correo electrónico';
-    if (!_emailRegex.hasMatch(trimmed)) {
-      return 'Ingresa un correo electrónico válido';
-    }
+    if (trimmed.isEmpty) return 'Ingresa un correo';
+    if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
     return null;
   }
 
   String? _validatePassword(String? value) {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return 'Ingresa tu contraseña';
-    if (trimmed.length < 6) return 'Debe tener al menos 6 caracteres';
-    if (_weakPasswords.contains(trimmed.toLowerCase())) {
-      return 'Elige una contraseña menos común';
-    }
-    if (_isSequentialOrRepeated(trimmed)) {
-      return 'Evita secuencias o caracteres repetidos';
+    if (trimmed.length < 6) return 'Mínimo 6 caracteres';
+    if (_weakPasswords.contains(trimmed.toLowerCase()) ||
+        _isSequentialOrRepeated(trimmed)) {
+      return 'Contraseña muy débil';
     }
     return null;
   }
@@ -80,11 +82,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _submit() {
     FocusScope.of(context).unfocus();
-    if (_formKey.currentState?.validate() ?? false) {
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    final isValid = _formKey.currentState?.validate() ?? false;
+    if (!isValid) {
+      // Only from here on do further keystrokes get live feedback.
+      setState(() => _autovalidateMode = AutovalidateMode.onUserInteraction);
+      return;
     }
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) =>
+            const SplashTransitionScreen(nextPage: MainLayout()),
+      ),
+    );
   }
 
   @override
@@ -176,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
         padding: const EdgeInsets.fromLTRB(24, 29, 24, 24),
         child: Form(
           key: _formKey,
-          autovalidateMode: AutovalidateMode.onUserInteraction,
+          autovalidateMode: _autovalidateMode,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -538,6 +547,7 @@ class _InputField extends StatelessWidget {
                       color: AppColors.neutral600,
                     ),
                     border: InputBorder.none,
+                    errorMaxLines: 1,
                     errorStyle: GoogleFonts.nunito(
                       color: const Color(0xFFD64545),
                       fontSize: 11,

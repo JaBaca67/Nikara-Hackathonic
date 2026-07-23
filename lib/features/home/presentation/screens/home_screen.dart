@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
-import 'package:nikara_app/features/home/presentation/widgets/bottom_nav_bar_widget.dart';
 import 'package:nikara_app/features/home/presentation/widgets/destination_card.dart';
 import 'package:nikara_app/features/home/presentation/widgets/featured_destination_card.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
@@ -26,7 +25,6 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.surface100,
-      bottomNavigationBar: const BottomNavBarWidget(),
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(

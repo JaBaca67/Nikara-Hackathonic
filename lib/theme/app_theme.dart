@@ -59,6 +59,56 @@ abstract class AppColors {
 
   /// Raw fill — notification badge counter circle.
   static const notificationBadge = Color(0xFF404413);
+
+  // --- Splash/transition screen tokens (Figma node 95:2, "Precarga") ---
+
+  /// Variable "500" (coral collection) — gradient's bottom-right stop.
+  static const coral500 = Color(0xFFFF8243);
+
+  // --- Profile screen tokens (Figma node 259:224, "Perfil") ---
+
+  /// Variable "500" (a second, lighter neutral scale used on this screen) —
+  /// muted taupe for captions ("Granada", "520 puntos").
+  static const neutral500 = Color(0xFFA19191);
+
+  /// Header gradient top stop — pale gold.
+  static const profileHeaderGoldPale = Color(0xFFFFE599);
+
+  /// Header gradient third stop — soft coral (distinct from [coral500]).
+  static const profileHeaderCoral = Color(0xFFFFA375);
+
+  // --- Settings screen tokens (Figma node 361:323, "Ajustes") ---
+  // This frame binds a separate warm-neutral palette from the rest of the
+  // app rather than the shared brown/gold scale above.
+
+  /// Screen background.
+  static const settingsBackground = Color(0xFFF7F3EC);
+
+  /// Gold accent — row icon tint, "on" toggle fill.
+  static const settingsAccent = Color(0xFFF0B500);
+
+  /// Primary row/heading text.
+  static const settingsTextDark = Color(0xFF261D0C);
+
+  /// Secondary text — section labels, row values, captions.
+  static const settingsTextMuted = Color(0xFF8A7A65);
+
+  /// "Cerrar sesión" — destructive action tint.
+  static const settingsDanger = Color(0xFFCC5510);
+
+  /// "Off" toggle track fill.
+  static const settingsToggleOff = Color(0xFFC8BDB0);
+
+  // --- Bookings screen tokens (Figma node 170:23, "Reservas") ---
+
+  /// Variable "200" (olive collection) — "Confirmada" status + paid-total.
+  static const bookingConfirmed = Color(0xFF656B1F);
+
+  /// Variable "300" (rust collection) — "Pendiente" status.
+  static const bookingPending = Color(0xFFDB4900);
+
+  /// Raw fill — placeholder thumbnail background (also used in Perfil).
+  static const placeholderTan = Color(0xFFE5DFD2);
 }
 
 /// Text styles extracted from the Figma "Text Styles".
@@ -244,6 +294,234 @@ abstract class AppTextStyles {
   static TextStyle get navLabel => GoogleFonts.leagueSpartan(
     fontSize: 10,
     height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  // --- Profile screen styles (Figma node 259:224) ---
+
+  /// Figma style "HL6": League Spartan Bold 18/28 — profile name.
+  static TextStyle get profileName => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 18,
+    height: 28 / 18,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Figma style "Subtitulo 1": Nunito SemiBold 16/24 — "lv 4/12".
+  static TextStyle get profileLevel => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Figma style "Subtitulo 2": Nunito SemiBold 14/22 — "León, Nicaragua".
+  static TextStyle get profileLocation => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 22 / 14,
+    fontWeight: FontWeight.w600,
+  );
+
+  static TextStyle get listCardTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 19.25 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get listCardCaption => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral500,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get listCardPrice => GoogleFonts.leagueSpartan(
+    color: AppColors.accent300,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get listCardPriceSuffix => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral500,
+    fontSize: 10,
+    height: 14.286 / 10,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get badgeTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 10,
+    height: 12.5 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get badgeStatus => GoogleFonts.leagueSpartan(
+    fontSize: 9,
+    height: 13.5 / 9,
+    fontWeight: FontWeight.w600,
+  );
+
+  static TextStyle get sectionSubLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral500,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w400,
+  );
+
+  // --- Settings screen styles (Figma node 361:323) ---
+
+  static TextStyle get settingsTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 20,
+    height: 1.0,
+    fontWeight: FontWeight.w900,
+  );
+
+  static TextStyle get settingsSubtitle => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get settingsSectionLabel => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 1.2,
+  );
+
+  static TextStyle get settingsRowTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 14,
+    height: 21 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get settingsRowValue => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w500,
+  );
+
+  static TextStyle get settingsRowCaption => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w500,
+  );
+
+  // --- Map screen styles (Figma node 167:1849) ---
+
+  static TextStyle get headerTitleMd => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 18,
+    height: 22.5 / 18,
+    fontWeight: FontWeight.w900,
+  );
+
+  static TextStyle get mapListLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral500,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w900,
+    letterSpacing: 1,
+  );
+
+  static TextStyle get mapRowTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get mapRowCaption => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral500,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w400,
+  );
+
+  static TextStyle get mapRowRating => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get mapRowPrice => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w900,
+  );
+
+  // --- Bookings screen styles (Figma node 170:23) ---
+
+  static TextStyle get bookingHeaderTitle => GoogleFonts.playfairDisplay(
+    color: AppColors.neutral1100,
+    fontSize: 20,
+    height: 28 / 20,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingCardTitle => GoogleFonts.playfairDisplay(
+    color: Colors.white,
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingMeta => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w600,
+  );
+
+  static TextStyle get bookingLabel => GoogleFonts.nunito(
+    color: AppColors.neutral800,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.5,
+  );
+
+  static TextStyle get bookingCode => GoogleFonts.robotoMono(
+    color: AppColors.neutral1100,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingTotal => GoogleFonts.nunito(
+    color: AppColors.bookingConfirmed,
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingStatusChip => GoogleFonts.nunito(
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingPillCount => GoogleFonts.nunito(
+    color: AppColors.neutral1100,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  static TextStyle get bookingActionLabel => GoogleFonts.nunito(
+    fontSize: 14,
+    height: 20 / 14,
     fontWeight: FontWeight.w700,
   );
 }
