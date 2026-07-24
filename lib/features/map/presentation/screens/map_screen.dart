@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/domain/models/business_model.dart';
+import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -33,6 +36,33 @@ class _MapPin {
   /// Fictional, fraction-of-map (0..1) position — not real coordinates.
   final double dx;
   final double dy;
+}
+
+class _BusinessPin {
+  const _BusinessPin({required this.business, required this.dx, required this.dy});
+
+  final BusinessModel business;
+  final double dx;
+  final double dy;
+}
+
+/// Deterministic 0..1 fraction derived from [seed] — used to place a
+/// business pin plausibly on the stylized map without a real lat/lng
+/// (the wizard doesn't collect real coordinates).
+double _pseudoFraction(String seed, int salt) {
+  final hash = (seed.hashCode ^ salt).abs();
+  return 0.15 + (hash % 1000) / 1000 * 0.7;
+}
+
+List<_BusinessPin> _buildBusinessPins(List<BusinessModel> businesses) {
+  return [
+    for (final business in businesses)
+      _BusinessPin(
+        business: business,
+        dx: _pseudoFraction(business.id, 17),
+        dy: _pseudoFraction(business.id, 31),
+      ),
+  ];
 }
 
 /// Fictional pin layout loosely following each destination's real region
@@ -72,9 +102,27 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
+  final _businessStorageService = BusinessStorageService();
   final _pins = _buildPins();
+  List<_BusinessPin> _businessPins = const [];
+  List<BusinessModel> _businesses = const [];
   _MapCategory _selectedCategory = _MapCategory.todos;
   bool _showFilters = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBusinesses();
+  }
+
+  Future<void> _loadBusinesses() async {
+    final businesses = await _businessStorageService.getBusinesses();
+    if (!mounted) return;
+    setState(() {
+      _businesses = businesses;
+      _businessPins = _buildBusinessPins(businesses);
+    });
+  }
 
   List<DestinationModel> get _filteredDestinations {
     if (_selectedCategory == _MapCategory.todos) return mockDestinations;
@@ -91,6 +139,17 @@ class _MapScreenState extends State<MapScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => _DestinationSummarySheet(destination: destination),
+    );
+  }
+
+  void _openBusinessSheet(BusinessModel business) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => _BusinessSummarySheet(business: business),
     );
   }
 
@@ -120,7 +179,12 @@ class _MapScreenState extends State<MapScreen> {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  _StylizedMap(pins: _pins, onPinTap: _openDestinationSheet),
+                  _StylizedMap(
+                    pins: _pins,
+                    businessPins: _businessPins,
+                    onPinTap: _openDestinationSheet,
+                    onBusinessPinTap: _openBusinessSheet,
+                  ),
                   Positioned(
                     left: 20,
                     right: 20,
@@ -188,6 +252,29 @@ class _MapScreenState extends State<MapScreen> {
                   ],
                 ),
               ),
+              if (_businesses.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    'NEGOCIOS REGISTRADOS · ${_businesses.length}',
+                    style: AppTextStyles.mapListLabel,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      for (final business in _businesses) ...[
+                        _MapBusinessRow(
+                          business: business,
+                          onTap: () => _openBusinessSheet(business),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -251,10 +338,17 @@ class _MapSearchBar extends StatelessWidget {
 /// A stylized stand-in for a real map: a soft terrain/coast gradient plus
 /// fictional destination pins — no map SDK or API key required.
 class _StylizedMap extends StatelessWidget {
-  const _StylizedMap({required this.pins, required this.onPinTap});
+  const _StylizedMap({
+    required this.pins,
+    required this.businessPins,
+    required this.onPinTap,
+    required this.onBusinessPinTap,
+  });
 
   final List<_MapPin> pins;
+  final List<_BusinessPin> businessPins;
   final ValueChanged<DestinationModel> onPinTap;
+  final ValueChanged<BusinessModel> onBusinessPinTap;
 
   @override
   Widget build(BuildContext context) {
@@ -283,8 +377,20 @@ class _StylizedMap extends StatelessWidget {
                 child: FractionalTranslation(
                   translation: const Offset(0, -0.5),
                   child: _MapPinButton(
-                    pin: pin,
+                    isEco: pin.destination.tag?.toUpperCase() == 'ECO',
                     onTap: () => onPinTap(pin.destination),
+                  ),
+                ),
+              ),
+            ),
+          for (final pin in businessPins)
+            Positioned.fill(
+              child: Align(
+                alignment: FractionalOffset(pin.dx, pin.dy),
+                child: FractionalTranslation(
+                  translation: const Offset(0, -0.5),
+                  child: _BusinessPinButton(
+                    onTap: () => onBusinessPinTap(pin.business),
                   ),
                 ),
               ),
@@ -296,14 +402,13 @@ class _StylizedMap extends StatelessWidget {
 }
 
 class _MapPinButton extends StatelessWidget {
-  const _MapPinButton({required this.pin, required this.onTap});
+  const _MapPinButton({required this.isEco, required this.onTap});
 
-  final _MapPin pin;
+  final bool isEco;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isEco = pin.destination.tag?.toUpperCase() == 'ECO';
     return GestureDetector(
       onTap: onTap,
       child: Icon(
@@ -311,6 +416,27 @@ class _MapPinButton extends StatelessWidget {
         size: 32,
         color: isEco ? AppColors.ecoGreen500 : AppColors.primary700,
         shadows: const [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+    );
+  }
+}
+
+/// Pin for a registered business — a distinct storefront glyph so it reads
+/// differently from the curated destination pins on the same map.
+class _BusinessPinButton extends StatelessWidget {
+  const _BusinessPinButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: const Icon(
+        Icons.storefront,
+        size: 30,
+        color: AppColors.ecoForest,
+        shadows: [Shadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
       ),
     );
   }
@@ -402,6 +528,189 @@ class _MapDestinationRow extends StatelessWidget {
                 Text(destination.formattedPrice, style: AppTextStyles.mapRowPrice),
                 Text('/persona', style: AppTextStyles.listCardPriceSuffix),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapBusinessRow extends StatelessWidget {
+  const _MapBusinessRow({required this.business, required this.onTap});
+
+  final BusinessModel business;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = business.localImagePaths.isNotEmpty
+        ? business.localImagePaths.first
+        : null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0F000000),
+              offset: Offset(0, 2),
+              blurRadius: 5,
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: SizedBox(
+                width: 52,
+                height: 46,
+                child: imagePath != null
+                    ? Image.network(imagePath, fit: BoxFit.cover)
+                    : const ColoredBox(
+                        color: AppColors.placeholderTan,
+                        child: Icon(
+                          Icons.storefront_outlined,
+                          size: 18,
+                          color: AppColors.neutral500,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    business.name,
+                    style: AppTextStyles.mapRowTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(business.locationText, style: AppTextStyles.mapRowCaption),
+                  const SizedBox(height: 2),
+                  Text(business.category, style: AppTextStyles.mapRowCaption),
+                ],
+              ),
+            ),
+            if (business.allowsReservations)
+              Text(business.formattedPrice, style: AppTextStyles.mapRowPrice),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BusinessSummarySheet extends StatelessWidget {
+  const _BusinessSummarySheet({required this.business});
+
+  final BusinessModel business;
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = business.localImagePaths.isNotEmpty
+        ? business.localImagePaths.first
+        : null;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: imagePath != null
+                        ? Image.network(imagePath, fit: BoxFit.cover)
+                        : const ColoredBox(
+                            color: AppColors.placeholderTan,
+                            child: Icon(
+                              Icons.storefront_outlined,
+                              color: AppColors.neutral500,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(business.name, style: AppTextStyles.sectionTitle),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, size: 12, color: AppColors.neutral500),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              business.locationText,
+                              style: AppTextStyles.listCardCaption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (business.allowsReservations)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(business.category, style: AppTextStyles.cardTitle),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text('${business.formattedPrice} ', style: AppTextStyles.listCardPrice),
+                      Text('/persona', style: AppTextStyles.listCardPriceSuffix),
+                    ],
+                  ),
+                ],
+              )
+            else
+              Text(business.category, style: AppTextStyles.cardTitle),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  foregroundColor: AppColors.neutral1100,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => BusinessDetailScreen(business: business),
+                    ),
+                  );
+                },
+                child: const Text('Ver Detalle'),
+              ),
             ),
           ],
         ),

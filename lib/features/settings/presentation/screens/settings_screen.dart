@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Ajustes screen (Figma node 361:323). Notification/privacy toggles and
@@ -185,7 +186,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     iconTint: AppColors.accent300,
                     title: 'Registrar mi negocio',
                     caption: 'Llega a más viajeros en Nicaragua',
-                    onTap: () => _showSnack('Próximamente'),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterBusinessWizard(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

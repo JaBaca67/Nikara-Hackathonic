@@ -109,6 +109,86 @@ abstract class AppColors {
 
   /// Raw fill — placeholder thumbnail background (also used in Perfil).
   static const placeholderTan = Color(0xFFE5DFD2);
+
+  // --- Paleta maestra (Figma node 125:2, "Paleta de colores") ---
+  // This board is a raw canvas of swatches (not a component the
+  // design-context tool can traverse), so these hex values were extracted
+  // by pixel-sampling the rendered board instead of reading bound variable
+  // names directly. Several swatches already had a confirmed name elsewhere
+  // in this file (cross-checked by exact hex match) — those are reused
+  // as-is and just annotated here; only the genuinely new swatches get a
+  // fresh constant. Names below are positional (left-to-right on the
+  // board) since the official Figma variable numbers weren't resolvable
+  // for this specific node.
+
+  /// Primario 1/9 — palest gold.
+  static const primario1 = Color(0xFFFFF2CC);
+  // Primario 2/9 == profileHeaderGoldPale (#FFE599).
+  // Primario 3/9 == primary700 (#FFD866).
+  // Primario 4/9 == tagGold600 (#FFCC33).
+  // Primario 5/9 == primary500 (#FDBE02).
+  /// Primario 6/9 — muted amber.
+  static const primario6 = Color(0xFFCC9900);
+  /// Primario 7/9 — deep amber.
+  static const primario7 = Color(0xFF997300);
+  /// Primario 8/9 — dark brown-gold.
+  static const primario8 = Color(0xFF664C00);
+  /// Primario 9/9 — near-black gold shadow.
+  static const primario9 = Color(0xFF332600);
+
+  /// Secundario 1/9 — palest olive.
+  static const secundario1 = Color(0xFFF3F5DB);
+  /// Secundario 2/9 — pale olive.
+  static const secundario2 = Color(0xFFEDEFCC);
+  /// Secundario 3/9 — light olive.
+  static const secundario3 = Color(0xFFDFE3A5);
+  // Secundario 4/9 == notificationPill (#D1D77E).
+  // Secundario 5/9 == ecoGreen500 (#C2CA5B).
+  /// Secundario 6/9 — mid olive.
+  static const secundario6 = Color(0xFFAEB738);
+  // Secundario 7/9 == accent300 (#8B922A).
+  // Secundario 8/9 == bookingConfirmed (#656B1F).
+  // Secundario 9/9 == notificationBadge (#404413).
+
+  /// Complementario 1/9 — palest coral.
+  static const complementario1 = Color(0xFFFFEEE6);
+  /// Complementario 2/9 — pale coral.
+  static const complementario2 = Color(0xFFFFE7DB);
+  /// Complementario 3/9 — light coral.
+  static const complementario3 = Color(0xFFFFC5A8);
+  // Complementario 4/9 == profileHeaderCoral (#FFA375).
+  // Complementario 5/9 == coral500 (#FF8243).
+  // Complementario 6/9 == primary400 (#FF600F).
+  // Complementario 7/9 == bookingPending (#DB4900).
+  /// Complementario 8/9 — deep rust.
+  static const complementario8 = Color(0xFFA83800);
+  /// Complementario 9/9 — near-black rust shadow.
+  static const complementario9 = Color(0xFF752700);
+
+  /// Neutro 100 — pure white (distinct from [surface100]'s off-white).
+  static const neutral100 = Color(0xFFFFFFFF);
+  // Neutro 200 == surface200 (#E6E5E5).
+  /// Neutro 300 — light warm gray.
+  static const neutral300 = Color(0xFFCECACA);
+  // Neutro 400..900 and 1100 == neutral400..neutral900 and neutral1100
+  // above, confirmed by exact hex match at their expected board position.
+  /// Neutro 1000 — near-black warm gray.
+  static const neutral1000 = Color(0xFF1E1515);
+  // Neutro 1100 == neutral1100 (#000000).
+
+  // --- Business detail screen tokens (Figma nodes 284:2256, 233:437) ---
+
+  /// Forest green — eco activity icons/tags and review-avatar fill. Distinct
+  /// from the brand's [ecoGreen500] (olive), this is a separate accent used
+  /// only on this screen.
+  static const ecoForest = Color(0xFF3A7D3A);
+
+  /// Segmented-control track background ("Información" / "Reseñas & Fotos").
+  static const segmentedTrackBg = Color(0xFFF4EDE8);
+
+  /// Solid near-black ink used for text on gold buttons/pills throughout
+  /// the app (previously inlined as a literal hex in several screens).
+  static const textInk = Color(0xFF1A1510);
 }
 
 /// Text styles extracted from the Figma "Text Styles".
@@ -548,6 +628,240 @@ abstract class AppTextStyles {
     color: AppColors.neutral1100,
     fontSize: 12,
     height: 16 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  // --- Escala tipográfica base (Figma node 134:25, "TIpografias") ---
+  // The board's own specimen colors (#212B36/#637381/#919EAB) come from a
+  // generic starter-kit palette that never actually appears in any built
+  // screen, so these getters intentionally leave color unset — callers
+  // apply one of the app's own neutral tokens instead. Sizes/weights were
+  // cross-validated: "Boton Lg" here matches [buttonLarge] byte-for-byte.
+
+  /// Text style "H1": Nunito Bold 64/80.
+  static TextStyle get h1 => GoogleFonts.nunito(
+    fontSize: 64,
+    height: 80 / 64,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "H2": Nunito Bold 48/64.
+  static TextStyle get h2 => GoogleFonts.nunito(
+    fontSize: 48,
+    height: 64 / 48,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "H3": Nunito Bold 32/48.
+  static TextStyle get h3 => GoogleFonts.nunito(
+    fontSize: 32,
+    height: 48 / 32,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "H4": Nunito Bold 24/36.
+  static TextStyle get h4 => GoogleFonts.nunito(
+    fontSize: 24,
+    height: 36 / 24,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "H5": Nunito Bold 20/30.
+  static TextStyle get h5 => GoogleFonts.nunito(
+    fontSize: 20,
+    height: 30 / 20,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "H6": Nunito Bold 18/28.
+  static TextStyle get h6 => GoogleFonts.nunito(
+    fontSize: 18,
+    height: 28 / 18,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "Subtitulo 1": Nunito SemiBold 16/24.
+  static TextStyle get subtitle1 => GoogleFonts.nunito(
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Text style "Subtitulo 2": Nunito SemiBold 14/22.
+  static TextStyle get subtitle2 => GoogleFonts.nunito(
+    fontSize: 14,
+    height: 22 / 14,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Text style "Cuerpo 1": Nunito Regular 16/24.
+  static TextStyle get bodyText1 => GoogleFonts.nunito(
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Text style "Cuerpo 2": Nunito Regular 14/22.
+  static TextStyle get bodyText2 => GoogleFonts.nunito(
+    fontSize: 14,
+    height: 22 / 14,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Text style "Leyenda": Nunito Regular 12/18.
+  static TextStyle get legend => GoogleFonts.nunito(
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Text style "Overline": Nunito Bold 12/18, uppercase, tracked.
+  static TextStyle get overline => GoogleFonts.nunito(
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 1.2,
+  );
+
+  /// Text style "Boton Lg" — identical to [buttonLarge] (Nunito Bold 15/26).
+  static TextStyle get buttonLg => buttonLarge;
+
+  /// Text style "Boton Md": Nunito Bold 14/24.
+  static TextStyle get buttonMd => GoogleFonts.nunito(
+    fontSize: 14,
+    height: 24 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Text style "Boton pq" (small): Nunito Bold 13/22.
+  static TextStyle get buttonSm => GoogleFonts.nunito(
+    fontSize: 13,
+    height: 22 / 13,
+    fontWeight: FontWeight.w700,
+  );
+
+  // --- Business detail screen styles (Figma nodes 284:2256, 233:437) ---
+
+  /// Cover title ("Laguna de Apoyo"): League Spartan Bold 24/32.
+  static TextStyle get detailTitle => GoogleFonts.leagueSpartan(
+    fontSize: 24,
+    height: 32 / 24,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Category tag pill: League Spartan Bold 10/15.
+  static TextStyle get detailTagPill => GoogleFonts.leagueSpartan(
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Cover rating value ("4.9"): League Spartan Bold 12/16.
+  static TextStyle get detailRatingValue => GoogleFonts.leagueSpartan(
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Cover rating count ("(203 reseñas)"): League Spartan Regular 11/16.5.
+  static TextStyle get detailRatingCount => GoogleFonts.leagueSpartan(
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Floating quick-info label ("Ubicación"/"Distancia"/"Precio").
+  static TextStyle get quickInfoLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral600,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Floating quick-info value ("Masaya, NI").
+  static TextStyle get quickInfoValue => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Segmented-control tab label ("Información" / "Reseñas & Fotos").
+  static TextStyle get segmentedTabLabel => GoogleFonts.leagueSpartan(
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Section heading ("Actividades", "Descripción", "Opiniones"...).
+  static TextStyle get detailSectionTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Row label inside a detail card (amenity/activity name).
+  static TextStyle get detailRowText => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 14,
+    height: 19.25 / 14,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Small "Eco" tag chip inside an amenity row.
+  static TextStyle get ecoTagChip => GoogleFonts.leagueSpartan(
+    color: AppColors.ecoForest,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Review author name.
+  static TextStyle get reviewAuthor => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Review relative-date caption ("hace 2 días").
+  static TextStyle get reviewMeta => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral600,
+    fontSize: 9,
+    height: 13.5 / 9,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Review comment body.
+  static TextStyle get reviewComment => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral800,
+    fontSize: 12,
+    height: 19.5 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Big rating summary number ("4.9"): League Spartan Black 36/36.
+  static TextStyle get ratingBig => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 36,
+    height: 1.0,
+    fontWeight: FontWeight.w900,
+  );
+
+  /// "Reservar Ahora — C$350" button label.
+  static TextStyle get reserveButtonLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.textInk,
+    fontSize: 16,
+    height: 24 / 16,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// "Cancela gratis hasta 48 horas antes" caption.
+  static TextStyle get reserveCaption => GoogleFonts.leagueSpartan(
+    color: AppColors.neutral600,
+    fontSize: 11,
+    height: 16.5 / 11,
     fontWeight: FontWeight.w400,
   );
 }
