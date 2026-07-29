@@ -154,7 +154,12 @@ class _CardImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (destination.imageAsset != null) {
-      return Image.asset(destination.imageAsset!, fit: BoxFit.cover);
+      return Image.asset(
+        destination.imageAsset!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) =>
+            ColoredBox(color: destination.imagePlaceholderColor),
+      );
     }
     return ColoredBox(color: destination.imagePlaceholderColor);
   }

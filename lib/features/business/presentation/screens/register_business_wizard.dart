@@ -1,13 +1,11 @@
-import 'dart:io';
-
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
-import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const List<String> _kCategories = [
@@ -31,6 +29,17 @@ const List<String> _kAmenities = [
   'Accesible',
   'Aire acondicionado',
   'Desayuno incluido',
+];
+
+const List<String> _kActivities = [
+  '🚶‍♂️ Senderismo',
+  '🚣 Kayak',
+  '🌲 Canopy',
+  '☕ Tour de Café',
+  '📸 Fotografía',
+  '🏊 Natación',
+  '🍽️ Gastronomía local',
+  '🦜 Avistamiento de aves',
 ];
 
 /// 4-step "Registra tu negocio" wizard. Purely local/mock: on finish it
@@ -62,6 +71,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _socialController = TextEditingController();
 
   final Set<String> _selectedAmenities = {};
+  final Set<String> _selectedActivities = {};
+  final _customActivityController = TextEditingController();
   final _schedulesController = TextEditingController();
   bool _allowsReservations = false;
   final _priceController = TextEditingController();
@@ -77,9 +88,19 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _locationController.dispose();
     _phoneController.dispose();
     _socialController.dispose();
+    _customActivityController.dispose();
     _schedulesController.dispose();
     _priceController.dispose();
     super.dispose();
+  }
+
+  void _addCustomActivity() {
+    final text = _customActivityController.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _selectedActivities.add(text);
+      _customActivityController.clear();
+    });
   }
 
   void _goToStep(int step) {
@@ -142,6 +163,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           ? double.tryParse(_priceController.text.trim())
           : null,
       amenities: _selectedAmenities.toList(),
+      activities: _selectedActivities.toList(),
       hostName: _hostNameController.text.trim(),
       schedules: _schedulesController.text.trim(),
       localImagePaths: _images.map((x) => x.path).toList(),
@@ -150,7 +172,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     await _storageService.addBusiness(business);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainLayout()),
+      MaterialPageRoute(
+        builder: (_) => BusinessSuccessScreen(businessName: business.name),
+      ),
       (route) => false,
     );
   }
@@ -346,6 +370,19 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
               ),
           ],
         ),
+        const SizedBox(height: 20),
+        _ActivitiesSection(
+          selected: _selectedActivities,
+          customController: _customActivityController,
+          onToggle: (activity, selected) => setState(() {
+            selected
+                ? _selectedActivities.add(activity)
+                : _selectedActivities.remove(activity);
+          }),
+          onRemoveCustom: (activity) =>
+              setState(() => _selectedActivities.remove(activity)),
+          onAddCustom: _addCustomActivity,
+        ),
         const SizedBox(height: 16),
         _FieldLabel('Horarios / reglas'),
         TextFormField(
@@ -442,9 +479,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: kIsWeb
-                        ? Image.network(image.path, fit: BoxFit.cover)
-                        : Image.file(File(image.path), fit: BoxFit.cover),
+                    child: LocalImage(path: image.path),
                   ),
                   Positioned(
                     top: 4,
@@ -502,6 +537,119 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
       ),
       errorStyle: const TextStyle(color: Color(0xFFD64545), fontSize: 11),
+    );
+  }
+}
+
+class _ActivitiesSection extends StatelessWidget {
+  const _ActivitiesSection({
+    required this.selected,
+    required this.customController,
+    required this.onToggle,
+    required this.onRemoveCustom,
+    required this.onAddCustom,
+  });
+
+  final Set<String> selected;
+  final TextEditingController customController;
+  final void Function(String activity, bool selected) onToggle;
+  final ValueChanged<String> onRemoveCustom;
+  final VoidCallback onAddCustom;
+
+  @override
+  Widget build(BuildContext context) {
+    final customActivities = selected
+        .where((a) => !_kActivities.contains(a))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel('Actividades que ofrece el lugar'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final activity in _kActivities)
+              FilterChip(
+                label: Text(activity),
+                selected: selected.contains(activity),
+                onSelected: (isSelected) => onToggle(activity, isSelected),
+                selectedColor: AppColors.ecoForest.withValues(alpha: 0.2),
+                labelStyle: AppTextStyles.bodyText2.copyWith(
+                  color: AppColors.neutral1100,
+                ),
+              ),
+            for (final custom in customActivities)
+              InputChip(
+                label: Text(custom),
+                onDeleted: () => onRemoveCustom(custom),
+                backgroundColor: AppColors.ecoForest.withValues(alpha: 0.12),
+                labelStyle: AppTextStyles.bodyText2.copyWith(
+                  color: AppColors.neutral1100,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: customController,
+                decoration: InputDecoration(
+                  hintText: 'Agregar otra actividad',
+                  hintStyle: AppTextStyles.bodyText2.copyWith(
+                    color: AppColors.neutral600,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surface100,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: AppColors.neutral600.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: AppColors.neutral600.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary500,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+                onSubmitted: (_) => onAddCustom(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: IconButton.filled(
+                onPressed: onAddCustom,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  foregroundColor: AppColors.textInk,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.add),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

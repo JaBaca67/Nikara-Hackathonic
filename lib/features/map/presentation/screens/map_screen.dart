@@ -5,6 +5,7 @@ import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 enum _MapCategory { todos, playas, volcanes, eco }
@@ -571,16 +572,11 @@ class _MapBusinessRow extends StatelessWidget {
               child: SizedBox(
                 width: 52,
                 height: 46,
-                child: imagePath != null
-                    ? Image.network(imagePath, fit: BoxFit.cover)
-                    : const ColoredBox(
-                        color: AppColors.placeholderTan,
-                        child: Icon(
-                          Icons.storefront_outlined,
-                          size: 18,
-                          color: AppColors.neutral500,
-                        ),
-                      ),
+                child: LocalImage(
+                  path: imagePath,
+                  fallbackIcon: Icons.storefront_outlined,
+                  fallbackIconSize: 18,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -634,15 +630,10 @@ class _BusinessSummarySheet extends StatelessWidget {
                   child: SizedBox(
                     width: 64,
                     height: 64,
-                    child: imagePath != null
-                        ? Image.network(imagePath, fit: BoxFit.cover)
-                        : const ColoredBox(
-                            color: AppColors.placeholderTan,
-                            child: Icon(
-                              Icons.storefront_outlined,
-                              color: AppColors.neutral500,
-                            ),
-                          ),
+                    child: LocalImage(
+                      path: imagePath,
+                      fallbackIcon: Icons.storefront_outlined,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
