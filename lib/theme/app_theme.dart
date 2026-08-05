@@ -189,6 +189,24 @@ abstract class AppColors {
   /// Solid near-black ink used for text on gold buttons/pills throughout
   /// the app (previously inlined as a literal hex in several screens).
   static const textInk = Color(0xFF1A1510);
+
+  // --- Profile screen full redesign (Figma nodes 377:483, 421:361) ---
+
+  /// Muted taupe — "9:41" mock status text, location caption, locked-badge
+  /// title/status text. Distinct from [neutral500] (#A19191).
+  static const profileMuted = Color(0xFFB8AA98);
+
+  /// Hairline dividers and the edit/settings/share button fill.
+  static const profileDivider = Color(0xFFF2EBE0);
+
+  /// Level progress bar track + locked-badge card fill.
+  static const progressTrack = Color(0xFFEDE6D8);
+
+  /// "Guardián del Bosque" badge tint.
+  static const badgeForest = Color(0xFF7A8C28);
+
+  /// "Protector del Lago" badge tint.
+  static const badgeLake = Color(0xFF5A6B1A);
 }
 
 /// Text styles extracted from the Figma "Text Styles".
@@ -377,13 +395,13 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  // --- Profile screen styles (Figma node 259:224) ---
+  // --- Profile screen styles (Figma node 259:224 legacy + 377:483 redesign) ---
 
-  /// Figma style "HL6": League Spartan Bold 18/28 — profile name.
+  /// Figma style "HL5": League Spartan Bold 20/30 — profile name.
   static TextStyle get profileName => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 18,
-    height: 28 / 18,
+    color: AppColors.settingsTextDark,
+    fontSize: 20,
+    height: 30 / 20,
     fontWeight: FontWeight.w700,
   );
 
@@ -395,12 +413,102 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// Figma style "Subtitulo 2": Nunito SemiBold 14/22 — "León, Nicaragua".
+  /// Nunito Regular 12/18, [AppColors.profileMuted] — "León, Nicaragua".
   static TextStyle get profileLocation => GoogleFonts.nunito(
+    color: AppColors.profileMuted,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// "Perfil" header title: League Spartan Black 24/36.
+  static TextStyle get profileScreenTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 24,
+    height: 36 / 24,
+    fontWeight: FontWeight.w900,
+  );
+
+  /// Stat counter value ("6" / "3" / "520"): League Spartan Black 20/20.
+  static TextStyle get profileStatValue => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsAccent,
+    fontSize: 20,
+    height: 1.0,
+    fontWeight: FontWeight.w900,
+  );
+
+  /// Stat counter label ("Viajes" / "Insignias" / "Puntos").
+  static TextStyle get profileStatLabel => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// "Próximo: Guardián del Territorio" caption.
+  static TextStyle get profileLevelNext => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 12,
+    height: 18 / 12,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Circular progress ring percentage ("52%").
+  static TextStyle get profileProgressPercent => GoogleFonts.leagueSpartan(
+    color: AppColors.tagGold600,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w900,
+  );
+
+  /// Shared 10px caption — progress bar footer and favorite-card price
+  /// suffix ("520 puntos" / "Meta: 1,000 pts" / "/persona").
+  static TextStyle get profileCaption10 => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Favorite-card title: League Spartan ExtraBold 13/15.6.
+  static TextStyle get favoriteCardTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 13,
+    height: 15.6 / 13,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Favorite-card location caption.
+  static TextStyle get favoriteCardCaption => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 11,
+    height: 16.5 / 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Favorite-card price ("C$480").
+  static TextStyle get favoriteCardPrice => GoogleFonts.nunito(
     color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 22 / 14,
-    fontWeight: FontWeight.w600,
+    fontSize: 13,
+    height: 19.5 / 13,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Badge grid card title: League Spartan ExtraBold 9/10.8.
+  static TextStyle get badgeCardTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 9,
+    height: 10.8 / 9,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Badge grid status pill ("✓ Obtenida" / "Bloqueada"). Color is
+  /// intentionally omitted — callers use the badge's own tint or
+  /// [AppColors.profileMuted] when locked.
+  static TextStyle get badgeStatusPill => GoogleFonts.nunito(
+    fontSize: 8,
+    height: 12 / 8,
+    fontWeight: FontWeight.w700,
   );
 
   static TextStyle get listCardTitle => GoogleFonts.leagueSpartan(

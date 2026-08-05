@@ -7,6 +7,8 @@ class UserData {
     required this.lastName,
     required this.phone,
     required this.email,
+    this.location = '',
+    this.avatarPath,
   });
 
   final String firstName;
@@ -14,7 +16,24 @@ class UserData {
   final String phone;
   final String email;
 
+  /// e.g. "León, Nicaragua". Not collected by [RegisterScreen] yet, so this
+  /// is empty for every account created today — genuinely absent, not a
+  /// placeholder.
+  final String location;
+
+  /// On-device path (or, on web, a blob: URL) to the photo the user picked
+  /// as their avatar via `image_picker`. Null until they actually set one —
+  /// there is no default/mock photo.
+  final String? avatarPath;
+
   String get fullName => '$firstName $lastName'.trim();
+
+  String get initials {
+    final first = firstName.trim().isNotEmpty ? firstName.trim()[0] : '';
+    final last = lastName.trim().isNotEmpty ? lastName.trim()[0] : '';
+    final combined = '$first$last'.toUpperCase();
+    return combined.isEmpty ? '?' : combined;
+  }
 }
 
 /// Local session/account persistence backed by [SharedPreferences].
@@ -30,6 +49,8 @@ class UserSessionService {
   static const _keyPhone = 'session_phone';
   static const _keyEmail = 'session_email';
   static const _keyPassword = 'session_password';
+  static const _keyLocation = 'session_location';
+  static const _keyAvatarPath = 'session_avatar_path';
 
   Future<void> registerUser({
     required String firstName,
@@ -73,7 +94,19 @@ class UserSessionService {
       lastName: prefs.getString(_keyLastName) ?? '',
       phone: prefs.getString(_keyPhone) ?? '',
       email: email,
+      location: prefs.getString(_keyLocation) ?? '',
+      avatarPath: prefs.getString(_keyAvatarPath),
     );
+  }
+
+  Future<void> updateAvatar(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAvatarPath, path);
+  }
+
+  Future<void> updateLocation(String location) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLocation, location);
   }
 
   Future<void> logout() async {

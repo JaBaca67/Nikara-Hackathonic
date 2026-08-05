@@ -21,11 +21,13 @@ class MainLayout extends StatefulWidget {
 class _MainLayoutState extends State<MainLayout> {
   late int _currentIndex = widget.initialIndex;
 
-  static const _tabs = [
-    HomeScreen(),
-    MapScreen(),
-    BookingsScreen(),
-    ProfileScreen(),
+  void _goToTab(int index) => setState(() => _currentIndex = index);
+
+  List<Widget> get _tabs => [
+    const HomeScreen(),
+    const MapScreen(),
+    const BookingsScreen(),
+    ProfileScreen(onExploreRequested: () => _goToTab(0)),
   ];
 
   @override

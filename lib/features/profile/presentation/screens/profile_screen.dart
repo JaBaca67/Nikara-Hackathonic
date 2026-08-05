@@ -1,77 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
+import 'package:nikara_app/core/gamification/badges_logic.dart';
+import 'package:nikara_app/core/gamification/gamification_engine.dart';
+import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-class _EcoBadge {
-  const _EcoBadge({
-    required this.icon,
-    required this.title,
-    required this.obtained,
-    required this.tint,
-  });
-
-  final IconData icon;
-  final String title;
-  final bool obtained;
-  final Color tint;
-}
-
-const List<_EcoBadge> _ecoBadges = [
-  _EcoBadge(
-    icon: Icons.forest,
-    title: 'Guardián del Bosque',
-    obtained: true,
-    tint: AppColors.accent300,
-  ),
-  _EcoBadge(
-    icon: Icons.water_drop,
-    title: 'Protector del Lago',
-    obtained: true,
-    tint: Color(0xFF1B6B8A),
-  ),
-  _EcoBadge(
-    icon: Icons.flutter_dash,
-    title: 'Observador Alado',
-    obtained: true,
-    tint: AppColors.primary500,
-  ),
-  _EcoBadge(
-    icon: Icons.festival,
-    title: 'Cultura Viva',
-    obtained: false,
-    tint: AppColors.neutral500,
-  ),
-  _EcoBadge(
-    icon: Icons.terrain,
-    title: 'Escalador Eco',
-    obtained: false,
-    tint: AppColors.neutral500,
-  ),
-  _EcoBadge(
-    icon: Icons.card_travel,
-    title: 'Viajero Consciente',
-    obtained: false,
-    tint: AppColors.neutral500,
-  ),
-];
-
-const List<Color> _avatarChoices = [
-  AppColors.primary500,
-  AppColors.accent300,
-  AppColors.coral500,
-  Color(0xFF1B6B8A),
-  AppColors.neutral800,
-];
-
-/// Perfil screen (Figma node 259:224): profile header with a tappable
-/// (mock) avatar picker, favorite places, eco badges and a level-progress
-/// card. All state is local/mock — no backend wiring yet.
+/// Perfil screen (Figma nodes 377:483 "Perfil 1" and 421:361 "Perfil 2").
+/// Every number on this screen — the header photo, name, location, the 3
+/// stat counters, the level/progress card, the favorites list and the
+/// badge grid — is computed live from [UserSessionService],
+/// [FavoritesService] and [UserStatsService]. There is no mock/fallback
+/// data baked in; an empty state renders instead when there's genuinely
+/// nothing to show yet.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.onExploreRequested});
+
+  /// Lets the empty-state "Explorar Nicaragua" button switch [MainLayout]
+  /// back to the Home tab. Null when this screen isn't hosted there (e.g.
+  /// in a test harness) — the button just hides itself in that case.
+  final VoidCallback? onExploreRequested;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -79,54 +33,128 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _sessionService = UserSessionService();
+  final _favoritesService = FavoritesService();
+  final _userStatsService = UserStatsService();
+
+  bool _isLoading = true;
   UserData? _userData;
-
-  Color? _avatarColor;
-  final Set<String> _favoriteIds = {
-    'isletas-de-granada',
-    'playa-maderas',
-    'volcan-telica',
-  };
-
-  List<DestinationModel> get _favorites => mockDestinations
-      .where((d) => _favoriteIds.contains(d.id))
-      .toList(growable: false);
+  List<DestinationModel> _favorites = const [];
+  UserStats _stats = const UserStats(
+    tripsCount: 0,
+    savedPlacesCount: 0,
+    reviewsCount: 0,
+  );
+  int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _loadAll();
   }
 
-  Future<void> _loadUserData() async {
+  Future<void> _loadAll() async {
     final userData = await _sessionService.getUserData();
+    final favoriteIds = await _favoritesService.getFavoriteIds();
+    final stats = await _userStatsService.getStats();
     if (!mounted) return;
-    setState(() => _userData = userData);
-  }
-
-  void _toggleFavorite(String id) {
     setState(() {
-      if (!_favoriteIds.remove(id)) _favoriteIds.add(id);
+      _userData = userData;
+      _favorites = mockDestinations
+          .where((d) => favoriteIds.contains(d.id))
+          .toList(growable: false);
+      _stats = stats;
+      _isLoading = false;
     });
   }
 
-  Future<void> _openAvatarPicker() async {
-    final chosen = await showModalBottomSheet<Color>(
-      context: context,
-      backgroundColor: AppColors.surface100,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => _AvatarPickerSheet(current: _avatarColor),
+  Future<void> _toggleFavorite(String id) async {
+    await _favoritesService.toggleFavorite(id);
+    await _loadAll();
+  }
+
+  Future<void> _pickAvatar() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
     );
-    if (chosen == null || !mounted) return;
-    setState(() => _avatarColor = chosen);
+    if (picked == null) return;
+    await _sessionService.updateAvatar(picked.path);
+    await _loadAll();
+  }
+
+  void _openSettings() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+  }
+
+  void _showComingSoon() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+  }
+
+  void _showBadgeRequirement(BadgeInfo badge) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.profileMuted.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(badge.icon, size: 18, color: AppColors.profileMuted),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(badge.title, style: AppTextStyles.h6.copyWith(
+                color: AppColors.settingsTextDark,
+                fontSize: 16,
+              )),
+            ),
+          ],
+        ),
+        content: Text(
+          'Insignia bloqueada. Para desbloquearla:\n\n${badge.requirementLabel}',
+          style: AppTextStyles.bodyText2.copyWith(
+            color: AppColors.settingsTextMuted,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.settingsBackground,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary500),
+        ),
+      );
+    }
+
+    final points = _userStatsService.computePoints(_stats);
+    final levelInfo = GamificationEngine.calculate(points);
+    final badges = BadgesLogic.build(_stats);
+    final unlockedCount = badges.where((b) => b.unlocked).length;
+
     return Scaffold(
-      backgroundColor: AppColors.surface100,
+      backgroundColor: AppColors.settingsBackground,
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -135,60 +163,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _ProfileHeader(
+              _ProfileHeaderCard(
                 userData: _userData,
-                avatarColor: _avatarColor,
-                onAvatarTap: _openAvatarPicker,
-                onSettingsTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SettingsScreen(),
-                    ),
-                  );
-                },
-              ),
-              _SectionHeader(
-                title: 'Lugares Favoritos',
-                trailing: 'Ver todos',
-                onTrailingTap: () => _showComingSoon(context),
+                tripsCount: _stats.tripsCount,
+                badgesCount: unlockedCount,
+                points: points,
+                onAvatarTap: _pickAvatar,
+                onEditTap: _openSettings,
+                onSettingsTap: _openSettings,
+                onShareTap: _showComingSoon,
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Column(
-                  children: [
-                    for (final destination in _favorites) ...[
-                      _FavoritePlaceCard(
-                        destination: destination,
-                        onFavoriteToggle: () => _toggleFavorite(destination.id),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _LevelProgressCard(levelInfo: levelInfo),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _ProfileTabSelector(
+                  activeTab: _activeTab,
+                  onChanged: (tab) => setState(() => _activeTab = tab),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _activeTab == 0
+                    ? _FavoritesTab(
+                        favorites: _favorites,
+                        onToggleFavorite: _toggleFavorite,
+                        onExplore: widget.onExploreRequested,
+                      )
+                    : _BadgesTab(
+                        badges: badges,
+                        onLockedTap: _showBadgeRequirement,
                       ),
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                ),
-              ),
-              _SectionHeader(
-                title: 'Insignias Ecológicas',
-                trailing:
-                    '${_ecoBadges.where((b) => b.obtained).length} / ${_ecoBadges.length}',
-                pillStyle: true,
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: GridView.count(
-                  crossAxisCount: 3,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 10,
-                  crossAxisSpacing: 10,
-                  childAspectRatio: 0.9,
-                  children: [
-                    for (final badge in _ecoBadges) _EcoBadgeCard(badge: badge),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: _LevelProgressCard(),
               ),
             ],
           ),
@@ -196,86 +203,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Próximamente')),
-    );
-  }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({
+class _ProfileHeaderCard extends StatelessWidget {
+  const _ProfileHeaderCard({
     required this.userData,
-    required this.avatarColor,
+    required this.tripsCount,
+    required this.badgesCount,
+    required this.points,
     required this.onAvatarTap,
+    required this.onEditTap,
     required this.onSettingsTap,
+    required this.onShareTap,
   });
 
   final UserData? userData;
-  final Color? avatarColor;
+  final int tripsCount;
+  final int badgesCount;
+  final int points;
   final VoidCallback onAvatarTap;
+  final VoidCallback onEditTap;
   final VoidCallback onSettingsTap;
+  final VoidCallback onShareTap;
 
   @override
   Widget build(BuildContext context) {
     final fullName = userData == null || userData!.fullName.trim().isEmpty
         ? 'Viajero Nikara'
         : userData!.fullName;
-    final email = userData?.email ?? '—';
-    final phone = userData?.phone.isNotEmpty == true
-        ? userData!.phone
-        : '—';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          stops: [0.004, 0.11, 0.197, 0.413],
-          colors: [
-            AppColors.profileHeaderGoldPale,
-            AppColors.notificationPill,
-            AppColors.profileHeaderCoral,
-            AppColors.surface100,
-          ],
-        ),
-      ),
-      child: Row(
+      color: Colors.white,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Perfil', style: AppTextStyles.profileScreenTitle),
+                Row(
+                  children: [
+                    _HeaderIconButton(
+                      icon: Icons.edit_outlined,
+                      onTap: onEditTap,
+                    ),
+                    const SizedBox(width: 10),
+                    _HeaderIconButton(
+                      icon: Icons.settings_outlined,
+                      onTap: onSettingsTap,
+                    ),
+                    const SizedBox(width: 10),
+                    _HeaderIconButton(
+                      icon: Icons.ios_share,
+                      onTap: onShareTap,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                GestureDetector(
-                  onTap: onAvatarTap,
-                  child: Container(
-                    width: 100,
-                    height: 100,
-                    padding: const EdgeInsets.all(3),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primary500,
-                    ),
-                    child: CircleAvatar(
-                      backgroundColor:
-                          avatarColor ?? AppColors.surface200,
-                      child: avatarColor == null
-                          ? Icon(
-                              Icons.camera_alt_outlined,
-                              color: AppColors.neutral500,
-                              size: 28,
-                            )
-                          : const Icon(
-                              Icons.person,
-                              color: AppColors.surface100,
-                              size: 32,
-                            ),
-                    ),
-                  ),
-                ),
+                _ProfileAvatar(userData: userData, onTap: onAvatarTap),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -285,49 +279,27 @@ class _ProfileHeader extends StatelessWidget {
                       Text(
                         fullName,
                         style: AppTextStyles.profileName,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 6),
-                      Text('lv 4/12', style: AppTextStyles.profileLevel),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.mail_outline,
-                            size: 12,
-                            color: AppColors.neutral900,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              email,
-                              style: AppTextStyles.profileLocation,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.call_outlined,
-                            size: 12,
-                            color: AppColors.neutral900,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(phone, style: AppTextStyles.profileLocation),
-                        ],
-                      ),
+                      const SizedBox(height: 3),
+                      if (userData?.location.isNotEmpty ?? false)
+                        Text(
+                          userData!.location,
+                          style: AppTextStyles.profileLocation,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: onSettingsTap,
-            icon: const Icon(Icons.settings, color: AppColors.neutral900),
+          _StatsRow(
+            tripsCount: tripsCount,
+            badgesCount: badgesCount,
+            points: points,
           ),
         ],
       ),
@@ -335,46 +307,343 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-class _AvatarPickerSheet extends StatelessWidget {
-  const _AvatarPickerSheet({required this.current});
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({required this.icon, required this.onTap});
 
-  final Color? current;
+  final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Elige un avatar', style: AppTextStyles.sectionTitle),
-            const SizedBox(height: 4),
-            Text(
-              'Selección simulada — sin subida de imágenes real.',
-              style: AppTextStyles.caption,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: AppColors.profileDivider,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.userData, required this.onTap});
+
+  final UserData? userData;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarPath = userData?.avatarPath;
+    final hasPhoto = avatarPath != null && avatarPath.isNotEmpty;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 80,
+        height: 80,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.settingsAccent, AppColors.settingsDanger],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.settingsAccent.withValues(alpha: 0.35),
+              offset: const Offset(0, 4),
+              blurRadius: 10,
             ),
-            const SizedBox(height: 20),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                for (final color in _avatarChoices)
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(color),
-                    child: CircleAvatar(
-                      radius: 28,
-                      backgroundColor: color,
-                      child: current == color
-                          ? const Icon(
-                              Icons.check,
-                              color: AppColors.surface100,
-                            )
-                          : null,
+          ],
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(1.6),
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.fromBorderSide(
+              BorderSide(color: Colors.white, width: 1.6),
+            ),
+          ),
+          child: ClipOval(
+            child: hasPhoto
+                ? LocalImage(path: avatarPath)
+                : Container(
+                    color: AppColors.profileDivider,
+                    alignment: Alignment.center,
+                    child: Text(
+                      userData?.initials ?? '?',
+                      style: AppTextStyles.h5.copyWith(
+                        color: AppColors.settingsTextDark,
+                      ),
                     ),
                   ),
-              ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({
+    required this.tripsCount,
+    required this.badgesCount,
+    required this.points,
+  });
+
+  final int tripsCount;
+  final int badgesCount;
+  final int points;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.profileDivider, width: 0.8)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatColumn(value: '$tripsCount', label: 'Viajes', showDivider: true),
+          ),
+          Expanded(
+            child: _StatColumn(value: '$badgesCount', label: 'Insignias', showDivider: true),
+          ),
+          Expanded(
+            child: _StatColumn(value: '$points', label: 'Puntos', showDivider: false),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatColumn extends StatelessWidget {
+  const _StatColumn({
+    required this.value,
+    required this.label,
+    required this.showDivider,
+  });
+
+  final String value;
+  final String label;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      decoration: showDivider
+          ? const BoxDecoration(
+              border: Border(
+                right: BorderSide(color: AppColors.profileDivider, width: 0.8),
+              ),
+            )
+          : null,
+      child: Column(
+        children: [
+          Text(value, style: AppTextStyles.profileStatValue),
+          const SizedBox(height: 2),
+          Text(label, style: AppTextStyles.profileStatLabel),
+        ],
+      ),
+    );
+  }
+}
+
+class _LevelProgressCard extends StatelessWidget {
+  const _LevelProgressCard({required this.levelInfo});
+
+  final LevelInfo levelInfo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1AF0B500),
+            offset: Offset(0, 2),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(levelInfo.currentLevelName, style: AppTextStyles.h6.copyWith(
+                      color: AppColors.settingsTextDark,
+                    )),
+                    const SizedBox(height: 1),
+                    Text(
+                      levelInfo.isMaxLevel
+                          ? 'Nivel máximo alcanzado'
+                          : 'Próximo: ${levelInfo.nextLevelName}',
+                      style: AppTextStyles.profileLevelNext,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 52,
+                height: 52,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: CircularProgressIndicator(
+                        value: levelInfo.progress,
+                        strokeWidth: 4,
+                        backgroundColor: AppColors.progressTrack,
+                        valueColor: const AlwaysStoppedAnimation(
+                          AppColors.tagGold600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${(levelInfo.progress * 100).round()}%',
+                      style: AppTextStyles.profileProgressPercent,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: levelInfo.progress,
+              minHeight: 6,
+              backgroundColor: AppColors.progressTrack,
+              valueColor: const AlwaysStoppedAnimation(AppColors.tagGold600),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('${levelInfo.points} puntos', style: AppTextStyles.profileCaption10),
+              Text(
+                levelInfo.isMaxLevel
+                    ? 'Nivel máximo'
+                    : 'Meta: ${levelInfo.nextLevelMinPoints} pts',
+                style: AppTextStyles.profileCaption10,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileTabSelector extends StatelessWidget {
+  const _ProfileTabSelector({required this.activeTab, required this.onChanged});
+
+  final int activeTab;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            offset: Offset(0, 2),
+            blurRadius: 4,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ProfileTabButton(
+              icon: Icons.favorite_border,
+              label: 'Favoritos',
+              selected: activeTab == 0,
+              onTap: () => onChanged(0),
+            ),
+          ),
+          Expanded(
+            child: _ProfileTabButton(
+              icon: Icons.workspace_premium_outlined,
+              label: 'Insignias',
+              selected: activeTab == 1,
+              onTap: () => onChanged(1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileTabButton extends StatelessWidget {
+  const _ProfileTabButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: [AppColors.primary500, AppColors.primary700],
+                )
+              : null,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppTextStyles.buttonMd.copyWith(
+                color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+              ),
             ),
           ],
         ),
@@ -383,56 +652,106 @@ class _AvatarPickerSheet extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.trailing,
-    this.onTrailingTap,
-    this.pillStyle = false,
+class _FavoritesTab extends StatelessWidget {
+  const _FavoritesTab({
+    required this.favorites,
+    required this.onToggleFavorite,
+    required this.onExplore,
   });
 
-  final String title;
-  final String trailing;
-  final VoidCallback? onTrailingTap;
-  final bool pillStyle;
+  final List<DestinationModel> favorites;
+  final ValueChanged<String> onToggleFavorite;
+  final VoidCallback? onExplore;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    if (favorites.isEmpty) {
+      return _FavoritesEmptyState(onExplore: onExplore);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text('Ver todos ▼', style: AppTextStyles.buttonSm.copyWith(
+            color: AppColors.neutral900,
+          )),
+        ),
+        const SizedBox(height: 8),
+        for (final destination in favorites) ...[
+          _FavoritePlaceCard(
+            destination: destination,
+            onFavoriteToggle: () => onToggleFavorite(destination.id),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _FavoritesEmptyState extends StatelessWidget {
+  const _FavoritesEmptyState({required this.onExplore});
+
+  final VoidCallback? onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
         children: [
-          Text(title, style: AppTextStyles.sectionTitle),
-          if (pillStyle)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primary500.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                trailing,
-                style: AppTextStyles.link.copyWith(
-                  color: AppColors.neutral1100,
+          Container(
+            width: 72,
+            height: 72,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.primary500.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.favorite_border,
+              size: 32,
+              color: AppColors.primary500,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aún no tienes lugares guardados',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.h6.copyWith(color: AppColors.settingsTextDark),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Toca el corazón en cualquier destino para guardarlo aquí.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyText2.copyWith(
+              color: AppColors.settingsTextMuted,
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onExplore,
+              icon: const Icon(Icons.explore_outlined),
+              label: const Text('Explorar Nicaragua'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary500,
+                foregroundColor: AppColors.textInk,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                textStyle: AppTextStyles.buttonLg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-            )
-          else
-            GestureDetector(
-              onTap: onTrailingTap,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(trailing, style: AppTextStyles.link),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 14,
-                    color: AppColors.accent300,
-                  ),
-                ],
-              ),
             ),
+          ),
         ],
       ),
     );
@@ -451,15 +770,15 @@ class _FavoritePlaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1A000000),
-            offset: Offset(0, 4),
-            blurRadius: 6,
+            color: Color(0x1AF0B500),
+            offset: Offset(0, 2),
+            blurRadius: 5,
           ),
         ],
       ),
@@ -468,8 +787,8 @@ class _FavoritePlaceCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
-              width: 64,
-              height: 56,
+              width: 58,
+              height: 52,
               child: destination.imageAsset != null
                   ? Image.asset(destination.imageAsset!, fit: BoxFit.cover)
                   : ColoredBox(color: destination.imagePlaceholderColor),
@@ -480,29 +799,41 @@ class _FavoritePlaceCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(destination.title, style: AppTextStyles.listCardTitle),
+                Text(
+                  destination.title,
+                  style: AppTextStyles.favoriteCardTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 2),
                 Row(
                   children: [
                     const Icon(
                       Icons.location_on,
-                      size: 10,
-                      color: AppColors.neutral500,
+                      size: 9,
+                      color: AppColors.settingsTextMuted,
                     ),
-                    const SizedBox(width: 4),
-                    Text(destination.location, style: AppTextStyles.listCardCaption),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        destination.location,
+                        style: AppTextStyles.favoriteCardCaption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.baseline,
                   textBaseline: TextBaseline.alphabetic,
                   children: [
                     Text(
                       '${destination.formattedPrice} ',
-                      style: AppTextStyles.listCardPrice,
+                      style: AppTextStyles.favoriteCardPrice,
                     ),
-                    Text('/persona', style: AppTextStyles.listCardPriceSuffix),
+                    Text('/persona', style: AppTextStyles.profileCaption10),
                   ],
                 ),
               ],
@@ -518,135 +849,117 @@ class _FavoritePlaceCard extends StatelessWidget {
   }
 }
 
-class _EcoBadgeCard extends StatelessWidget {
-  const _EcoBadgeCard({required this.badge});
+class _BadgesTab extends StatelessWidget {
+  const _BadgesTab({required this.badges, required this.onLockedTap});
 
-  final _EcoBadge badge;
+  final List<BadgeInfo> badges;
+  final ValueChanged<BadgeInfo> onLockedTap;
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: badge.obtained ? 1 : 0.5,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: badge.obtained ? AppColors.surface100 : const Color(0xFFF4EDE8),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: badge.obtained
-              ? const [
-                  BoxShadow(
-                    color: Color(0x1A000000),
-                    offset: Offset(0, 4),
-                    blurRadius: 6,
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: badge.tint.withValues(alpha: 0.09),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(badge.icon, size: 22, color: badge.tint),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              badge.title,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.badgeTitle,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              badge.obtained ? 'Obtenida' : 'Bloqueada',
-              style: AppTextStyles.badgeStatus.copyWith(
-                color: badge.obtained ? badge.tint : AppColors.neutral500,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return GridView.count(
+      crossAxisCount: 3,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 0.88,
+      children: [
+        for (final badge in badges)
+          _BadgeCard(
+            badge: badge,
+            onTap: badge.unlocked ? null : () => onLockedTap(badge),
+          ),
+      ],
     );
   }
 }
 
-class _LevelProgressCard extends StatelessWidget {
-  const _LevelProgressCard();
+class _BadgeCard extends StatelessWidget {
+  const _BadgeCard({required this.badge, this.onTap});
+
+  final BadgeInfo badge;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    const current = 520;
-    const goal = 1000;
-    const progress = current / goal;
+    final unlocked = badge.unlocked;
 
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.primary500.withValues(alpha: 0.2)),
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary500.withValues(alpha: 0.12),
-            AppColors.accent300.withValues(alpha: 0.08),
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Nivel: Exploradora Eco', style: AppTextStyles.badgeTitle.copyWith(fontSize: 12, height: 16 / 12)),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Siguiente: Guardiana del Territorio',
-                      style: AppTextStyles.listCardCaption,
+    return GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+        opacity: unlocked ? 1 : 0.7,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
+          decoration: BoxDecoration(
+            color: unlocked ? Colors.white : AppColors.progressTrack,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: unlocked
+                ? [
+                    BoxShadow(
+                      color: badge.tint.withValues(alpha: 0.14),
+                      offset: const Offset(0, 4),
+                      blurRadius: 8,
                     ),
-                  ],
-                ),
-              ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppColors.primary500.withValues(alpha: 0.2),
+                  color: unlocked
+                      ? badge.tint.withValues(alpha: 0.09)
+                      : AppColors.profileMuted.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.eco, size: 18, color: AppColors.accent300),
+                child: Icon(
+                  badge.icon,
+                  size: 22,
+                  color: unlocked ? badge.tint : AppColors.profileMuted,
+                ),
               ),
+              const SizedBox(height: 6),
+              Text(
+                badge.title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.badgeCardTitle.copyWith(
+                  color: unlocked
+                      ? AppColors.settingsTextDark
+                      : AppColors.profileMuted,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (unlocked)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badge.tint.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '✓ Obtenida',
+                    style: AppTextStyles.badgeStatusPill.copyWith(
+                      color: badge.tint,
+                    ),
+                  ),
+                )
+              else
+                Text(
+                  'Bloqueada',
+                  style: AppTextStyles.badgeStatusPill.copyWith(
+                    color: AppColors.profileMuted,
+                  ),
+                ),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: AppColors.primary500.withValues(alpha: 0.2),
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary500),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$current puntos', style: AppTextStyles.sectionSubLabel),
-              Text('Meta: $goal pts', style: AppTextStyles.sectionSubLabel),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
