@@ -590,7 +590,7 @@ class _MapBusinessRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(business.locationText, style: AppTextStyles.mapRowCaption),
+                  Text(business.city, style: AppTextStyles.mapRowCaption),
                   const SizedBox(height: 2),
                   Text(business.category, style: AppTextStyles.mapRowCaption),
                 ],
@@ -649,7 +649,7 @@ class _BusinessSummarySheet extends StatelessWidget {
                           const SizedBox(width: 2),
                           Expanded(
                             child: Text(
-                              business.locationText,
+                              business.city,
                               style: AppTextStyles.listCardCaption,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

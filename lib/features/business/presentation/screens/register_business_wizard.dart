@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -31,22 +34,51 @@ const List<String> _kAmenities = [
   'Desayuno incluido',
 ];
 
+/// Nicaragua's 15 departments plus its 2 autonomous regions — real
+/// administrative divisions, not a placeholder list.
+const List<String> _kDepartments = [
+  'Managua',
+  'Masaya',
+  'Granada',
+  'Rivas',
+  'Carazo',
+  'Chinandega',
+  'León',
+  'Matagalpa',
+  'Jinotega',
+  'Estelí',
+  'Madriz',
+  'Nueva Segovia',
+  'Boaco',
+  'Chontales',
+  'Río San Juan',
+  'Región Autónoma de la Costa Caribe Norte',
+  'Región Autónoma de la Costa Caribe Sur',
+];
+
 const List<String> _kActivities = [
-  '🚶‍♂️ Senderismo',
-  '🚣 Kayak',
-  '🌲 Canopy',
-  '☕ Tour de Café',
-  '📸 Fotografía',
-  '🏊 Natación',
-  '🍽️ Gastronomía local',
-  '🦜 Avistamiento de aves',
+  'Senderismo',
+  'Kayak',
+  'Canopy',
+  'Tour de Café',
+  'Fotografía',
+  'Natación',
+  'Gastronomía local',
+  'Avistamiento de aves',
 ];
 
 /// 4-step "Registra tu negocio" wizard. Purely local/mock: on finish it
 /// writes a [BusinessModel] straight into [BusinessStorageService] and
 /// pops back with the created instance — there's no backend involved.
+///
+/// Pass [existingBusiness] to reuse the same 4 steps as an editor: every
+/// field pre-fills from it, "Finalizar" becomes "Guardar cambios", and
+/// finishing calls [BusinessStorageService.updateBusiness] (same id/owner)
+/// instead of creating a new listing.
 class RegisterBusinessWizard extends StatefulWidget {
-  const RegisterBusinessWizard({super.key});
+  const RegisterBusinessWizard({super.key, this.existingBusiness});
+
+  final BusinessModel? existingBusiness;
 
   @override
   State<RegisterBusinessWizard> createState() =>
@@ -55,20 +87,24 @@ class RegisterBusinessWizard extends StatefulWidget {
 
 class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _storageService = BusinessStorageService();
+  final _sessionService = UserSessionService();
   final _pageController = PageController();
   int _step = 0;
   bool _isSaving = false;
 
+  bool get _isEditing => widget.existingBusiness != null;
+
   final _step1FormKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _hostNameController = TextEditingController();
   String _category = _kCategories.first;
 
   final _step2FormKey = GlobalKey<FormState>();
-  final _locationController = TextEditingController();
+  String _city = _kDepartments.first;
+  final _addressController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _socialController = TextEditingController();
+  final _instagramController = TextEditingController();
+  final _tiktokController = TextEditingController();
 
   final Set<String> _selectedAmenities = {};
   final Set<String> _selectedActivities = {};
@@ -79,15 +115,47 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   final List<XFile> _images = [];
 
+  /// Photo paths already saved on [RegisterBusinessWizard.existingBusiness]
+  /// — shown and removable alongside freshly picked [_images], distinct
+  /// only because they're [String] paths rather than [XFile]s.
+  final List<String> _existingImagePaths = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final business = widget.existingBusiness;
+    if (business == null) return;
+    _nameController.text = business.name;
+    _descriptionController.text = business.description;
+    _category = _kCategories.contains(business.category)
+        ? business.category
+        : _kCategories.first;
+    _city = _kDepartments.contains(business.city)
+        ? business.city
+        : _kDepartments.first;
+    _addressController.text = business.locationText;
+    _phoneController.text = business.contactPhone;
+    _instagramController.text = business.instagramLink;
+    _tiktokController.text = business.tiktokLink;
+    _selectedAmenities.addAll(business.amenities);
+    _selectedActivities.addAll(business.activities);
+    _schedulesController.text = business.schedules;
+    _allowsReservations = business.allowsReservations;
+    if (business.price != null) {
+      _priceController.text = business.price!.toStringAsFixed(0);
+    }
+    _existingImagePaths.addAll(business.localImagePaths);
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
-    _hostNameController.dispose();
-    _locationController.dispose();
+    _addressController.dispose();
     _phoneController.dispose();
-    _socialController.dispose();
+    _instagramController.dispose();
+    _tiktokController.dispose();
     _customActivityController.dispose();
     _schedulesController.dispose();
     _priceController.dispose();
@@ -142,34 +210,86 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     setState(() => _images.addAll(picked));
   }
 
-  void _removeImage(int index) {
-    setState(() => _images.removeAt(index));
+  /// Removes the photo at [index] in the combined existing+new gallery —
+  /// see the indexing note on the grid in `_buildStep4`.
+  void _removeImageAt(int index) {
+    setState(() {
+      if (index < _existingImagePaths.length) {
+        _existingImagePaths.removeAt(index);
+      } else {
+        _images.removeAt(index - _existingImagePaths.length);
+      }
+    });
   }
 
   Future<void> _finish() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
 
+    final existing = widget.existingBusiness;
+    // hostName/ownerId always come from the active session, never typed in
+    // manually — this is always re-stamped with the CURRENT session on
+    // every save (create or edit), so a business stays attributed to
+    // whoever is actually signed in even if they've since renamed
+    // themselves in Settings.
+    final sessionUser = await _sessionService.getUserData();
+    final ownerId = sessionUser?.email ?? existing?.ownerId ?? '';
+    final hostName = sessionUser != null && sessionUser.fullName.trim().isNotEmpty
+        ? sessionUser.fullName
+        : (existing?.hostName ?? '');
+
+    // Instagram/TikTok are collected as bare @handles, never full URLs —
+    // SocialContact rebuilds the canonical profile link from whichever of
+    // these it finds set. Strip a leading "@" if the user typed one so the
+    // stored value is always just the handle.
+    final instagramHandle = _instagramController.text.trim().replaceFirst(
+      '@',
+      '',
+    );
+    final tiktokHandle = _tiktokController.text.trim().replaceFirst('@', '');
+
     final business = BusinessModel(
-      id: const Uuid().v4(),
+      id: existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
       category: _category,
       description: _descriptionController.text.trim(),
-      locationText: _locationController.text.trim(),
+      city: _city,
+      locationText: _addressController.text.trim(),
       contactPhone: _phoneController.text.trim(),
-      socialMediaLink: _socialController.text.trim(),
+      instagramLink: instagramHandle,
+      tiktokLink: tiktokHandle,
+      facebookLink: existing?.facebookLink ?? '',
+      socialMediaLink: existing?.socialMediaLink ?? '',
       allowsReservations: _allowsReservations,
       price: _allowsReservations
           ? double.tryParse(_priceController.text.trim())
           : null,
       amenities: _selectedAmenities.toList(),
       activities: _selectedActivities.toList(),
-      hostName: _hostNameController.text.trim(),
+      hostName: hostName,
+      ownerId: ownerId,
       schedules: _schedulesController.text.trim(),
-      localImagePaths: _images.map((x) => x.path).toList(),
+      accessDetails: existing?.accessDetails ?? '',
+      otherNotes: existing?.otherNotes ?? '',
+      localImagePaths: [
+        ..._existingImagePaths,
+        ..._images.map((x) => x.path),
+      ],
+      reviews: existing?.reviews ?? const [],
     );
 
+    if (existing != null) {
+      await _storageService.updateBusiness(business);
+      if (!mounted) return;
+      Navigator.of(context).pop(business);
+      return;
+    }
+
     await _storageService.addBusiness(business);
+    // PedidosYa Partner-style elevation: finishing registration as a
+    // client instantly promotes the active Dev Mode persona to owner of
+    // this new business — reactive, no restart needed.
+    AuthService().elevateToOwner(business.id);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -186,12 +306,15 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface100,
+      backgroundColor: AppColors.settingsBackground,
       appBar: AppBar(
-        backgroundColor: AppColors.surface100,
+        backgroundColor: AppColors.settingsBackground,
         elevation: 0,
         foregroundColor: AppColors.neutral1100,
-        title: Text('Registra tu negocio', style: AppTextStyles.h6),
+        title: Text(
+          _isEditing ? 'Editar negocio' : 'Registra tu negocio',
+          style: AppTextStyles.h6,
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -238,7 +361,24 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
             color: AppColors.neutral600,
           )),
           const SizedBox(height: 20),
-          ...children,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  offset: Offset(0, 4),
+                  blurRadius: 12,
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -293,13 +433,6 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
             decoration: _decoration('Describe tu negocio en pocas líneas'),
             validator: (v) => _required(v, 'Ingresa una descripción'),
           ),
-          const SizedBox(height: 16),
-          _FieldLabel('Nombre del anfitrión'),
-          TextFormField(
-            controller: _hostNameController,
-            decoration: _decoration('ej: Cooperativa Laguna Verde'),
-            validator: (v) => _required(v, 'Ingresa el nombre del anfitrión'),
-          ),
         ],
         bottomButton: _PrimaryButton(label: 'Siguiente', onPressed: _nextFromStep1),
       ),
@@ -313,26 +446,62 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         title: 'Ubicación y contacto',
         subtitle: 'Así te encontrarán los viajeros.',
         children: [
-          _FieldLabel('Ubicación'),
-          TextFormField(
-            controller: _locationController,
-            decoration: _decoration('ej: Masaya, Nicaragua'),
-            validator: (v) => _required(v, 'Ingresa la ubicación'),
+          _FieldLabel('Ciudad / Municipio'),
+          DropdownButtonFormField<String>(
+            initialValue: _city,
+            decoration: _decoration('Selecciona un departamento'),
+            items: [
+              for (final department in _kDepartments)
+                DropdownMenuItem(value: department, child: Text(department)),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _city = value);
+            },
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Se muestra en las tarjetas de resumen (ej: "Masaya").',
+            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
           ),
           const SizedBox(height: 16),
-          _FieldLabel('Teléfono de contacto'),
+          _FieldLabel('Dirección exacta'),
+          TextFormField(
+            controller: _addressController,
+            maxLines: 2,
+            decoration: _decoration(
+              'ej: De la iglesia San Jerónimo, 2c al lago',
+            ),
+            validator: (v) => _required(v, 'Ingresa la dirección exacta'),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Se usa en el mapa y las indicaciones del perfil del negocio.',
+            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel('Número de WhatsApp'),
           TextFormField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
             decoration: _decoration('ej: +505 8123 4567'),
-            validator: (v) => _required(v, 'Ingresa un teléfono'),
+            validator: (v) => _required(v, 'Ingresa un número de WhatsApp'),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Los viajeros te escribirán directamente por WhatsApp.',
+            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
           ),
           const SizedBox(height: 16),
-          _FieldLabel('Enlace de redes sociales (opcional)'),
+          _FieldLabel('Instagram (opcional)'),
           TextFormField(
-            controller: _socialController,
-            keyboardType: TextInputType.url,
-            decoration: _decoration('ej: https://instagram.com/tunegocio'),
+            controller: _instagramController,
+            decoration: _decoration('tunegocio').copyWith(prefixText: '@ '),
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel('TikTok (opcional)'),
+          TextFormField(
+            controller: _tiktokController,
+            decoration: _decoration('tunegocio').copyWith(prefixText: '@ '),
           ),
         ],
         backButton: _SecondaryButton(
@@ -356,6 +525,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           children: [
             for (final amenity in _kAmenities)
               FilterChip(
+                avatar: Icon(
+                  amenityIcon(amenity),
+                  size: 16,
+                  color: AppColors.chipContentDark,
+                ),
                 label: Text(amenity),
                 selected: _selectedAmenities.contains(amenity),
                 onSelected: (selected) => setState(() {
@@ -363,9 +537,17 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       ? _selectedAmenities.add(amenity)
                       : _selectedAmenities.remove(amenity);
                 }),
-                selectedColor: AppColors.ecoGreen500.withValues(alpha: 0.35),
+                backgroundColor: AppColors.warmChipBackground,
+                selectedColor: AppColors.warmChipBackground,
+                checkmarkColor: AppColors.chipContentDark,
+                side: BorderSide(color: AppColors.warmChipBorder),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  side: BorderSide(color: AppColors.warmChipBorder),
+                ),
                 labelStyle: AppTextStyles.bodyText2.copyWith(
-                  color: AppColors.neutral1100,
+                  color: AppColors.chipContentDark,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
           ],
@@ -461,57 +643,70 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
             ),
           ),
         ),
-        if (_images.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _images.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-            ),
-            itemBuilder: (context, index) {
-              final image = _images[index];
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: LocalImage(path: image.path),
-                  ),
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: GestureDetector(
-                      onTap: () => _removeImage(index),
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close,
-                          size: 14,
-                          color: Colors.white,
+        Builder(
+          builder: (context) {
+            // Existing (edit mode) photos come first, newly picked ones
+            // after — _removeImageAt relies on that same ordering to know
+            // which backing list an index belongs to.
+            final allPaths = [
+              ..._existingImagePaths,
+              ..._images.map((x) => x.path),
+            ];
+            if (allPaths.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: allPaths.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                ),
+                itemBuilder: (context, index) {
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: LocalImage(path: allPaths[index]),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () => _removeImageAt(index),
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.black54,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ],
       backButton: _SecondaryButton(
         label: 'Atrás',
         onPressed: () => _goToStep(2),
       ),
       bottomButton: _PrimaryButton(
-        label: _isSaving ? 'Guardando...' : 'Finalizar',
+        label: _isSaving
+            ? 'Guardando...'
+            : (_isEditing ? 'Guardar cambios' : 'Finalizar'),
         onPressed: _isSaving ? null : _finish,
       ),
     );
@@ -522,19 +717,19 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       hintText: hint,
       hintStyle: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral600),
       filled: true,
-      fillColor: AppColors.surface100,
+      fillColor: AppColors.surface200.withValues(alpha: 0.35),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.5)),
+        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.5)),
+        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
       ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        borderSide: BorderSide(color: AppColors.wizardFocus, width: 1.5),
       ),
       errorStyle: const TextStyle(color: Color(0xFFD64545), fontSize: 11),
     );
@@ -572,21 +767,45 @@ class _ActivitiesSection extends StatelessWidget {
           children: [
             for (final activity in _kActivities)
               FilterChip(
+                avatar: Icon(
+                  activityIcon(activity),
+                  size: 16,
+                  color: AppColors.chipContentDark,
+                ),
                 label: Text(activity),
                 selected: selected.contains(activity),
                 onSelected: (isSelected) => onToggle(activity, isSelected),
-                selectedColor: AppColors.ecoForest.withValues(alpha: 0.2),
+                backgroundColor: AppColors.warmChipBackgroundAlt,
+                selectedColor: AppColors.warmChipBackgroundAlt,
+                checkmarkColor: AppColors.chipContentDark,
+                side: BorderSide(color: AppColors.warmChipBorder),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  side: BorderSide(color: AppColors.warmChipBorder),
+                ),
                 labelStyle: AppTextStyles.bodyText2.copyWith(
-                  color: AppColors.neutral1100,
+                  color: AppColors.chipContentDark,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             for (final custom in customActivities)
               InputChip(
+                avatar: Icon(
+                  activityIcon(custom),
+                  size: 16,
+                  color: AppColors.chipContentDark,
+                ),
                 label: Text(custom),
                 onDeleted: () => onRemoveCustom(custom),
-                backgroundColor: AppColors.ecoForest.withValues(alpha: 0.12),
+                backgroundColor: AppColors.warmChipBackgroundAlt,
+                side: BorderSide(color: AppColors.warmChipBorder),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  side: BorderSide(color: AppColors.warmChipBorder),
+                ),
                 labelStyle: AppTextStyles.bodyText2.copyWith(
-                  color: AppColors.neutral1100,
+                  color: AppColors.chipContentDark,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
           ],
@@ -603,7 +822,7 @@ class _ActivitiesSection extends StatelessWidget {
                     color: AppColors.neutral600,
                   ),
                   filled: true,
-                  fillColor: AppColors.surface100,
+                  fillColor: AppColors.surface200.withValues(alpha: 0.35),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 12,
@@ -611,19 +830,19 @@ class _ActivitiesSection extends StatelessWidget {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide(
-                      color: AppColors.neutral600.withValues(alpha: 0.5),
+                      color: AppColors.neutral600.withValues(alpha: 0.35),
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: BorderSide(
-                      color: AppColors.neutral600.withValues(alpha: 0.5),
+                      color: AppColors.neutral600.withValues(alpha: 0.35),
                     ),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: AppColors.primary500,
+                  focusedBorder: const OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(
+                      color: AppColors.wizardFocus,
                       width: 1.5,
                     ),
                   ),
@@ -638,8 +857,8 @@ class _ActivitiesSection extends StatelessWidget {
               child: IconButton.filled(
                 onPressed: onAddCustom,
                 style: IconButton.styleFrom(
-                  backgroundColor: AppColors.primary500,
-                  foregroundColor: AppColors.textInk,
+                  backgroundColor: AppColors.wizardFocus,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -654,46 +873,111 @@ class _ActivitiesSection extends StatelessWidget {
   }
 }
 
+/// Rounded step-dot + connector indicator (replaces the earlier thin
+/// segmented bars) inside a soft white card, matching the Perfil redesign's
+/// card language.
 class _WizardStepper extends StatelessWidget {
   const _WizardStepper({required this.step});
 
   final int step;
 
   static const _labels = ['Datos', 'Contacto', 'Servicios', 'Fotos'];
+  static const _dotSize = 24.0;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var i = 0; i < _labels.length; i++) ...[
-          Expanded(
-            child: Column(
-              children: [
-                Container(
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: i <= step
-                        ? AppColors.primary500
-                        : AppColors.surface200,
-                    borderRadius: BorderRadius.circular(999),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            offset: Offset(0, 2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < _labels.length; i++) ...[
+            if (i != 0)
+              Expanded(
+                child: SizedBox(
+                  height: _dotSize,
+                  child: Center(
+                    child: Container(
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: i <= step
+                            ? AppColors.wizardFocus
+                            : AppColors.warmChipBorder,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
                 ),
+              ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StepDot(index: i, currentStep: step, size: _dotSize),
                 const SizedBox(height: 6),
                 Text(
                   _labels[i],
                   style: AppTextStyles.legend.copyWith(
                     color: i <= step
-                        ? AppColors.neutral1100
+                        ? AppColors.wizardFocus
                         : AppColors.neutral500,
                     fontWeight: i == step ? FontWeight.w700 : FontWeight.w400,
                   ),
                 ),
               ],
             ),
-          ),
-          if (i != _labels.length - 1) const SizedBox(width: 6),
+          ],
         ],
-      ],
+      ),
+    );
+  }
+}
+
+class _StepDot extends StatelessWidget {
+  const _StepDot({
+    required this.index,
+    required this.currentStep,
+    required this.size,
+  });
+
+  final int index;
+  final int currentStep;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = index < currentStep;
+    final isActive = index <= currentStep;
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isActive ? AppColors.wizardFocus : Colors.white,
+        border: isActive
+            ? null
+            : Border.all(color: AppColors.warmChipBorder, width: 1.5),
+      ),
+      child: isDone
+          ? const Icon(Icons.check, size: 14, color: Colors.white)
+          : Text(
+              '${index + 1}',
+              style: AppTextStyles.legend.copyWith(
+                color: isActive ? Colors.white : AppColors.neutral500,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
     );
   }
 }

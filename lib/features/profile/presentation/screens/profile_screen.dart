@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'package:nikara_app/core/dev/dev_business_fixtures.dart';
 import 'package:nikara_app/core/gamification/badges_logic.dart';
 import 'package:nikara_app/core/gamification/gamification_engine.dart';
+import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
+import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/domain/models/business_model.dart';
+import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/dev_role_switcher_sheet.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -35,20 +42,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _sessionService = UserSessionService();
   final _favoritesService = FavoritesService();
   final _userStatsService = UserStatsService();
+  final _businessStorageService = BusinessStorageService();
+  final _authService = AuthService();
 
   bool _isLoading = true;
   UserData? _userData;
-  List<DestinationModel> _favorites = const [];
+  List<DestinationModel> _favoriteDestinations = const [];
+  List<BusinessModel> _favoriteBusinesses = const [];
   UserStats _stats = const UserStats(
     tripsCount: 0,
     savedPlacesCount: 0,
     reviewsCount: 0,
   );
+  List<BusinessModel> _myBusinesses = const [];
   int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
 
   @override
   void initState() {
     super.initState();
+    // FavoritesService.idsNotifier fires whenever ANY screen
+    // (BusinessDetailScreen's AppBar heart included) toggles a favorite;
+    // BusinessStorageService.revision fires on every business write
+    // (including a new review, which changes this screen's points total);
+    // AuthService.currentUserNotifier fires whenever the Dev Mode role
+    // switcher (or the wizard's owner-elevation flow) changes the active
+    // identity. All three keep this screen in sync without a restart or
+    // manual refresh, even while Profile sits inert in the background
+    // inside MainLayout's IndexedStack.
+    _favoritesService.idsNotifier.addListener(_onDataChanged);
+    BusinessStorageService.revision.addListener(_onDataChanged);
+    _authService.currentUserNotifier.addListener(_onDataChanged);
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _favoritesService.idsNotifier.removeListener(_onDataChanged);
+    BusinessStorageService.revision.removeListener(_onDataChanged);
+    _authService.currentUserNotifier.removeListener(_onDataChanged);
+    super.dispose();
+  }
+
+  void _onDataChanged() {
+    if (!mounted) return;
     _loadAll();
   }
 
@@ -56,20 +92,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final userData = await _sessionService.getUserData();
     final favoriteIds = await _favoritesService.getFavoriteIds();
     final stats = await _userStatsService.getStats();
+    final allBusinesses = await _businessStorageService.getBusinesses();
     if (!mounted) return;
+
+    // The bug: favorites can be either a mock DestinationModel id
+    // ('isletas-de-granada', from Home/Map) OR a business uuid (from
+    // BusinessDetailScreen's heart) — both share the same id set in
+    // FavoritesService, so BOTH sources must be cross-referenced here.
+    // Matching only mockDestinations (the old code) silently dropped every
+    // favorited business from this tab even though it was persisted fine.
+    final favoriteDestinations = mockDestinations
+        .where((d) => favoriteIds.contains(d.id))
+        .toList(growable: false);
+    final favoriteBusinesses = allBusinesses
+        .where((b) => favoriteIds.contains(b.id))
+        .toList(growable: false);
+
+    // "Mis Negocios" is driven by the active Dev Mode identity's role/
+    // ownedBusinessIds (AuthService), not BusinessModel.ownerId directly —
+    // each id resolves against real storage first, falling back to the
+    // in-memory dev fixtures (Carlos's seeded businesses, never persisted)
+    // when it's not there yet.
+    final authUser = _authService.currentUser;
+    final storedById = {for (final b in allBusinesses) b.id: b};
+    final myBusinesses = authUser.role == UserRole.owner
+        ? [
+            for (final id in authUser.ownedBusinessIds)
+              if (storedById[id] != null)
+                storedById[id]!
+              else if (devBusinessFixtures[id] != null)
+                devBusinessFixtures[id]!,
+          ]
+        : const <BusinessModel>[];
+
+    debugPrint(
+      '[ProfileScreen] _loadAll: ${favoriteIds.length} favoriteIds -> '
+      '${favoriteDestinations.length} destinos + '
+      '${favoriteBusinesses.length} negocios | '
+      'authUser=${authUser.name} role=${authUser.role} -> '
+      '${myBusinesses.length} negocios propios',
+    );
+
     setState(() {
       _userData = userData;
-      _favorites = mockDestinations
-          .where((d) => favoriteIds.contains(d.id))
-          .toList(growable: false);
+      _favoriteDestinations = favoriteDestinations;
+      _favoriteBusinesses = favoriteBusinesses;
       _stats = stats;
+      _myBusinesses = myBusinesses;
       _isLoading = false;
     });
   }
 
-  Future<void> _toggleFavorite(String id) async {
-    await _favoritesService.toggleFavorite(id);
+  Future<void> _editBusiness(BusinessModel business) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RegisterBusinessWizard(existingBusiness: business),
+      ),
+    );
     await _loadAll();
+  }
+
+  Future<void> _confirmDeleteBusiness(BusinessModel business) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('¿Eliminar negocio?'),
+        content: Text(
+          'Se eliminará "${business.name}" de forma permanente. Esta '
+          'acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Eliminar',
+              style: TextStyle(color: AppColors.settingsDanger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    // deleteBusiness is a harmless no-op for a business that only exists
+    // as a dev fixture (never persisted); removeOwnedBusiness is what
+    // actually makes it disappear from "Mis Negocios" in that case.
+    await _businessStorageService.deleteBusiness(business.id);
+    _authService.removeOwnedBusiness(business.id);
+    await _loadAll();
+  }
+
+  void _openDevRoleSwitcher() {
+    DevRoleSwitcherSheet.show(context);
+  }
+
+  Future<void> _toggleFavorite(String id) async {
+    // No manual _loadAll() here — toggling notifies every listener
+    // (including the one registered above), which reloads this screen.
+    await _favoritesService.toggleFavorite(id);
   }
 
   Future<void> _pickAvatar() async {
@@ -148,13 +273,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    final points = _userStatsService.computePoints(_stats);
+    // Points (and, so the level card stays coherent with the number shown
+    // in the stats row, the level itself) come from the active Dev Mode
+    // identity — Sofía's/Carlos's fixed seed points — rather than the real
+    // UserStatsService computation, so switching profiles visibly changes
+    // this number as intended. Favorites/badges stay driven by real data.
+    final authUser = _authService.currentUser;
+    final points = authUser.points;
     final levelInfo = GamificationEngine.calculate(points);
     final badges = BadgesLogic.build(_stats);
     final unlockedCount = badges.where((b) => b.unlocked).length;
+    final isOwner = authUser.role == UserRole.owner;
 
     return Scaffold(
       backgroundColor: AppColors.settingsBackground,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openDevRoleSwitcher,
+        tooltip: 'Cambiar perfil (Dev Mode)',
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.settingsTextDark,
+        icon: const Text('🧪', style: TextStyle(fontSize: 16)),
+        label: const Text('Dev Mode'),
+      ),
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -188,7 +328,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: _activeTab == 0
                     ? _FavoritesTab(
-                        favorites: _favorites,
+                        destinations: _favoriteDestinations,
+                        businesses: _favoriteBusinesses,
                         onToggleFavorite: _toggleFavorite,
                         onExplore: widget.onExploreRequested,
                       )
@@ -197,6 +338,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onLockedTap: _showBadgeRequirement,
                       ),
               ),
+              if (isOwner)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 80),
+                  child: _MyBusinessesSection(
+                    businesses: _myBusinesses,
+                    onEdit: _editBusiness,
+                    onDelete: _confirmDeleteBusiness,
+                  ),
+                ),
             ],
           ),
         ),
@@ -652,20 +802,27 @@ class _ProfileTabButton extends StatelessWidget {
   }
 }
 
+/// Favoritos tab — a single list merging both real sources a heart can
+/// favorite: curated [DestinationModel]s (Home/Map cards) and
+/// user-registered [BusinessModel]s (BusinessDetailScreen's AppBar heart).
+/// Both id spaces share the same [FavoritesService] set, so both must be
+/// cross-referenced for a saved business to actually show up here.
 class _FavoritesTab extends StatelessWidget {
   const _FavoritesTab({
-    required this.favorites,
+    required this.destinations,
+    required this.businesses,
     required this.onToggleFavorite,
     required this.onExplore,
   });
 
-  final List<DestinationModel> favorites;
+  final List<DestinationModel> destinations;
+  final List<BusinessModel> businesses;
   final ValueChanged<String> onToggleFavorite;
   final VoidCallback? onExplore;
 
   @override
   Widget build(BuildContext context) {
-    if (favorites.isEmpty) {
+    if (destinations.isEmpty && businesses.isEmpty) {
       return _FavoritesEmptyState(onExplore: onExplore);
     }
 
@@ -679,10 +836,17 @@ class _FavoritesTab extends StatelessWidget {
           )),
         ),
         const SizedBox(height: 8),
-        for (final destination in favorites) ...[
+        for (final destination in destinations) ...[
           _FavoritePlaceCard(
             destination: destination,
             onFavoriteToggle: () => onToggleFavorite(destination.id),
+          ),
+          const SizedBox(height: 10),
+        ],
+        for (final business in businesses) ...[
+          _FavoriteBusinessCard(
+            business: business,
+            onFavoriteToggle: () => onToggleFavorite(business.id),
           ),
           const SizedBox(height: 10),
         ],
@@ -849,6 +1013,113 @@ class _FavoritePlaceCard extends StatelessWidget {
   }
 }
 
+/// Same card language as [_FavoritePlaceCard], sourced from a favorited
+/// [BusinessModel] instead of a curated [DestinationModel].
+class _FavoriteBusinessCard extends StatelessWidget {
+  const _FavoriteBusinessCard({
+    required this.business,
+    required this.onFavoriteToggle,
+  });
+
+  final BusinessModel business;
+  final VoidCallback onFavoriteToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = business.localImagePaths.isNotEmpty
+        ? business.localImagePaths.first
+        : null;
+    final hasPrice = business.allowsReservations && business.price != null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1AF0B500),
+            offset: Offset(0, 2),
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: SizedBox(
+              width: 58,
+              height: 52,
+              child: LocalImage(
+                path: imagePath,
+                fallbackIcon: Icons.storefront_outlined,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  business.name,
+                  style: AppTextStyles.favoriteCardTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on,
+                      size: 9,
+                      color: AppColors.settingsTextMuted,
+                    ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        business.city,
+                        style: AppTextStyles.favoriteCardCaption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                hasPrice
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '${business.formattedPrice} ',
+                            style: AppTextStyles.favoriteCardPrice,
+                          ),
+                          Text(
+                            '/persona',
+                            style: AppTextStyles.profileCaption10,
+                          ),
+                        ],
+                      )
+                    : Text(
+                        'Consultar precio',
+                        style: AppTextStyles.profileCaption10,
+                      ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onFavoriteToggle,
+            icon: const Icon(Icons.favorite, color: Color(0xFFE8798F)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BadgesTab extends StatelessWidget {
   const _BadgesTab({required this.badges, required this.onLockedTap});
 
@@ -960,6 +1231,175 @@ class _BadgeCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "Mis Negocios" — only rendered by [ProfileScreen] when the signed-in
+/// account owns at least one [BusinessModel] (matched by
+/// [BusinessModel.ownerId]). Each card lets the owner edit (reopens
+/// [RegisterBusinessWizard] pre-filled) or delete (with confirmation) their
+/// own listing.
+class _MyBusinessesSection extends StatelessWidget {
+  const _MyBusinessesSection({
+    required this.businesses,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<BusinessModel> businesses;
+  final ValueChanged<BusinessModel> onEdit;
+  final ValueChanged<BusinessModel> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Mis Negocios', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        if (businesses.isEmpty)
+          Text(
+            'Aún no tienes negocios registrados.',
+            style: AppTextStyles.bodyText2.copyWith(
+              color: AppColors.settingsTextMuted,
+            ),
+          )
+        else
+          for (final business in businesses) ...[
+            _MyBusinessCard(
+              business: business,
+              onEdit: () => onEdit(business),
+              onDelete: () => onDelete(business),
+            ),
+            const SizedBox(height: 10),
+          ],
+      ],
+    );
+  }
+}
+
+class _MyBusinessCard extends StatelessWidget {
+  const _MyBusinessCard({
+    required this.business,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final BusinessModel business;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = business.localImagePaths.isNotEmpty
+        ? business.localImagePaths.first
+        : null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1AF0B500),
+            offset: Offset(0, 2),
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 58,
+                  height: 52,
+                  child: LocalImage(
+                    path: imagePath,
+                    fallbackIcon: Icons.storefront_outlined,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      business.name,
+                      style: AppTextStyles.favoriteCardTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on,
+                          size: 9,
+                          color: AppColors.settingsTextMuted,
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            business.city,
+                            style: AppTextStyles.favoriteCardCaption,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Editar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.wizardFocus,
+                    side: const BorderSide(color: AppColors.warmChipBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Eliminar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.settingsDanger,
+                    side: BorderSide(
+                      color: AppColors.settingsDanger.withValues(alpha: 0.4),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -24,20 +31,101 @@ class BusinessDetailScreen extends StatefulWidget {
 class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   static const _coverHeight = 320.0;
 
+  final _favoritesService = FavoritesService();
+  final _sessionService = UserSessionService();
+  final _businessStorageService = BusinessStorageService();
+
   int _tab = 0;
   bool _isFavorite = false;
+  UserData? _currentUser;
 
-  BusinessModel get _business => widget.business;
+  /// Starts as [widget.business] but gets a new `reviews` list appended
+  /// in-place after a successful submission, so the rating/opinions/photos
+  /// on this screen update immediately without popping and re-pushing.
+  late BusinessModel _businessState = widget.business;
+
+  BusinessModel get _business => _businessState;
 
   /// Simulated distance — there's no real geolocation wired up, so this is
   /// a stable, per-business pseudo-random figure (never a literal constant,
   /// never re-randomized on rebuild).
   int get _simulatedDistanceKm => 5 + (_business.id.hashCode.abs() % 40);
 
+  @override
+  void initState() {
+    super.initState();
+    _loadFavoriteState();
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadFavoriteState() async {
+    final isFavorite = await _favoritesService.isFavorite(_business.id);
+    if (!mounted) return;
+    setState(() => _isFavorite = isFavorite);
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _sessionService.getUserData();
+    if (!mounted) return;
+    setState(() => _currentUser = user);
+  }
+
+  void _openOwnerProfile() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+  }
+
+  Future<void> _toggleFavorite() async {
+    final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
+    if (!mounted) return;
+    setState(() => _isFavorite = nowFavorite);
+  }
+
   void _showComingSoon() {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+  }
+
+  Future<void> _openWriteReview() async {
+    final draft = await showModalBottomSheet<_ReviewDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => const _WriteReviewSheet(),
+    );
+    if (draft == null || !mounted) return;
+
+    final userData = _currentUser ?? await _sessionService.getUserData();
+    final authorName = userData != null && userData.fullName.trim().isNotEmpty
+        ? userData.fullName
+        : 'Viajero Nikara';
+
+    final review = ReviewModel(
+      id: const Uuid().v4(),
+      authorName: authorName,
+      authorId: userData?.email ?? '',
+      rating: draft.rating,
+      comment: draft.comment,
+      date: DateTime.now(),
+      mediaPaths: draft.mediaPaths,
+    );
+
+    await _businessStorageService.addReview(_business.id, review);
+    if (!mounted) return;
+    setState(() {
+      _businessState = _businessState.copyWith(
+        reviews: [..._businessState.reviews, review],
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('¡Gracias por tu reseña! +20 puntos')),
+    );
   }
 
   void _openLocationOnMap() {
@@ -70,8 +158,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
               isFavorite: _isFavorite,
               onBack: () => Navigator.of(context).maybePop(),
               onShare: _showComingSoon,
-              onToggleFavorite: () =>
-                  setState(() => _isFavorite = !_isFavorite),
+              onToggleFavorite: _toggleFavorite,
             ),
             Positioned.fill(
               top: _coverHeight - 28,
@@ -102,9 +189,17 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         color: Color(0xFFEEEEEE),
                       ),
                       if (_tab == 0)
-                        _InformationTab(business: _business)
+                        _InformationTab(
+                          business: _business,
+                          onLocationTap: _openLocationOnMap,
+                          currentUser: _currentUser,
+                          onOwnerTap: _openOwnerProfile,
+                        )
                       else
-                        _ReviewsTab(business: _business),
+                        _ReviewsTab(
+                          business: _business,
+                          onWriteReview: _openWriteReview,
+                        ),
                     ],
                   ),
                 ),
@@ -374,12 +469,12 @@ class _QuickInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x73725E5A),
-            offset: Offset(0, 4),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
           ),
         ],
       ),
@@ -389,7 +484,7 @@ class _QuickInfoCard extends StatelessWidget {
             child: _QuickInfoItem(
               icon: Icons.location_on_outlined,
               label: 'Ubicación',
-              value: business.locationText,
+              value: business.city,
               onTap: onLocationTap,
             ),
           ),
@@ -442,18 +537,29 @@ class _QuickInfoItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: AppTextStyles.quickInfoLabel),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.quickInfoLabel,
+        ),
         const SizedBox(height: 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(
-              value,
-              style: AppTextStyles.quickInfoValue.copyWith(
-                color: valueColor ?? AppColors.textInk,
+            // Without a Flexible here, this Text lays out at its natural
+            // (unbounded) width — a long value has nowhere to shrink and
+            // the Row overflows horizontally instead of eliding.
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.quickInfoValue.copyWith(
+                  color: valueColor ?? AppColors.textInk,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
             ),
             if (valueSuffix != null)
               Text(
@@ -571,54 +677,59 @@ class _SegmentButton extends StatelessWidget {
   }
 }
 
-/// One [IconData] per known amenity string — falls back to a generic
-/// checkmark for anything outside the wizard's fixed amenity list.
-IconData _amenityIcon(String label) {
-  final key = label.toLowerCase();
-  if (key.contains('wifi')) return Icons.wifi_rounded;
-  if (key.contains('estacionamiento')) return Icons.local_parking_outlined;
-  if (key.contains('piscina')) return Icons.pool_outlined;
-  if (key.contains('restaurante')) return Icons.restaurant_outlined;
-  if (key.contains('guía') || key.contains('guia')) return Icons.groups_outlined;
-  if (key.contains('camping')) return Icons.cabin_outlined;
-  if (key.contains('mascota')) return Icons.pets_outlined;
-  if (key.contains('accesible')) return Icons.accessible_forward_outlined;
-  if (key.contains('aire')) return Icons.ac_unit_outlined;
-  if (key.contains('desayuno')) return Icons.free_breakfast_outlined;
-  return Icons.check_circle_outline;
-}
-
 class _InformationTab extends StatelessWidget {
-  const _InformationTab({required this.business});
+  const _InformationTab({
+    required this.business,
+    required this.onLocationTap,
+    required this.currentUser,
+    required this.onOwnerTap,
+  });
 
   final BusinessModel business;
+  final VoidCallback onLocationTap;
+  final UserData? currentUser;
+  final VoidCallback onOwnerTap;
 
   static const _sectionDivider = Divider(
-    height: 32,
+    height: 40,
     thickness: 1,
     color: Color(0xFFEEEEEE),
   );
 
   @override
   Widget build(BuildContext context) {
+    // Order matches the Figma spec: Comodidades, Descripción, módulo
+    // dinámico por categoría, Mapa de ubicación — everything else the
+    // wizard also collects (Actividades, Anfitrión, Horarios y contacto)
+    // follows after, since removing that real data isn't part of this fix.
     final sections = <Widget>[
-      if (business.activities.isNotEmpty)
-        _DynamicCategorySection(business: business),
-      if (business.activities.isNotEmpty)
-        _ChipSection(
-          title: 'Actividades',
-          tint: AppColors.primary500,
-          labels: business.activities,
-        ),
       if (business.amenities.isNotEmpty)
         _ChipSection(
           title: 'Comodidades',
-          tint: AppColors.ecoForest,
+          background: AppColors.warmChipBackground,
+          border: AppColors.warmChipBorder,
+          tint: AppColors.chipContentDark,
           labels: business.amenities,
-          iconOf: _amenityIcon,
+          iconOf: amenityIcon,
         ),
       _DescriptionSection(business: business),
-      _HostSection(business: business),
+      if (business.activities.isNotEmpty)
+        _DynamicCategorySection(business: business),
+      _LocationSection(business: business, onLocationTap: onLocationTap),
+      if (business.activities.isNotEmpty)
+        _ChipSection(
+          title: 'Actividades',
+          background: AppColors.warmChipBackgroundAlt,
+          border: AppColors.warmChipBorder,
+          tint: AppColors.chipContentDark,
+          labels: business.activities,
+          iconOf: activityIcon,
+        ),
+      _HostSection(
+        business: business,
+        currentUser: currentUser,
+        onTap: onOwnerTap,
+      ),
       _SchedulesAndSocialSection(business: business),
     ];
 
@@ -731,21 +842,25 @@ class _DynamicCategorySection extends StatelessWidget {
   }
 }
 
-/// A section title followed by a [Wrap] of subtle, bordered chips — used
-/// for both Actividades (emoji-led labels, no separate icon needed) and
-/// Comodidades (a thematic outline icon per item via [iconOf]).
+/// A section title followed by a [Wrap] of warm, bordered chips — used for
+/// both Comodidades and Actividades, each with its own vector icon per
+/// item via [iconOf] (no emojis — see [amenityIcon]/[activityIcon]).
 class _ChipSection extends StatelessWidget {
   const _ChipSection({
     required this.title,
+    required this.background,
+    required this.border,
     required this.tint,
     required this.labels,
-    this.iconOf,
+    required this.iconOf,
   });
 
   final String title;
+  final Color background;
+  final Color border;
   final Color tint;
   final List<String> labels;
-  final IconData Function(String label)? iconOf;
+  final IconData Function(String label) iconOf;
 
   @override
   Widget build(BuildContext context) {
@@ -765,21 +880,20 @@ class _ChipSection extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: tint.withValues(alpha: 0.08),
+                  color: background,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: tint.withValues(alpha: 0.3)),
+                  border: Border.all(color: border),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (iconOf != null) ...[
-                      Icon(iconOf!(label), size: 14, color: tint),
-                      const SizedBox(width: 6),
-                    ],
+                    Icon(iconOf(label), size: 14, color: tint),
+                    const SizedBox(width: 6),
                     Text(
                       label,
                       style: AppTextStyles.detailRowText.copyWith(
                         fontWeight: FontWeight.w600,
+                        color: tint,
                       ),
                     ),
                   ],
@@ -941,10 +1055,109 @@ class _FullDescriptionSheet extends StatelessWidget {
   }
 }
 
-class _HostSection extends StatelessWidget {
-  const _HostSection({required this.business});
+/// "Mapa de ubicación exacta e indicaciones" — the exact address
+/// ([BusinessModel.locationText], never the short [BusinessModel.city]
+/// shown on cards) plus a tap target that opens the map, matching
+/// [onLocationTap] used by the quick-info card above.
+class _LocationSection extends StatelessWidget {
+  const _LocationSection({required this.business, required this.onLocationTap});
 
   final BusinessModel business;
+  final VoidCallback onLocationTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Ubicación exacta', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: onLocationTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.ecoForest.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: AppColors.ecoForest.withValues(alpha: 0.25),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.ecoForest.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.map_outlined,
+                    color: AppColors.ecoForest,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        business.locationText.isEmpty
+                            ? 'Dirección no especificada'
+                            : business.locationText,
+                        style: AppTextStyles.detailRowText.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Ver indicaciones en el mapa',
+                        style: AppTextStyles.reviewMeta.copyWith(
+                          color: AppColors.ecoForest,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.ecoForest),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Anfitrión section — [BusinessModel.ownerId] is the account email that
+/// created the listing. This app is device-local/single-account (no
+/// backend), so the only case where that id can resolve to a REAL, richer
+/// profile (real photo, real name, a tappable link) is when it matches the
+/// device's own signed-in session. Every other business (created before
+/// [BusinessModel.ownerId] existed, or in a future multi-account world,
+/// owned by someone else) falls back to the wizard's free-text
+/// [BusinessModel.hostName] with an initials avatar, same as before.
+class _HostSection extends StatelessWidget {
+  const _HostSection({
+    required this.business,
+    required this.currentUser,
+    required this.onTap,
+  });
+
+  final BusinessModel business;
+  final UserData? currentUser;
+  final VoidCallback onTap;
+
+  bool get _isLinkedToCurrentUser =>
+      business.ownerId.isNotEmpty &&
+      currentUser != null &&
+      business.ownerId == currentUser!.email;
 
   @override
   Widget build(BuildContext context) {
@@ -953,15 +1166,20 @@ class _HostSection extends StatelessWidget {
       children: [
         Text('Anfitrión', style: AppTextStyles.detailSectionTitle),
         const SizedBox(height: 12),
-        _HostRow(hostName: business.hostName),
+        _HostRow(
+          hostName: business.hostName,
+          linkedUser: _isLinkedToCurrentUser ? currentUser : null,
+          hasWhatsapp: business.contactPhone.isNotEmpty,
+          onTap: _isLinkedToCurrentUser ? onTap : null,
+        ),
       ],
     );
   }
 }
 
 /// Horarios (icon + bold title + value, always shown) followed by a
-/// [SocialContactRow] of whichever contact channels this business actually
-/// has data for.
+/// [SocialHub] of whichever contact channels this business actually has
+/// data for.
 class _SchedulesAndSocialSection extends StatelessWidget {
   const _SchedulesAndSocialSection({required this.business});
 
@@ -1001,14 +1219,9 @@ class _SchedulesAndSocialSection extends StatelessWidget {
         ),
         if (contacts.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text(
-            'Contacto y redes',
-            style: AppTextStyles.detailRowText.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Text('Contacto y redes', style: AppTextStyles.detailSectionTitle),
           const SizedBox(height: 10),
-          SocialContactRow(contacts: contacts),
+          SocialHub(contacts: contacts),
         ],
       ],
     );
@@ -1060,112 +1273,236 @@ class _IconValueRow extends StatelessWidget {
   }
 }
 
+/// Premium host card — big avatar, name + "Anfitrión Verificado" badge (a
+/// fair claim: every host here went through Nikara's own registration
+/// wizard, unlike a fabricated trust score), and a real capability line
+/// instead of a made-up "responds in ~1 hour" metric this app has no data
+/// to back — there's no messaging system to time a response against.
 class _HostRow extends StatelessWidget {
-  const _HostRow({required this.hostName});
+  const _HostRow({
+    required this.hostName,
+    required this.linkedUser,
+    required this.hasWhatsapp,
+    required this.onTap,
+  });
 
   final String hostName;
 
+  /// Non-null only when this business's [BusinessModel.ownerId] matches
+  /// the device's signed-in account — the one case with a real photo/name
+  /// to show instead of the wizard's free-text [hostName].
+  final UserData? linkedUser;
+  final bool hasWhatsapp;
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    final initial = hostName.trim().isEmpty ? '?' : hostName.trim()[0].toUpperCase();
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 20,
-          backgroundColor: AppColors.ecoForest,
-          child: Text(
-            initial,
-            style: AppTextStyles.reviewAuthor.copyWith(color: Colors.white),
+    final linked = linkedUser;
+    final displayName = linked != null && linked.fullName.trim().isNotEmpty
+        ? linked.fullName
+        : (hostName.isEmpty ? 'Anfitrión Nikara' : hostName);
+    final avatarPath = linked?.avatarPath;
+    final initial = displayName.trim().isEmpty
+        ? '?'
+        : displayName.trim()[0].toUpperCase();
+
+    final card = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                hostName.isEmpty ? 'Anfitrión Nikara' : hostName,
-                style: AppTextStyles.detailRowText.copyWith(
-                  fontWeight: FontWeight.w700,
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipOval(
+            child: SizedBox(
+              width: 64,
+              height: 64,
+              child: avatarPath != null && avatarPath.isNotEmpty
+                  ? LocalImage(path: avatarPath)
+                  : Container(
+                      color: AppColors.ecoForest,
+                      alignment: Alignment.center,
+                      child: Text(
+                        initial,
+                        style: AppTextStyles.h5.copyWith(color: Colors.white),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
+                  style: AppTextStyles.detailRowText.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.ecoForest.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.verified_rounded,
+                        size: 13,
+                        color: AppColors.ecoForest,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Anfitrión Verificado',
+                        style: AppTextStyles.reviewMeta.copyWith(
+                          color: AppColors.ecoForest,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasWhatsapp || onTap != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    onTap != null
+                        ? 'Toca para ver el perfil'
+                        : 'Disponible por WhatsApp',
+                    style: AppTextStyles.reviewMeta.copyWith(
+                      color: onTap != null
+                          ? AppColors.accent300
+                          : AppColors.neutral600,
+                      fontWeight: onTap != null ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (onTap != null)
+            const Icon(Icons.chevron_right, color: AppColors.neutral500),
+        ],
+      ),
+    );
+
+    if (onTap == null) return card;
+    return GestureDetector(onTap: onTap, child: card);
+  }
+}
+
+class _ReviewsTab extends StatelessWidget {
+  const _ReviewsTab({required this.business, required this.onWriteReview});
+
+  final BusinessModel business;
+  final VoidCallback onWriteReview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onWriteReview,
+            icon: const Icon(Icons.rate_review_outlined, size: 18),
+            label: const Text('Escribir una reseña'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.primary500,
+              side: const BorderSide(color: AppColors.primary500),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
-              Text('Anfitrión verificado', style: AppTextStyles.reviewMeta),
-            ],
+            ),
           ),
         ),
+        const SizedBox(height: 20),
+        if (business.reviews.isEmpty)
+          const _ReviewsEmptyState()
+        else ...[
+          _RatingSummaryCard(business: business),
+          if (business.localImagePaths.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text('Fotos del lugar', style: AppTextStyles.detailSectionTitle),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 72,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: business.localImagePaths.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final path = business.localImagePaths[index];
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: SizedBox(
+                      width: 90,
+                      height: 72,
+                      child: LocalImage(path: path),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Text('Opiniones', style: AppTextStyles.detailSectionTitle),
+          const SizedBox(height: 10),
+          for (final review in business.reviews) ...[
+            _ReviewCard(review: review),
+            const SizedBox(height: 12),
+          ],
+        ],
       ],
     );
   }
 }
 
-class _ReviewsTab extends StatelessWidget {
-  const _ReviewsTab({required this.business});
-
-  final BusinessModel business;
+class _ReviewsEmptyState extends StatelessWidget {
+  const _ReviewsEmptyState();
 
   @override
   Widget build(BuildContext context) {
-    if (business.reviews.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          children: [
-            const Icon(
-              Icons.rate_review_outlined,
-              size: 40,
-              color: AppColors.neutral500,
-            ),
-            const SizedBox(height: 12),
-            Text('Aún no hay reseñas', style: AppTextStyles.detailSectionTitle),
-            const SizedBox(height: 4),
-            Text(
-              'Sé la primera persona en compartir tu experiencia.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyText2.copyWith(
-                color: AppColors.neutral600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _RatingSummaryCard(business: business),
-        if (business.localImagePaths.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text('Fotos del lugar', style: AppTextStyles.detailSectionTitle),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: business.localImagePaths.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final path = business.localImagePaths[index];
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: 90,
-                    height: 72,
-                    child: LocalImage(path: path),
-                  ),
-                );
-              },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.rate_review_outlined,
+            size: 40,
+            color: AppColors.neutral500,
+          ),
+          const SizedBox(height: 12),
+          Text('Aún no hay reseñas', style: AppTextStyles.detailSectionTitle),
+          const SizedBox(height: 4),
+          Text(
+            'Sé la primera persona en compartir tu experiencia.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyText2.copyWith(
+              color: AppColors.neutral600,
             ),
           ),
         ],
-        const SizedBox(height: 20),
-        Text('Opiniones', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 10),
-        for (final review in business.reviews) ...[
-          _ReviewCard(review: review),
-          const SizedBox(height: 12),
-        ],
-      ],
+      ),
     );
   }
 }
@@ -1188,12 +1525,12 @@ class _RatingSummaryCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x1AFDBE02),
-            offset: Offset(0, 2),
-            blurRadius: 6,
+            color: Colors.black.withValues(alpha: 0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
           ),
         ],
       ),
@@ -1306,12 +1643,12 @@ class _ReviewCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0D000000),
-            offset: Offset(0, 2),
-            blurRadius: 4,
+            color: Colors.black.withValues(alpha: 0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
           ),
         ],
       ),
@@ -1353,6 +1690,38 @@ class _ReviewCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(review.comment, style: AppTextStyles.reviewComment),
+          if (review.mediaPaths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 56,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: review.mediaPaths.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (context, index) {
+                  final path = review.mediaPaths[index];
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: isVideoPath(path)
+                          ? Container(
+                              color: AppColors.neutral800,
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.videocam,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            )
+                          : LocalImage(path: path),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1438,6 +1807,273 @@ class _ContactBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   textStyle: AppTextStyles.buttonMd,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What [_WriteReviewSheet] hands back — the raw star/comment/media input.
+/// [BusinessDetailScreen] is the one that stamps author identity, an id and
+/// a timestamp onto it to build the real [ReviewModel], since that's real
+/// business logic the sheet itself shouldn't need to know about.
+class _ReviewDraft {
+  const _ReviewDraft({
+    required this.rating,
+    required this.comment,
+    required this.mediaPaths,
+  });
+
+  final double rating;
+  final String comment;
+  final List<String> mediaPaths;
+}
+
+/// "Escribir una reseña" bottom sheet — 1-5 star selector, a free-text
+/// comment, and a photo/video picker via `image_picker`'s
+/// `pickMultipleMedia` (a single control for both media types, since
+/// there's no separate video picker in this project).
+class _WriteReviewSheet extends StatefulWidget {
+  const _WriteReviewSheet();
+
+  @override
+  State<_WriteReviewSheet> createState() => _WriteReviewSheetState();
+}
+
+class _WriteReviewSheetState extends State<_WriteReviewSheet> {
+  int _rating = 5;
+  final _commentController = TextEditingController();
+  final List<XFile> _media = [];
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickMedia() async {
+    final picked = await ImagePicker().pickMultipleMedia();
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _media.addAll(picked));
+  }
+
+  void _removeMedia(int index) => setState(() => _media.removeAt(index));
+
+  void _submit() {
+    final comment = _commentController.text.trim();
+    if (comment.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escribe un comentario antes de enviar')),
+      );
+      return;
+    }
+    Navigator.of(context).pop(
+      _ReviewDraft(
+        rating: _rating.toDouble(),
+        comment: comment,
+        mediaPaths: _media.map((x) => x.path).toList(),
+      ),
+    );
+  }
+
+  InputDecoration _commentDecoration() {
+    return InputDecoration(
+      hintText: 'Cuéntanos cómo fue tu experiencia...',
+      hintStyle: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral600),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.all(14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        borderSide: BorderSide(color: AppColors.wizardFocus, width: 1.5),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Escribir una reseña',
+                  style: AppTextStyles.detailSectionTitle,
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.segmentedTrackBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: AppColors.neutral900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    GestureDetector(
+                      onTap: () => setState(() => _rating = i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(
+                          i <= _rating
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          size: 40,
+                          color: AppColors.primary500,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Tu comentario',
+              style: AppTextStyles.detailRowText.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _commentController,
+              maxLines: 4,
+              decoration: _commentDecoration(),
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _pickMedia,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface200.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.primary500.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: AppColors.primary500,
+                      size: 28,
+                    ),
+                    const SizedBox(height: 6),
+                    Text('Adjuntar fotos o videos', style: AppTextStyles.subtitle2),
+                  ],
+                ),
+              ),
+            ),
+            if (_media.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _media.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final path = _media[index].path;
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            width: 72,
+                            height: 72,
+                            child: isVideoPath(path)
+                                ? Container(
+                                    color: AppColors.neutral800,
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.videocam,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : LocalImage(path: path),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => _removeMedia(index),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text(
+                  'Enviar reseña',
+                  style: AppTextStyles.buttonLg.copyWith(
+                    color: AppColors.textInk,
+                  ),
                 ),
               ),
             ),

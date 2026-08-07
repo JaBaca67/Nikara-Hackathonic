@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -214,29 +215,27 @@ class _HeroCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: SizedBox(
-          height: _height,
-          width: double.infinity,
-          child: PageView.builder(
-            controller: controller,
-            itemCount: businesses.length,
-            onPageChanged: onPageChanged,
-            itemBuilder: (context, index) {
-              final business = businesses[index];
-              final isActive = index == activeIndex;
-              return _HeroCard(
-                business: business,
-                photoIndex: isActive ? photoIndex : 0,
-                onSelectPhoto: onSelectPhoto,
-                onTap: () => onTapDetail(business),
-              );
-            },
-          ),
-        ),
+    // Full-bleed, edge-to-edge — no side padding or rounding, unlike the
+    // padded/rounded cards in the feed below. This is the one immersive
+    // "featured banner" moment at the top of Home (Airbnb-style), the rest
+    // of the feed stays in the app's usual padded-card language.
+    return SizedBox(
+      height: _height,
+      width: double.infinity,
+      child: PageView.builder(
+        controller: controller,
+        itemCount: businesses.length,
+        onPageChanged: onPageChanged,
+        itemBuilder: (context, index) {
+          final business = businesses[index];
+          final isActive = index == activeIndex;
+          return _HeroCard(
+            business: business,
+            photoIndex: isActive ? photoIndex : 0,
+            onSelectPhoto: onSelectPhoto,
+            onTap: () => onTapDetail(business),
+          );
+        },
       ),
     );
   }
@@ -364,7 +363,7 @@ class _HeroCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              business.locationText,
+                              '${business.city} - Nicaragua',
                               style: AppTextStyles.heroLocation,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -382,7 +381,7 @@ class _HeroCard extends StatelessWidget {
                             business.formattedPrice,
                             style: AppTextStyles.heroPrice,
                           ),
-                          Text('/p', style: AppTextStyles.heroLocation),
+                          Text(' /p', style: AppTextStyles.heroLocation),
                         ],
                       ),
                   ],
@@ -435,21 +434,27 @@ class _HeroCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: onTap,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 13,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.4),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 13,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              'Ver detalle →',
+                              style: AppTextStyles.ctaPill,
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          'Ver detalle →',
-                          style: AppTextStyles.ctaPill,
                         ),
                       ),
                     ),
@@ -525,7 +530,7 @@ class _CompactBusinessCard extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: '${business.name}, ${business.locationText}',
+      label: '${business.name}, ${business.city}',
       child: Material(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(16),
@@ -583,7 +588,7 @@ class _CompactBusinessCard extends StatelessWidget {
                           const SizedBox(width: 2),
                           Expanded(
                             child: Text(
-                              business.locationText,
+                              business.city,
                               style: AppTextStyles.cardLocation,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

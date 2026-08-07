@@ -207,6 +207,28 @@ abstract class AppColors {
 
   /// "Protector del Lago" badge tint.
   static const badgeLake = Color(0xFF5A6B1A);
+
+  // --- Business detail: warm amenities/actividades palette (replaces the
+  // earlier green ecoForest/primary500 chip styling) ---
+
+  /// Comodidades chip fill.
+  static const warmChipBackground = Color(0xFFFFF8E1);
+
+  /// Actividades chip fill — a shade warmer than [warmChipBackground] so
+  /// the two chip sections stay visually distinct.
+  static const warmChipBackgroundAlt = Color(0xFFFFF3E0);
+
+  /// Chip border for both Comodidades and Actividades.
+  static const warmChipBorder = Color(0xFFFDE68A);
+
+  /// Comodidades/Actividades chip icon + text color — solid dark, replacing
+  /// the earlier amber/deep-orange tinted text for legibility.
+  static const chipContentDark = Color(0xFF111827);
+
+  /// Registration wizard's focus/accent color (inputs, stepper, primary
+  /// actions) — warmer than the brand's [primary500] gold, per the
+  /// Perfil-matching redesign.
+  static const wizardFocus = Color(0xFFF59E0B);
 }
 
 /// Text styles extracted from the Figma "Text Styles".

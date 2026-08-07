@@ -10,6 +10,7 @@ class BusinessModel {
     required this.name,
     required this.category,
     required this.description,
+    required this.city,
     required this.locationText,
     this.latitude,
     this.longitude,
@@ -23,6 +24,7 @@ class BusinessModel {
     this.amenities = const [],
     this.activities = const [],
     required this.hostName,
+    this.ownerId = '',
     this.schedules = '',
     this.accessDetails = '',
     this.otherNotes = '',
@@ -35,6 +37,12 @@ class BusinessModel {
   final String category;
   final String description;
 
+  /// Short city/municipality label (e.g. "Masaya") — shown on summary
+  /// cards and list rows across Home/Map/Profile. Never the full address.
+  final String city;
+
+  /// Exact street address, shown only on the detail screen's "Mapa de
+  /// ubicación exacta e indicaciones" section — never on a compact card.
   final String locationText;
   final double? latitude;
   final double? longitude;
@@ -50,6 +58,13 @@ class BusinessModel {
   final List<String> amenities;
   final List<String> activities;
   final String hostName;
+
+  /// [UserSessionService]'s account email at the moment this business was
+  /// created — the closest thing this backend-less, single-account-per-
+  /// device app has to a real user id. Empty for businesses saved before
+  /// this field existed. Drives "Mis Negocios" in Profile and the
+  /// Anfitrión section's real-profile link in BusinessDetailScreen.
+  final String ownerId;
   final String schedules;
 
   /// Extra "Mostrar más" description content — parqueos/senderos/zonas
@@ -69,12 +84,13 @@ class BusinessModel {
   }
 
   String get formattedPrice =>
-      price == null ? '' : 'C\$${price!.toStringAsFixed(0)}';
+      price == null ? '' : 'C\$ ${price!.toStringAsFixed(0)}';
 
   BusinessModel copyWith({
     String? name,
     String? category,
     String? description,
+    String? city,
     String? locationText,
     double? latitude,
     double? longitude,
@@ -88,6 +104,7 @@ class BusinessModel {
     List<String>? amenities,
     List<String>? activities,
     String? hostName,
+    String? ownerId,
     String? schedules,
     String? accessDetails,
     String? otherNotes,
@@ -99,6 +116,7 @@ class BusinessModel {
       name: name ?? this.name,
       category: category ?? this.category,
       description: description ?? this.description,
+      city: city ?? this.city,
       locationText: locationText ?? this.locationText,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
@@ -112,6 +130,7 @@ class BusinessModel {
       amenities: amenities ?? this.amenities,
       activities: activities ?? this.activities,
       hostName: hostName ?? this.hostName,
+      ownerId: ownerId ?? this.ownerId,
       schedules: schedules ?? this.schedules,
       accessDetails: accessDetails ?? this.accessDetails,
       otherNotes: otherNotes ?? this.otherNotes,
@@ -125,6 +144,7 @@ class BusinessModel {
     'name': name,
     'category': category,
     'description': description,
+    'city': city,
     'locationText': locationText,
     'latitude': latitude,
     'longitude': longitude,
@@ -138,6 +158,7 @@ class BusinessModel {
     'amenities': amenities,
     'activities': activities,
     'hostName': hostName,
+    'ownerId': ownerId,
     'schedules': schedules,
     'accessDetails': accessDetails,
     'otherNotes': otherNotes,
@@ -151,6 +172,10 @@ class BusinessModel {
       name: json['name'] as String,
       category: json['category'] as String,
       description: json['description'] as String,
+      // Businesses saved before the city/address split only have
+      // locationText — fall back to it as a best-effort city label until
+      // the owner edits their listing, rather than fabricating one.
+      city: json['city'] as String? ?? json['locationText'] as String? ?? '',
       locationText: json['locationText'] as String,
       latitude: (json['latitude'] as num?)?.toDouble(),
       longitude: (json['longitude'] as num?)?.toDouble(),
@@ -166,6 +191,7 @@ class BusinessModel {
       activities:
           (json['activities'] as List<dynamic>?)?.cast<String>() ?? const [],
       hostName: json['hostName'] as String,
+      ownerId: json['ownerId'] as String? ?? '',
       schedules: json['schedules'] as String? ?? '',
       accessDetails: json['accessDetails'] as String? ?? '',
       otherNotes: json['otherNotes'] as String? ?? '',

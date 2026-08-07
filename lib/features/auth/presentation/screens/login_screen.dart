@@ -171,7 +171,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           SizedBox(
                             height: logoAreaHeight,
-                            child: const Center(child: _Logo()),
+                            // _Logo's content (150px image + wordmark) is
+                            // fixed-size, but logoAreaHeight scales down
+                            // proportionally with the screen — on a short
+                            // viewport that proportional area can shrink
+                            // below the logo's natural height, overflowing
+                            // the Column. FittedBox lets it scale down to
+                            // fit instead.
+                            child: const Center(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: _Logo(),
+                              ),
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(
