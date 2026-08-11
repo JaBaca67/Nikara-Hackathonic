@@ -29,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _businessStorageService = BusinessStorageService();
   final _heroPageController = PageController();
   List<BusinessModel>? _businesses;
+  String? _loadError;
 
   Timer? _photoTimer;
   int _heroIndex = 0;
@@ -55,14 +56,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadBusinesses() async {
-    final businesses = await _businessStorageService.getBusinesses();
-    if (!mounted) return;
-    setState(() {
-      _businesses = businesses;
-      _heroIndex = 0;
-      _heroPhotoIndex = 0;
-    });
-    _restartPhotoTimer();
+    setState(() => _loadError = null);
+    try {
+      final businesses = await _businessStorageService.getBusinesses();
+      if (!mounted) return;
+      setState(() {
+        _businesses = businesses;
+        _heroIndex = 0;
+        _heroPhotoIndex = 0;
+      });
+      _restartPhotoTimer();
+    } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _loadError = e.message);
+    }
   }
 
   /// Rotates only the *photos of the currently active business* — moving
@@ -133,7 +140,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const SearchHeaderWidget(notificationCount: 3),
             const SizedBox(height: 16),
             Expanded(
-              child: businesses == null
+              child: _loadError != null
+                  ? _LoadErrorState(
+                      message: _loadError!,
+                      onRetry: _loadBusinesses,
+                    )
+                  : businesses == null
                   ? const Center(
                       child: CircularProgressIndicator(
                         color: AppColors.primary500,
@@ -675,6 +687,77 @@ class _EmptyState extends StatelessWidget {
                 onPressed: onRegister,
                 icon: const Icon(Icons.add_business_outlined),
                 label: const Text('Registrar mi Negocio'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary500,
+                  foregroundColor: AppColors.textInk,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  textStyle: AppTextStyles.buttonLg,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown instead of the feed when [BusinessStorageService.getBusinesses]
+/// fails — a Supabase connection/network problem, not "no businesses yet"
+/// (that's [_EmptyState]). [message] is the friendly Spanish text the
+/// service already translated the error into.
+class _LoadErrorState extends StatelessWidget {
+  const _LoadErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.settingsDanger.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.wifi_off_rounded,
+                size: 44,
+                color: AppColors.settingsDanger,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'No se pudieron cargar los negocios',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.sectionTitle,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyText2.copyWith(
+                color: AppColors.neutral600,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary500,
                   foregroundColor: AppColors.textInk,

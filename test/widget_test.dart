@@ -6,17 +6,16 @@ import 'package:nikara_app/app.dart';
 
 void main() {
   setUp(() {
-    // MyApp routes through a _SessionGate that reads UserSessionService
-    // (SharedPreferences) before deciding Login vs. MainLayout — without a
-    // mocked store this hits a real platform channel that doesn't exist in
-    // the test environment.
+    // Some services still read local SharedPreferences state (favorites,
+    // avatar cache) — without a mocked store this hits a real platform
+    // channel that doesn't exist in the test environment.
     SharedPreferences.setMockInitialValues({});
   });
 
   testWidgets('Prueba de humo para la pantalla de Login', (WidgetTester tester) async {
-    // Construimos nuestra app y esperamos a que _SessionGate resuelva su
-    // lectura async (isLoggedIn == false con prefs vacías) y navegue a
-    // LoginScreen.
+    // MyApp reads AuthService().isLoggedIn synchronously (no Supabase
+    // session persisted in the test environment), so it renders LoginScreen
+    // directly.
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 

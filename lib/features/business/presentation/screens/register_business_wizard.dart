@@ -3,7 +3,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
@@ -87,7 +86,7 @@ class RegisterBusinessWizard extends StatefulWidget {
 
 class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _storageService = BusinessStorageService();
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
   final _pageController = PageController();
   int _step = 0;
   bool _isSaving = false;
@@ -105,6 +104,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _phoneController = TextEditingController();
   final _instagramController = TextEditingController();
   final _tiktokController = TextEditingController();
+
+  /// Optional — feeds `businesses.location` (a PostGIS geography point) in
+  /// Supabase. There's no map picker in this wizard yet, so these stay
+  /// blank/null unless the owner types real coordinates in by hand.
+  final _latitudeController = TextEditingController();
+  final _longitudeController = TextEditingController();
 
   final Set<String> _selectedAmenities = {};
   final Set<String> _selectedActivities = {};
@@ -137,6 +142,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.text = business.contactPhone;
     _instagramController.text = business.instagramLink;
     _tiktokController.text = business.tiktokLink;
+    if (business.latitude != null) {
+      _latitudeController.text = business.latitude!.toString();
+    }
+    if (business.longitude != null) {
+      _longitudeController.text = business.longitude!.toString();
+    }
     _selectedAmenities.addAll(business.amenities);
     _selectedActivities.addAll(business.activities);
     _schedulesController.text = business.schedules;
@@ -156,6 +167,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.dispose();
     _instagramController.dispose();
     _tiktokController.dispose();
+    _latitudeController.dispose();
+    _longitudeController.dispose();
     _customActivityController.dispose();
     _schedulesController.dispose();
     _priceController.dispose();
@@ -227,15 +240,15 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     setState(() => _isSaving = true);
 
     final existing = widget.existingBusiness;
-    // hostName/ownerId always come from the active session, never typed in
-    // manually — this is always re-stamped with the CURRENT session on
-    // every save (create or edit), so a business stays attributed to
-    // whoever is actually signed in even if they've since renamed
-    // themselves in Settings.
-    final sessionUser = await _sessionService.getUserData();
-    final ownerId = sessionUser?.email ?? existing?.ownerId ?? '';
-    final hostName = sessionUser != null && sessionUser.fullName.trim().isNotEmpty
-        ? sessionUser.fullName
+    // hostName/ownerId always come from the active Supabase session, never
+    // typed in manually — this is always re-stamped with the CURRENT
+    // session on every save (create or edit), so a business stays
+    // attributed to whoever is actually signed in even if they've since
+    // renamed themselves in Settings.
+    final profile = await _authService.getCurrentProfile();
+    final ownerId = _authService.currentAuthUser?.id ?? existing?.ownerId ?? '';
+    final hostName = profile != null && profile.fullName.trim().isNotEmpty
+        ? profile.fullName
         : (existing?.hostName ?? '');
 
     // Instagram/TikTok are collected as bare @handles, never full URLs —
@@ -248,6 +261,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     );
     final tiktokHandle = _tiktokController.text.trim().replaceFirst('@', '');
 
+    // Both optional — genuinely null (not 0.0) unless the owner actually
+    // typed real coordinates, so BusinessStorageService never sends a
+    // fabricated point to Supabase's geography column.
+    final latitude = double.tryParse(_latitudeController.text.trim());
+    final longitude = double.tryParse(_longitudeController.text.trim());
+
     final business = BusinessModel(
       id: existing?.id ?? const Uuid().v4(),
       name: _nameController.text.trim(),
@@ -255,6 +274,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       description: _descriptionController.text.trim(),
       city: _city,
       locationText: _addressController.text.trim(),
+      latitude: latitude,
+      longitude: longitude,
       contactPhone: _phoneController.text.trim(),
       instagramLink: instagramHandle,
       tiktokLink: tiktokHandle,
@@ -278,25 +299,38 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       reviews: existing?.reviews ?? const [],
     );
 
-    if (existing != null) {
-      await _storageService.updateBusiness(business);
-      if (!mounted) return;
-      Navigator.of(context).pop(business);
-      return;
-    }
+    try {
+      if (existing != null) {
+        await _storageService.updateBusiness(business);
+        if (!mounted) return;
+        Navigator.of(context).pop(business);
+        return;
+      }
 
-    await _storageService.addBusiness(business);
-    // PedidosYa Partner-style elevation: finishing registration as a
-    // client instantly promotes the active Dev Mode persona to owner of
-    // this new business — reactive, no restart needed.
-    AuthService().elevateToOwner(business.id);
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => BusinessSuccessScreen(businessName: business.name),
-      ),
-      (route) => false,
-    );
+      await _storageService.addBusiness(business);
+      // Best-effort: promote the account to 'emprendedor' now that it owns
+      // a real listing. A failure here shouldn't block the success screen —
+      // the business itself already saved correctly, and markAsEmprendedor
+      // already no-ops for admin/auditor accounts.
+      try {
+        await _authService.markAsEmprendedor();
+      } on AuthServiceException {
+        // Ignored — see comment above.
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => BusinessSuccessScreen(businessName: business.name),
+        ),
+        (route) => false,
+      );
+    } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   String? _required(String? value, String message) {
@@ -502,6 +536,39 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           TextFormField(
             controller: _tiktokController,
             decoration: _decoration('tunegocio').copyWith(prefixText: '@ '),
+          ),
+          const SizedBox(height: 16),
+          _FieldLabel('Coordenadas exactas (opcional)'),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _latitudeController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: _decoration('Latitud, ej: 12.1364'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  controller: _longitudeController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  ),
+                  decoration: _decoration('Longitud, ej: -86.2514'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ubica tu negocio con precisión en el mapa (puedes copiarlas '
+            'de Google Maps).',
+            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
           ),
         ],
         backButton: _SecondaryButton(

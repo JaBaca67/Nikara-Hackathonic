@@ -1,110 +1,185 @@
-import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
 
-/// Stable ids for the two Dev Mode seed users — [DevRoleSwitcherSheet] and
-/// tests address them by id instead of re-constructing [UserModel]s.
-const kSofiaUserId = 'user_sofia';
-const kCarlosUserId = 'user_carlos';
+/// What a sign-up/sign-in attempt handed back — a friendly Spanish
+/// [message] on failure, ready to drop straight into a SnackBar, instead of
+/// callers having to interpret a raw [AuthException].
+class AuthResult {
+  const AuthResult._({required this.success, this.message});
 
-/// Local, in-memory, multi-role auth for "Dev Mode" — lets a developer/QA
-/// preview the client vs. business-owner experience instantly, without
-/// registering a real business or juggling multiple real device accounts.
-///
-/// This is intentionally separate from `UserSessionService` (the real,
-/// single, SharedPreferences-persisted device account that Login/Register/
-/// avatar-upload actually drive): nothing here is persisted, so it resets
-/// to Sofía every app restart. A singleton — every call to `AuthService()`
-/// returns the same instance, so [currentUserNotifier] is shared globally.
+  const AuthResult.success() : this._(success: true);
+
+  const AuthResult.failure(String message)
+    : this._(success: false, message: message);
+
+  final bool success;
+  final String? message;
+}
+
+class AuthServiceException implements Exception {
+  const AuthServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Real Supabase Auth + `profiles` table — replaces the earlier local/mock
+/// session system entirely. A thin singleton wrapper: Supabase's own
+/// [GoTrueClient] already persists the session across app restarts, so
+/// there's nothing else for this class to store.
 class AuthService {
   factory AuthService() => instance;
 
-  AuthService._internal() : currentUserNotifier = ValueNotifier(_seedSofia());
+  AuthService._internal();
 
   static final AuthService instance = AuthService._internal();
 
-  /// Reactive current Dev Mode identity — screens listen via
-  /// `addListener`/`ValueListenableBuilder` to update instantly when the
-  /// role switcher (or the wizard's owner-elevation flow) changes it.
-  final ValueNotifier<UserModel> currentUserNotifier;
+  SupabaseClient get _client => Supabase.instance.client;
 
-  UserModel get currentUser => currentUserNotifier.value;
+  User? get currentAuthUser => _client.auth.currentUser;
 
-  static UserModel _seedSofia() => const UserModel(
-    id: kSofiaUserId,
-    name: 'Sofía R.',
-    email: 'sofia.exploradora@nikara.test',
-    avatarUrl: '',
-    role: UserRole.client,
-    ownedBusinessIds: [],
-    favoriteBusinessIds: [],
-    points: 45,
-  );
+  bool get isLoggedIn => currentAuthUser != null;
 
-  static UserModel _seedCarlos() => const UserModel(
-    id: kCarlosUserId,
-    name: 'Carlos M.',
-    email: 'carlos.anfitrion@nikara.test',
-    avatarUrl: '',
-    role: UserRole.owner,
-    ownedBusinessIds: ['biz_1', 'biz_2'],
-    favoriteBusinessIds: [],
-    points: 320,
-  );
+  /// Fires on sign-in, sign-out, and token refresh — screens that need to
+  /// react to auth state changing while mounted can listen to this instead
+  /// of polling [currentAuthUser].
+  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
-  /// Switches the active Dev Mode identity to one of the two seed users —
-  /// anything other than [kCarlosUserId] falls back to Sofía.
-  void signInAs(String userId) {
-    currentUserNotifier.value = userId == kCarlosUserId
-        ? _seedCarlos()
-        : _seedSofia();
+  Future<UserModel?> getCurrentProfile() async {
+    final user = currentAuthUser;
+    if (user == null) return null;
+    return getProfileById(user.id);
   }
 
-  /// The role-elevation moment (PedidosYa Partner-style): a `client` who
-  /// finishes registering a real business through the wizard becomes an
-  /// `owner` of it immediately — reactive, no restart, no re-login. A
-  /// no-op if [businessId] is already in the current user's list.
-  void elevateToOwner(String businessId) {
-    final current = currentUserNotifier.value;
-    if (current.ownedBusinessIds.contains(businessId)) return;
-    currentUserNotifier.value = current.copyWith(
-      role: UserRole.owner,
-      ownedBusinessIds: [...current.ownedBusinessIds, businessId],
-    );
+  /// Looks up any user's profile by id — e.g. to show a business's real
+  /// owner, not just the signed-in viewer's own profile.
+  Future<UserModel?> getProfileById(String id) async {
+    try {
+      final row = await _client
+          .from('profiles')
+          .select()
+          .eq('id', id)
+          .maybeSingle();
+      return row == null ? null : UserModel.fromRow(row);
+    } on PostgrestException catch (e) {
+      throw AuthServiceException('No se pudo cargar el perfil: ${e.message}');
+    } catch (_) {
+      throw const AuthServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
   }
 
-  /// "➕ Simular paso por Registro Web / Partner" — the same elevation as
-  /// [elevateToOwner], against a pooled dev-fixture business id instead of
-  /// one created for real through the wizard, for a one-tap preview of the
-  /// client-to-owner transition.
-  void simulatePartnerRegistration() {
-    const pool = ['biz_1', 'biz_2', 'biz_3'];
-    final current = currentUserNotifier.value;
-    final nextId = pool.firstWhere(
-      (id) => !current.ownedBusinessIds.contains(id),
-      orElse: () => pool.last,
-    );
-    elevateToOwner(nextId);
+  /// Creates the `auth.users` row via Supabase Auth, then a matching
+  /// `profiles` row (id/full_name/email/role) — the two-step Supabase
+  /// signup pattern, since `profiles` isn't populated automatically without
+  /// a database trigger this project doesn't have set up.
+  Future<AuthResult> signUp({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phone,
+    UserRole role = UserRole.turista,
+  }) async {
+    try {
+      final response = await _client.auth.signUp(
+        email: email,
+        password: password,
+      );
+      final user = response.user;
+      if (user == null) {
+        return const AuthResult.failure(
+          'No se pudo crear la cuenta. Intenta de nuevo.',
+        );
+      }
+      await _client.from('profiles').insert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': email,
+        'phone': phone,
+        'role': role.name,
+      });
+      return const AuthResult.success();
+    } on AuthException catch (e) {
+      return AuthResult.failure(_friendlyAuthError(e));
+    } on PostgrestException catch (e) {
+      return AuthResult.failure(
+        'Tu cuenta se creó, pero no se pudo guardar tu perfil: ${e.message}',
+      );
+    } catch (_) {
+      return const AuthResult.failure(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
   }
 
-  /// Removes [businessId] from the current user's owned list — a no-op if
-  /// it isn't tracked there (e.g. it belongs to the real device account
-  /// instead of the active Dev Mode persona).
-  void removeOwnedBusiness(String businessId) {
-    final current = currentUserNotifier.value;
-    if (!current.ownedBusinessIds.contains(businessId)) return;
-    currentUserNotifier.value = current.copyWith(
-      ownedBusinessIds: current.ownedBusinessIds
-          .where((id) => id != businessId)
-          .toList(),
-    );
+  Future<AuthResult> signIn({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _client.auth.signInWithPassword(email: email, password: password);
+      return const AuthResult.success();
+    } on AuthException catch (e) {
+      return AuthResult.failure(_friendlyAuthError(e));
+    } catch (_) {
+      return const AuthResult.failure(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
   }
 
-  /// Test-only: resets Dev Mode back to its default seed state (Sofía) so
-  /// each test starts from a known baseline regardless of execution order
-  /// — the singleton would otherwise leak state between test cases.
-  @visibleForTesting
-  void resetForTesting() {
-    currentUserNotifier.value = _seedSofia();
+  Future<void> signOut() async {
+    await _client.auth.signOut();
+  }
+
+  /// Promotes the signed-in user's `profiles.role` to 'emprendedor' — called
+  /// right after they successfully register their first business. Only
+  /// touches accounts still on the default 'turista' role, so an 'admin' or
+  /// 'auditor' account that registers a business keeps its elevated role
+  /// instead of being silently downgraded.
+  Future<void> markAsEmprendedor() async {
+    final user = currentAuthUser;
+    if (user == null) return;
+    try {
+      final profile = await getProfileById(user.id);
+      if (profile == null || profile.role != UserRole.turista) return;
+      await _client
+          .from('profiles')
+          .update({'role': UserRole.emprendedor.name})
+          .eq('id', user.id);
+    } on PostgrestException catch (e) {
+      throw AuthServiceException(
+        'No se pudo actualizar tu perfil a emprendedor: ${e.message}',
+      );
+    } catch (_) {
+      throw const AuthServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
+  String _friendlyAuthError(AuthException e) {
+    final message = e.message.toLowerCase();
+    if (message.contains('invalid login credentials')) {
+      return 'Correo o contraseña incorrectos.';
+    }
+    if (message.contains('already registered') ||
+        message.contains('already exists')) {
+      return 'Ya existe una cuenta con este correo.';
+    }
+    if (message.contains('email not confirmed')) {
+      return 'Debes confirmar tu correo antes de iniciar sesión.';
+    }
+    if (message.contains('password')) {
+      return 'La contraseña no cumple los requisitos mínimos (6+ caracteres).';
+    }
+    if (message.contains('email')) {
+      return 'Correo no válido.';
+    }
+    return e.message;
   }
 }

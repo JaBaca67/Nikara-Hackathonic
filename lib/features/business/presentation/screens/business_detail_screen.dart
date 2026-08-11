@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
@@ -32,12 +34,14 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   static const _coverHeight = 320.0;
 
   final _favoritesService = FavoritesService();
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
+  final _extrasService = LocalProfileExtrasService();
   final _businessStorageService = BusinessStorageService();
 
   int _tab = 0;
   bool _isFavorite = false;
-  UserData? _currentUser;
+  UserModel? _currentProfile;
+  String? _currentAvatarPath;
 
   /// Starts as [widget.business] but gets a new `reviews` list appended
   /// in-place after a successful submission, so the rating/opinions/photos
@@ -65,9 +69,13 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _loadCurrentUser() async {
-    final user = await _sessionService.getUserData();
+    final profile = await _authService.getCurrentProfile();
+    final avatarPath = await _extrasService.getAvatarPath();
     if (!mounted) return;
-    setState(() => _currentUser = user);
+    setState(() {
+      _currentProfile = profile;
+      _currentAvatarPath = avatarPath;
+    });
   }
 
   void _openOwnerProfile() {
@@ -100,22 +108,22 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
     if (draft == null || !mounted) return;
 
-    final userData = _currentUser ?? await _sessionService.getUserData();
-    final authorName = userData != null && userData.fullName.trim().isNotEmpty
-        ? userData.fullName
+    final profile = _currentProfile ?? await _authService.getCurrentProfile();
+    final authorName = profile != null && profile.fullName.trim().isNotEmpty
+        ? profile.fullName
         : 'Viajero Nikara';
 
     final review = ReviewModel(
       id: const Uuid().v4(),
       authorName: authorName,
-      authorId: userData?.email ?? '',
+      authorId: _authService.currentAuthUser?.id ?? '',
       rating: draft.rating,
       comment: draft.comment,
       date: DateTime.now(),
       mediaPaths: draft.mediaPaths,
     );
 
-    await _businessStorageService.addReview(_business.id, review);
+    await _businessStorageService.addReview(_business, review);
     if (!mounted) return;
     setState(() {
       _businessState = _businessState.copyWith(
@@ -192,7 +200,8 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         _InformationTab(
                           business: _business,
                           onLocationTap: _openLocationOnMap,
-                          currentUser: _currentUser,
+                          currentProfile: _currentProfile,
+                          currentAvatarPath: _currentAvatarPath,
                           onOwnerTap: _openOwnerProfile,
                         )
                       else
@@ -681,13 +690,15 @@ class _InformationTab extends StatelessWidget {
   const _InformationTab({
     required this.business,
     required this.onLocationTap,
-    required this.currentUser,
+    required this.currentProfile,
+    required this.currentAvatarPath,
     required this.onOwnerTap,
   });
 
   final BusinessModel business;
   final VoidCallback onLocationTap;
-  final UserData? currentUser;
+  final UserModel? currentProfile;
+  final String? currentAvatarPath;
   final VoidCallback onOwnerTap;
 
   static const _sectionDivider = Divider(
@@ -727,7 +738,8 @@ class _InformationTab extends StatelessWidget {
         ),
       _HostSection(
         business: business,
-        currentUser: currentUser,
+        currentProfile: currentProfile,
+        currentAvatarPath: currentAvatarPath,
         onTap: onOwnerTap,
       ),
       _SchedulesAndSocialSection(business: business),
@@ -1146,21 +1158,24 @@ class _LocationSection extends StatelessWidget {
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
-    required this.currentUser,
+    required this.currentProfile,
+    required this.currentAvatarPath,
     required this.onTap,
   });
 
   final BusinessModel business;
-  final UserData? currentUser;
+  final UserModel? currentProfile;
+  final String? currentAvatarPath;
   final VoidCallback onTap;
 
   bool get _isLinkedToCurrentUser =>
       business.ownerId.isNotEmpty &&
-      currentUser != null &&
-      business.ownerId == currentUser!.email;
+      currentProfile != null &&
+      business.ownerId == currentProfile!.id;
 
   @override
   Widget build(BuildContext context) {
+    final isLinked = _isLinkedToCurrentUser;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1168,9 +1183,10 @@ class _HostSection extends StatelessWidget {
         const SizedBox(height: 12),
         _HostRow(
           hostName: business.hostName,
-          linkedUser: _isLinkedToCurrentUser ? currentUser : null,
+          linkedName: isLinked ? currentProfile!.fullName : null,
+          linkedAvatarPath: isLinked ? currentAvatarPath : null,
           hasWhatsapp: business.contactPhone.isNotEmpty,
-          onTap: _isLinkedToCurrentUser ? onTap : null,
+          onTap: isLinked ? onTap : null,
         ),
       ],
     );
@@ -1281,7 +1297,8 @@ class _IconValueRow extends StatelessWidget {
 class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
-    required this.linkedUser,
+    required this.linkedName,
+    required this.linkedAvatarPath,
     required this.hasWhatsapp,
     required this.onTap,
   });
@@ -1291,17 +1308,18 @@ class _HostRow extends StatelessWidget {
   /// Non-null only when this business's [BusinessModel.ownerId] matches
   /// the device's signed-in account — the one case with a real photo/name
   /// to show instead of the wizard's free-text [hostName].
-  final UserData? linkedUser;
+  final String? linkedName;
+  final String? linkedAvatarPath;
   final bool hasWhatsapp;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final linked = linkedUser;
-    final displayName = linked != null && linked.fullName.trim().isNotEmpty
-        ? linked.fullName
+    final linkedName = this.linkedName;
+    final displayName = linkedName != null && linkedName.trim().isNotEmpty
+        ? linkedName
         : (hostName.isEmpty ? 'Anfitrión Nikara' : hostName);
-    final avatarPath = linked?.avatarPath;
+    final avatarPath = linkedAvatarPath;
     final initial = displayName.trim().isEmpty
         ? '?'
         : displayName.trim()[0].toUpperCase();

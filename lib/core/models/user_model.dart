@@ -1,57 +1,63 @@
-enum UserRole { client, owner }
+/// Mirrors Supabase's `public.profiles.role` enum (`user_role`) exactly —
+/// the member names below (`.name`) are sent/read as-is against Postgres.
+enum UserRole { turista, emprendedor, admin, auditor }
 
-/// A "Dev Mode" test identity — see [AuthService]. Distinct from
-/// [UserSessionService]'s real, single, persisted device account: this
-/// exists purely so a developer/QA can preview the client vs.
-/// business-owner experience instantly, without registering a real
-/// business or juggling multiple real logins.
+UserRole _roleFromString(String? raw) {
+  switch (raw) {
+    case 'emprendedor':
+      return UserRole.emprendedor;
+    case 'admin':
+      return UserRole.admin;
+    case 'auditor':
+      return UserRole.auditor;
+    default:
+      return UserRole.turista;
+  }
+}
+
+/// A row from Supabase's `profiles` table — `id` is the same uuid as
+/// `auth.users.id`. This is the app's one real, backend-verified user
+/// identity (see [AuthService]); there is no local/mock stand-in for it.
 class UserModel {
   const UserModel({
     required this.id,
-    required this.name,
+    required this.fullName,
     required this.email,
-    required this.avatarUrl,
     required this.role,
-    this.ownedBusinessIds = const [],
-    this.favoriteBusinessIds = const [],
+    this.phone = '',
     this.points = 0,
   });
 
   final String id;
-  final String name;
+  final String fullName;
   final String email;
-  final String avatarUrl;
   final UserRole role;
-  final List<String> ownedBusinessIds;
-  final List<String> favoriteBusinessIds;
+  final String phone;
+
+  /// `profiles.points` — not yet written to by any flow in this app (no
+  /// gamification action currently syncs to Supabase), so this reads back
+  /// whatever value the row already has, genuinely 0 for a fresh signup.
   final int points;
 
-  /// First-name + last-initial, e.g. "Sofía R." -> "SR" — used for the
-  /// avatar fallback since [avatarUrl] is empty for both seed users.
+  /// First-name + last-initial, e.g. "Ixchel Galo" -> "IG" — used for the
+  /// avatar fallback since `profiles` has no avatar column.
   String get initials {
-    final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty);
     final letters = parts.map((p) => p[0]).take(2).join().toUpperCase();
     return letters.isEmpty ? '?' : letters;
   }
 
-  UserModel copyWith({
-    String? name,
-    String? email,
-    String? avatarUrl,
-    UserRole? role,
-    List<String>? ownedBusinessIds,
-    List<String>? favoriteBusinessIds,
-    int? points,
-  }) {
+  factory UserModel.fromRow(Map<String, dynamic> row) {
     return UserModel(
-      id: id,
-      name: name ?? this.name,
-      email: email ?? this.email,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
-      role: role ?? this.role,
-      ownedBusinessIds: ownedBusinessIds ?? this.ownedBusinessIds,
-      favoriteBusinessIds: favoriteBusinessIds ?? this.favoriteBusinessIds,
-      points: points ?? this.points,
+      id: row['id'] as String,
+      fullName: row['full_name'] as String? ?? '',
+      email: row['email'] as String? ?? '',
+      role: _roleFromString(row['role'] as String?),
+      phone: row['phone'] as String? ?? '',
+      points: (row['points'] as num?)?.toInt() ?? 0,
     );
   }
 }

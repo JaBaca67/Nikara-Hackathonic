@@ -117,12 +117,21 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadBusinesses() async {
-    final businesses = await _businessStorageService.getBusinesses();
-    if (!mounted) return;
-    setState(() {
-      _businesses = businesses;
-      _businessPins = _buildBusinessPins(businesses);
-    });
+    // Businesses are a secondary overlay on top of the mock destinations
+    // map (which always renders); a connection failure here shouldn't take
+    // over the whole screen — just leave the business pins empty and let
+    // the user know, quietly, instead of blocking the map itself.
+    try {
+      final businesses = await _businessStorageService.getBusinesses();
+      if (!mounted) return;
+      setState(() {
+        _businesses = businesses;
+        _businessPins = _buildBusinessPins(businesses);
+      });
+    } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   List<DestinationModel> get _filteredDestinations {

@@ -1,6 +1,6 @@
 import 'package:nikara_app/core/gamification/badges_logic.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 
 /// Computes the current user's real [UserStats] from the app's actual
@@ -9,27 +9,27 @@ class UserStatsService {
   UserStatsService({
     FavoritesService? favoritesService,
     BusinessStorageService? businessStorageService,
-    UserSessionService? sessionService,
+    AuthService? authService,
   }) : _favoritesService = favoritesService ?? FavoritesService(),
        _businessStorageService =
            businessStorageService ?? BusinessStorageService(),
-       _sessionService = sessionService ?? UserSessionService();
+       _authService = authService ?? AuthService();
 
   final FavoritesService _favoritesService;
   final BusinessStorageService _businessStorageService;
-  final UserSessionService _sessionService;
+  final AuthService _authService;
 
   Future<UserStats> getStats() async {
     final favorites = await _favoritesService.getFavoriteIds();
-    final userData = await _sessionService.getUserData();
+    final userId = _authService.currentAuthUser?.id;
 
     // Count real reviews the signed-in account wrote — across EVERY
     // business, not just their own — matched by ReviewModel.authorId.
-    final myReviewsCount = userData == null
+    final myReviewsCount = userId == null
         ? 0
         : (await _businessStorageService.getBusinesses())
               .expand((b) => b.reviews)
-              .where((r) => r.authorId == userData.email)
+              .where((r) => r.authorId == userId)
               .length;
 
     return UserStats(

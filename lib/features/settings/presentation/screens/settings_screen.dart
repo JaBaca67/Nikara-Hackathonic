@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -16,17 +16,33 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
 
-  String _name = 'Ixchel Galo';
-  String _email = 'sofia@email.com';
-  String _phone = '+505 8823 4490';
+  String _name = '';
+  String _email = '';
+  String _phone = '';
 
   bool _bookingAlerts = true;
   bool _ecoCampaigns = true;
   bool _offers = false;
   bool _publicProfile = true;
   bool _shareLocation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await _authService.getCurrentProfile();
+    if (!mounted || profile == null) return;
+    setState(() {
+      _name = profile.fullName;
+      _email = profile.email;
+      _phone = profile.phone;
+    });
+  }
 
   Future<void> _openEditProfile() async {
     final result = await showDialog<(String, String, String)>(
@@ -85,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true) return;
-    await _sessionService.logout();
+    await _authService.signOut();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),

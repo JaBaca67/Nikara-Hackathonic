@@ -1,9 +1,13 @@
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 
-/// A tourism business registered locally through the "Registra tu negocio"
-/// wizard. Everything is device-local/mock — there is no backend, so
-/// [id] is a client-generated uuid and photos are on-device file paths
-/// rather than uploaded URLs.
+/// A tourism business registered through the "Registra tu negocio" wizard.
+/// Core fields (see [BusinessStorageService]) persist to Supabase's
+/// `businesses` table; [id] is still a client-generated uuid (the wizard
+/// assigns it before the first insert). A handful of fields the wizard
+/// collects have no column there yet — see [BusinessStorageService]'s doc
+/// for exactly which ones and why — so [localImagePaths] are on-device
+/// file paths uploaded as plain strings into the `photos` array rather than
+/// through real object storage.
 class BusinessModel {
   const BusinessModel({
     required this.id,
@@ -59,10 +63,9 @@ class BusinessModel {
   final List<String> activities;
   final String hostName;
 
-  /// [UserSessionService]'s account email at the moment this business was
-  /// created — the closest thing this backend-less, single-account-per-
-  /// device app has to a real user id. Empty for businesses saved before
-  /// this field existed. Drives "Mis Negocios" in Profile and the
+  /// Supabase `auth.users.id` (== `profiles.id`) of whoever created this
+  /// business — a real, backend-verified uuid. Empty for businesses saved
+  /// before real auth existed. Drives "Mis Negocios" in Profile and the
   /// Anfitrión section's real-profile link in BusinessDetailScreen.
   final String ownerId;
   final String schedules;

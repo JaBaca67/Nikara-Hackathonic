@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
 import 'package:nikara_app/models/mock_data.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
   bool _obscurePassword = true;
   bool _isSubmitting = false;
 
@@ -97,30 +97,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isSubmitting = true);
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
-    final isValidLogin = await _sessionService.validateLogin(
-      email,
-      password,
-    );
+    final result = await _authService.signIn(email: email, password: password);
     if (!mounted) return;
 
-    if (isValidLogin) {
-      Navigator.of(context).pushReplacement(
+    if (result.success) {
+      // Clears the login screen (and anything behind it) from the stack so
+      // the back button can't return to it once inside the app.
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
         ),
+        (route) => false,
       );
       return;
     }
 
     setState(() => _isSubmitting = false);
-    final userData = await _sessionService.getUserData();
-    if (!mounted) return;
-    final message = userData == null
-        ? 'No existe una cuenta registrada'
-        : 'Credenciales incorrectas';
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message ?? 'No se pudo iniciar sesión')),
+    );
   }
 
   @override
@@ -270,7 +265,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              _PrimaryButton(onPressed: _submit, label: 'Siguiente'),
+              _PrimaryButton(
+                onPressed: _isSubmitting ? null : _submit,
+                label: 'Siguiente',
+                isLoading: _isSubmitting,
+              ),
               const SizedBox(height: 40),
               const _SocialAuthRow(),
               const SizedBox(height: 24),
@@ -426,21 +425,30 @@ class _GradientBackground extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.onPressed, required this.label});
+  const _PrimaryButton({
+    required this.onPressed,
+    required this.label,
+    this.isLoading = false,
+  });
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final String label;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = onPressed != null;
     return Container(
       width: double.infinity,
       height: 48,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment(0.00, 0.00),
-          end: Alignment(1.00, 1.00),
-          colors: [AppColors.primary500, AppColors.primary700],
+        gradient: LinearGradient(
+          begin: const Alignment(0.00, 0.00),
+          end: const Alignment(1.00, 1.00),
+          colors: [
+            AppColors.primary500.withValues(alpha: isEnabled ? 1 : 0.6),
+            AppColors.primary700.withValues(alpha: isEnabled ? 1 : 0.6),
+          ],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
@@ -456,7 +464,18 @@ class _PrimaryButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onPressed,
-          child: Center(child: Text(label, style: AppTextStyles.buttonLarge)),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation(AppColors.textInk),
+                    ),
+                  )
+                : Text(label, style: AppTextStyles.buttonLarge),
+          ),
         ),
       ),
     );
@@ -602,10 +621,10 @@ class _InputField extends StatelessWidget {
               if (isPassword)
                 GestureDetector(
                   onTap: onToggleObscure,
-                  child: SvgPicture.asset(
-                    'assets/images/icon_eye.svg',
-                    width: 16,
-                    height: 16,
+                  child: Icon(
+                    obscureText ? Icons.visibility_off : Icons.visibility,
+                    size: 18,
+                    color: AppColors.neutral600,
                   ),
                 ),
             ],

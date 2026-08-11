@@ -1,31 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:nikara_app/core/dev/dev_business_fixtures.dart';
 import 'package:nikara_app/core/gamification/badges_logic.dart';
 import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
-import 'package:nikara_app/features/profile/presentation/widgets/dev_role_switcher_sheet.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Perfil screen (Figma nodes 377:483 "Perfil 1" and 421:361 "Perfil 2").
-/// Every number on this screen — the header photo, name, location, the 3
-/// stat counters, the level/progress card, the favorites list and the
-/// badge grid — is computed live from [UserSessionService],
-/// [FavoritesService] and [UserStatsService]. There is no mock/fallback
-/// data baked in; an empty state renders instead when there's genuinely
-/// nothing to show yet.
+/// The header name comes from the real Supabase [AuthService] profile; the
+/// 3 stat counters, the level/progress card, the favorites list and the
+/// badge grid are computed live from [FavoritesService] and
+/// [UserStatsService]. There is no mock/fallback data baked in; an empty
+/// state renders instead when there's genuinely nothing to show yet.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onExploreRequested});
 
@@ -39,14 +36,16 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
+  final _extrasService = LocalProfileExtrasService();
   final _favoritesService = FavoritesService();
   final _userStatsService = UserStatsService();
   final _businessStorageService = BusinessStorageService();
-  final _authService = AuthService();
 
   bool _isLoading = true;
-  UserData? _userData;
+  String? _loadError;
+  UserModel? _profile;
+  String? _avatarPath;
   List<DestinationModel> _favoriteDestinations = const [];
   List<BusinessModel> _favoriteBusinesses = const [];
   UserStats _stats = const UserStats(
@@ -63,15 +62,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // FavoritesService.idsNotifier fires whenever ANY screen
     // (BusinessDetailScreen's AppBar heart included) toggles a favorite;
     // BusinessStorageService.revision fires on every business write
-    // (including a new review, which changes this screen's points total);
-    // AuthService.currentUserNotifier fires whenever the Dev Mode role
-    // switcher (or the wizard's owner-elevation flow) changes the active
-    // identity. All three keep this screen in sync without a restart or
-    // manual refresh, even while Profile sits inert in the background
-    // inside MainLayout's IndexedStack.
+    // (including a new review, which changes this screen's points total).
+    // Both keep this screen in sync without a restart or manual refresh,
+    // even while Profile sits inert in the background inside MainLayout's
+    // IndexedStack.
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
-    _authService.currentUserNotifier.addListener(_onDataChanged);
     _loadAll();
   }
 
@@ -79,7 +75,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _favoritesService.idsNotifier.removeListener(_onDataChanged);
     BusinessStorageService.revision.removeListener(_onDataChanged);
-    _authService.currentUserNotifier.removeListener(_onDataChanged);
     super.dispose();
   }
 
@@ -89,58 +84,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadAll() async {
-    final userData = await _sessionService.getUserData();
-    final favoriteIds = await _favoritesService.getFavoriteIds();
-    final stats = await _userStatsService.getStats();
-    final allBusinesses = await _businessStorageService.getBusinesses();
-    if (!mounted) return;
+    setState(() => _loadError = null);
+    try {
+      final profile = await _authService.getCurrentProfile();
+      final avatarPath = await _extrasService.getAvatarPath();
+      final favoriteIds = await _favoritesService.getFavoriteIds();
+      final stats = await _userStatsService.getStats();
+      final allBusinesses = await _businessStorageService.getBusinesses();
+      if (!mounted) return;
 
-    // The bug: favorites can be either a mock DestinationModel id
-    // ('isletas-de-granada', from Home/Map) OR a business uuid (from
-    // BusinessDetailScreen's heart) — both share the same id set in
-    // FavoritesService, so BOTH sources must be cross-referenced here.
-    // Matching only mockDestinations (the old code) silently dropped every
-    // favorited business from this tab even though it was persisted fine.
-    final favoriteDestinations = mockDestinations
-        .where((d) => favoriteIds.contains(d.id))
-        .toList(growable: false);
-    final favoriteBusinesses = allBusinesses
-        .where((b) => favoriteIds.contains(b.id))
-        .toList(growable: false);
+      // The bug: favorites can be either a mock DestinationModel id
+      // ('isletas-de-granada', from Home/Map) OR a business uuid (from
+      // BusinessDetailScreen's heart) — both share the same id set in
+      // FavoritesService, so BOTH sources must be cross-referenced here.
+      // Matching only mockDestinations (the old code) silently dropped
+      // every favorited business from this tab even though it was
+      // persisted fine.
+      final favoriteDestinations = mockDestinations
+          .where((d) => favoriteIds.contains(d.id))
+          .toList(growable: false);
+      final favoriteBusinesses = allBusinesses
+          .where((b) => favoriteIds.contains(b.id))
+          .toList(growable: false);
 
-    // "Mis Negocios" is driven by the active Dev Mode identity's role/
-    // ownedBusinessIds (AuthService), not BusinessModel.ownerId directly —
-    // each id resolves against real storage first, falling back to the
-    // in-memory dev fixtures (Carlos's seeded businesses, never persisted)
-    // when it's not there yet.
-    final authUser = _authService.currentUser;
-    final storedById = {for (final b in allBusinesses) b.id: b};
-    final myBusinesses = authUser.role == UserRole.owner
-        ? [
-            for (final id in authUser.ownedBusinessIds)
-              if (storedById[id] != null)
-                storedById[id]!
-              else if (devBusinessFixtures[id] != null)
-                devBusinessFixtures[id]!,
-          ]
-        : const <BusinessModel>[];
+      final currentUserId = _authService.currentAuthUser?.id;
+      final myBusinesses = currentUserId == null
+          ? const <BusinessModel>[]
+          : allBusinesses
+                .where((b) => b.ownerId == currentUserId)
+                .toList(growable: false);
 
-    debugPrint(
-      '[ProfileScreen] _loadAll: ${favoriteIds.length} favoriteIds -> '
-      '${favoriteDestinations.length} destinos + '
-      '${favoriteBusinesses.length} negocios | '
-      'authUser=${authUser.name} role=${authUser.role} -> '
-      '${myBusinesses.length} negocios propios',
-    );
-
-    setState(() {
-      _userData = userData;
-      _favoriteDestinations = favoriteDestinations;
-      _favoriteBusinesses = favoriteBusinesses;
-      _stats = stats;
-      _myBusinesses = myBusinesses;
-      _isLoading = false;
-    });
+      setState(() {
+        _profile = profile;
+        _avatarPath = avatarPath;
+        _favoriteDestinations = favoriteDestinations;
+        _favoriteBusinesses = favoriteBusinesses;
+        _stats = stats;
+        _myBusinesses = myBusinesses;
+        _isLoading = false;
+      });
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _editBusiness(BusinessModel business) async {
@@ -179,16 +174,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
     if (confirmed != true) return;
-    // deleteBusiness is a harmless no-op for a business that only exists
-    // as a dev fixture (never persisted); removeOwnedBusiness is what
-    // actually makes it disappear from "Mis Negocios" in that case.
     await _businessStorageService.deleteBusiness(business.id);
-    _authService.removeOwnedBusiness(business.id);
     await _loadAll();
-  }
-
-  void _openDevRoleSwitcher() {
-    DevRoleSwitcherSheet.show(context);
   }
 
   Future<void> _toggleFavorite(String id) async {
@@ -203,7 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       maxWidth: 800,
     );
     if (picked == null) return;
-    await _sessionService.updateAvatar(picked.path);
+    await _extrasService.updateAvatar(picked.path);
     await _loadAll();
   }
 
@@ -273,28 +260,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    // Points (and, so the level card stays coherent with the number shown
-    // in the stats row, the level itself) come from the active Dev Mode
-    // identity — Sofía's/Carlos's fixed seed points — rather than the real
-    // UserStatsService computation, so switching profiles visibly changes
-    // this number as intended. Favorites/badges stay driven by real data.
-    final authUser = _authService.currentUser;
-    final points = authUser.points;
+    if (_loadError != null) {
+      return Scaffold(
+        backgroundColor: AppColors.settingsBackground,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.wifi_off_rounded,
+                    size: 44,
+                    color: AppColors.settingsDanger,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No se pudo cargar tu perfil',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.h6.copyWith(
+                      color: AppColors.settingsTextDark,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _loadError!,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyText2.copyWith(
+                      color: AppColors.settingsTextMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: () {
+                      setState(() => _isLoading = true);
+                      _loadAll();
+                    },
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Reintentar'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary500,
+                      foregroundColor: AppColors.textInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final points = _userStatsService.computePoints(_stats);
     final levelInfo = GamificationEngine.calculate(points);
     final badges = BadgesLogic.build(_stats);
     final unlockedCount = badges.where((b) => b.unlocked).length;
-    final isOwner = authUser.role == UserRole.owner;
+    final fullName = _profile == null || _profile!.fullName.trim().isEmpty
+        ? 'Viajero Nikara'
+        : _profile!.fullName;
+    final initials = _profile?.initials ?? '?';
 
     return Scaffold(
       backgroundColor: AppColors.settingsBackground,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openDevRoleSwitcher,
-        tooltip: 'Cambiar perfil (Dev Mode)',
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.settingsTextDark,
-        icon: const Text('🧪', style: TextStyle(fontSize: 16)),
-        label: const Text('Dev Mode'),
-      ),
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -304,7 +332,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _ProfileHeaderCard(
-                userData: _userData,
+                fullName: fullName,
+                initials: initials,
+                avatarPath: _avatarPath,
                 tripsCount: _stats.tripsCount,
                 badgesCount: unlockedCount,
                 points: points,
@@ -338,9 +368,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onLockedTap: _showBadgeRequirement,
                       ),
               ),
-              if (isOwner)
+              if (_myBusinesses.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                   child: _MyBusinessesSection(
                     businesses: _myBusinesses,
                     onEdit: _editBusiness,
@@ -357,7 +387,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
 class _ProfileHeaderCard extends StatelessWidget {
   const _ProfileHeaderCard({
-    required this.userData,
+    required this.fullName,
+    required this.initials,
+    required this.avatarPath,
     required this.tripsCount,
     required this.badgesCount,
     required this.points,
@@ -367,7 +399,9 @@ class _ProfileHeaderCard extends StatelessWidget {
     required this.onShareTap,
   });
 
-  final UserData? userData;
+  final String fullName;
+  final String initials;
+  final String? avatarPath;
   final int tripsCount;
   final int badgesCount;
   final int points;
@@ -378,10 +412,6 @@ class _ProfileHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fullName = userData == null || userData!.fullName.trim().isEmpty
-        ? 'Viajero Nikara'
-        : userData!.fullName;
-
     return Container(
       color: Colors.white,
       child: Column(
@@ -419,28 +449,18 @@ class _ProfileHeaderCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _ProfileAvatar(userData: userData, onTap: onAvatarTap),
+                _ProfileAvatar(
+                  avatarPath: avatarPath,
+                  initials: initials,
+                  onTap: onAvatarTap,
+                ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        fullName,
-                        style: AppTextStyles.profileName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      if (userData?.location.isNotEmpty ?? false)
-                        Text(
-                          userData!.location,
-                          style: AppTextStyles.profileLocation,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                    ],
+                  child: Text(
+                    fullName,
+                    style: AppTextStyles.profileName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -482,15 +502,20 @@ class _HeaderIconButton extends StatelessWidget {
 }
 
 class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({required this.userData, required this.onTap});
+  const _ProfileAvatar({
+    required this.avatarPath,
+    required this.initials,
+    required this.onTap,
+  });
 
-  final UserData? userData;
+  final String? avatarPath;
+  final String initials;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final avatarPath = userData?.avatarPath;
-    final hasPhoto = avatarPath != null && avatarPath.isNotEmpty;
+    final path = avatarPath;
+    final hasPhoto = path != null && path.isNotEmpty;
 
     return GestureDetector(
       onTap: onTap,
@@ -523,12 +548,12 @@ class _ProfileAvatar extends StatelessWidget {
           ),
           child: ClipOval(
             child: hasPhoto
-                ? LocalImage(path: avatarPath)
+                ? LocalImage(path: path)
                 : Container(
                     color: AppColors.profileDivider,
                     alignment: Alignment.center,
                     child: Text(
-                      userData?.initials ?? '?',
+                      initials,
                       style: AppTextStyles.h5.copyWith(
                         color: AppColors.settingsTextDark,
                       ),

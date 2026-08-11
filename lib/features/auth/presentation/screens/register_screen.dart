@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:nikara_app/core/services/user_session_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -20,7 +20,7 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _sessionService = UserSessionService();
+  final _authService = AuthService();
 
   int _step = 0;
   bool _isSubmitting = false;
@@ -92,19 +92,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!(_step2FormKey.currentState?.validate() ?? false)) return;
 
     setState(() => _isSubmitting = true);
-    await _sessionService.registerUser(
-      firstName: _firstNameController.text.trim(),
-      lastName: _lastNameController.text.trim(),
-      phone: _phoneController.text.trim(),
+    final fullName =
+        '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+            .trim();
+    final result = await _authService.signUp(
+      fullName: fullName,
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
+      phone: _phoneController.text.trim(),
     );
     if (!mounted) return;
 
-    Navigator.of(context).pushReplacement(
+    if (!result.success) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message ?? 'No se pudo crear la cuenta')),
+      );
+      return;
+    }
+
+    // Clears the whole registration stack (both steps) so the back button
+    // can't return to a completed sign-up flow once inside the app.
+    Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
       ),
+      (route) => false,
     );
   }
 
@@ -311,7 +324,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 4),
             _PrimaryButton(
               onPressed: _isSubmitting ? null : _submit,
-              label: _isSubmitting ? 'Creando cuenta...' : 'Finalizar',
+              label: 'Finalizar',
+              isLoading: _isSubmitting,
             ),
           ],
         ),
@@ -472,10 +486,15 @@ class _RegisterGradientBackground extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.onPressed, required this.label});
+  const _PrimaryButton({
+    required this.onPressed,
+    required this.label,
+    this.isLoading = false,
+  });
 
   final VoidCallback? onPressed;
   final String label;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +525,18 @@ class _PrimaryButton extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onPressed,
-          child: Center(child: Text(label, style: AppTextStyles.buttonLarge)),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation(AppColors.textInk),
+                    ),
+                  )
+                : Text(label, style: AppTextStyles.buttonLarge),
+          ),
         ),
       ),
     );
@@ -601,10 +631,10 @@ class _RegisterField extends StatelessWidget {
               if (isPassword)
                 GestureDetector(
                   onTap: onToggleObscure,
-                  child: SvgPicture.asset(
-                    'assets/images/icon_eye.svg',
-                    width: 16,
-                    height: 16,
+                  child: Icon(
+                    obscureText ? Icons.visibility_off : Icons.visibility,
+                    size: 18,
+                    color: AppColors.neutral600,
                   ),
                 ),
             ],
