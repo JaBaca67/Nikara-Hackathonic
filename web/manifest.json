@@ -1,6 +1,6 @@
 {
-    "name": "nikara_app",
-    "short_name": "nikara_app",
+    "name": "Níkara",
+    "short_name": "Níkara",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

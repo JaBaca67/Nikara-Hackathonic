@@ -118,7 +118,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                       const SizedBox(height: 10),
                       Text(
                         'Tu establecimiento ya es visible para toda la '
-                        'comunidad de Nikara',
+                        'comunidad de Níkara',
                         textAlign: TextAlign.center,
                         style: AppTextStyles.bodyText2.copyWith(
                           color: AppColors.neutral600,

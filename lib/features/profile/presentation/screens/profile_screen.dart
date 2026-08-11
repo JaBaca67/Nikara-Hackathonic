@@ -151,7 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface100,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('¿Eliminar negocio?'),
         content: Text(
@@ -210,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface100,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
@@ -317,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final badges = BadgesLogic.build(_stats);
     final unlockedCount = badges.where((b) => b.unlocked).length;
     final fullName = _profile == null || _profile!.fullName.trim().isEmpty
-        ? 'Viajero Nikara'
+        ? 'Viajero Níkara'
         : _profile!.fullName;
     final initials = _profile?.initials ?? '?';
 
@@ -413,7 +413,7 @@ class _ProfileHeaderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: AppColors.surface100,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -543,7 +543,7 @@ class _ProfileAvatar extends StatelessWidget {
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             border: Border.fromBorderSide(
-              BorderSide(color: Colors.white, width: 1.6),
+              BorderSide(color: AppColors.surface100, width: 1.6),
             ),
           ),
           child: ClipOval(
@@ -643,7 +643,7 @@ class _LevelProgressCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
@@ -744,7 +744,7 @@ class _ProfileTabSelector extends StatelessWidget {
       height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
@@ -890,7 +890,7 @@ class _FavoritesEmptyState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -961,7 +961,7 @@ class _FavoritePlaceCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
@@ -1059,7 +1059,7 @@ class _FavoriteBusinessCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
@@ -1188,7 +1188,7 @@ class _BadgeCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
           decoration: BoxDecoration(
-            color: unlocked ? Colors.white : AppColors.progressTrack,
+            color: unlocked ? AppColors.surface100 : AppColors.progressTrack,
             borderRadius: BorderRadius.circular(18),
             boxShadow: unlocked
                 ? [
@@ -1325,7 +1325,7 @@ class _MyBusinessCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(

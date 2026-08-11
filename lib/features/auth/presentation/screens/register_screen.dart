@@ -38,9 +38,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  /// Same "only nag after the first failed attempt" UX as [LoginScreen] —
+  /// starts disabled so nothing turns red while the user is still typing
+  /// their very first keystroke in either step.
+  AutovalidateMode _step1AutovalidateMode = AutovalidateMode.disabled;
+  AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
+
   static final RegExp _emailRegex = RegExp(
     r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
   );
+
+  @override
+  void initState() {
+    super.initState();
+    _passwordController.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -55,7 +67,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   void _goToStep2() {
     FocusScope.of(context).unfocus();
-    if (!(_step1FormKey.currentState?.validate() ?? false)) return;
+    if (!(_step1FormKey.currentState?.validate() ?? false)) {
+      setState(() => _step1AutovalidateMode = AutovalidateMode.onUserInteraction);
+      return;
+    }
     setState(() => _step = 1);
   }
 
@@ -89,7 +104,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
-    if (!(_step2FormKey.currentState?.validate() ?? false)) return;
+    if (!(_step2FormKey.currentState?.validate() ?? false)) {
+      setState(() => _step2AutovalidateMode = AutovalidateMode.onUserInteraction);
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     final fullName =
@@ -156,7 +174,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         children: [
                           SizedBox(
                             height: logoAreaHeight,
-                            child: const Center(child: _RegisterLogo()),
+                            // _RegisterLogo's content (150px image + 40sp
+                            // wordmark) is fixed-size, but logoAreaHeight
+                            // scales down proportionally with the screen —
+                            // on a short viewport (e.g. iPhone SE) that
+                            // proportional area can shrink below the logo's
+                            // natural height, overflowing the Column.
+                            // FittedBox lets it scale down to fit instead —
+                            // same fix LoginScreen already has for the
+                            // identical layout.
+                            child: const Center(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: _RegisterLogo(),
+                              ),
+                            ),
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(
@@ -200,7 +232,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             Text('Crea una cuenta', style: AppTextStyles.registerHeading),
             const SizedBox(height: 4),
-            Text('Únete a la comunidad Nikara', style: AppTextStyles.body),
+            Text('Únete a la comunidad Níkara', style: AppTextStyles.body),
             const SizedBox(height: 20),
             _StepIndicator(step: _step),
             const SizedBox(height: 18),
@@ -230,6 +262,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       key: const ValueKey('register-step-1'),
       child: Form(
         key: _step1FormKey,
+        autovalidateMode: _step1AutovalidateMode,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -272,6 +305,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       key: const ValueKey('register-step-2'),
       child: Form(
         key: _step2FormKey,
+        autovalidateMode: _step2AutovalidateMode,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -296,6 +330,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               },
               validator: _validatePassword,
             ),
+            if (_passwordController.text.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _PasswordStrengthMeter(password: _passwordController.text),
+            ],
             const SizedBox(height: 14),
             _RegisterField(
               label: 'Confirmar contraseña',
@@ -384,7 +422,7 @@ class _StepCircle extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: filled ? AppColors.primary500 : Colors.white,
+        color: filled ? AppColors.primary500 : AppColors.surface100,
         border: Border.all(color: AppColors.primary500, width: 1),
       ),
       child: Text('$number', style: AppTextStyles.stepIndicatorNumber),
@@ -412,7 +450,7 @@ class _RegisterLogo extends StatelessWidget {
         ),
         Transform.translate(
           offset: const Offset(0, -1),
-          child: Text('NIKARA', style: AppTextStyles.logoWordmark),
+          child: Text('NÍKARA', style: AppTextStyles.logoWordmark),
         ),
       ],
     );
@@ -539,6 +577,113 @@ class _PrimaryButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Live checklist + strength bar shown under the password field as the
+/// user types — UX audit addition: real-time feedback instead of only
+/// finding out a password is too weak after tapping "Finalizar". Purely
+/// informational (the actual submit gate stays the existing 6-character
+/// minimum in [_RegisterScreenState._validatePassword]); this doesn't
+/// silently tighten the account-creation policy underneath the user.
+class _PasswordStrengthMeter extends StatelessWidget {
+  const _PasswordStrengthMeter({required this.password});
+
+  final String password;
+
+  bool get _hasMinLength => password.length >= 8;
+  bool get _hasUpperAndLower =>
+      password.contains(RegExp('[a-z]')) && password.contains(RegExp('[A-Z]'));
+  bool get _hasDigit => password.contains(RegExp(r'[0-9]'));
+  bool get _hasSymbol => password.contains(RegExp(r'[^a-zA-Z0-9]'));
+
+  int get _score =>
+      [_hasMinLength, _hasUpperAndLower, _hasDigit, _hasSymbol]
+          .where((met) => met)
+          .length;
+
+  (String, Color) get _label => switch (_score) {
+    0 || 1 => ('Débil', AppColors.settingsDanger),
+    2 => ('Media', AppColors.primary400),
+    3 => ('Fuerte', AppColors.bookingConfirmed),
+    _ => ('Muy fuerte', AppColors.ecoForest),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _label;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Seguridad de contraseña', style: AppTextStyles.inputLabel),
+              Text(
+                label,
+                style: AppTextStyles.inputLabel.copyWith(color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: _score / 4,
+              minHeight: 4,
+              backgroundColor: AppColors.surface200,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            children: [
+              _Criterion(met: _hasMinLength, label: 'Mínimo 8 caracteres'),
+              _Criterion(met: _hasUpperAndLower, label: 'Mayúsculas y minúsculas'),
+              _Criterion(met: _hasDigit, label: 'Al menos 1 número'),
+              _Criterion(met: _hasSymbol, label: 'Al menos 1 símbolo'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Criterion extends StatelessWidget {
+  const _Criterion({required this.met, required this.label});
+
+  final bool met;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          met ? Icons.check_circle : Icons.circle_outlined,
+          size: 14,
+          color: met ? AppColors.ecoForest : AppColors.neutral600,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: AppTextStyles.legend.copyWith(
+            color: met ? AppColors.neutral900 : AppColors.neutral600,
+          ),
+        ),
+      ],
     );
   }
 }

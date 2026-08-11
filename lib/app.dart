@@ -12,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nikara',
+      title: 'Níkara',
       debugShowCheckedModeBanner: false, // Esto quita la fea cinta roja de "DEBUG"
       theme: AppTheme.lightTheme,
       // Supabase.initialize() (called in main(), before runApp) already

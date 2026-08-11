@@ -51,6 +51,8 @@ class BusinessStorageService {
   }
 
   Future<void> addBusiness(BusinessModel business) async {
+    _requireOwnerId(business);
+    _requireLocation(business);
     try {
       await _client.from('businesses').insert(_toRow(business, includeId: true));
     } on PostgrestException catch (e) {
@@ -65,6 +67,8 @@ class BusinessStorageService {
   }
 
   Future<void> updateBusiness(BusinessModel business) async {
+    _requireOwnerId(business);
+    _requireLocation(business);
     try {
       await _client
           .from('businesses')
@@ -110,6 +114,33 @@ class BusinessStorageService {
     revision.value++;
   }
 
+  /// `businesses.owner_id` is a Postgres uuid column — an empty string
+  /// fails at the database with "invalid input syntax for type uuid: ''"
+  /// instead of a readable error. Catch that here, before the request ever
+  /// leaves the device.
+  void _requireOwnerId(BusinessModel business) {
+    if (business.ownerId.trim().isEmpty) {
+      throw const BusinessServiceException(
+        'No se pudo identificar al propietario del negocio. Inicia sesión '
+        'de nuevo e intenta otra vez.',
+      );
+    }
+  }
+
+  /// `businesses.location` is a NOT NULL `geography(Point,4326)` column with
+  /// no default — omitting it (which happened whenever the wizard's
+  /// lat/lng fields were left blank) fails at the database with "null
+  /// value in column 'location' ... violates not-null constraint". The
+  /// wizard now requires real coordinates before it lets the user finish,
+  /// but this check guards the invariant here too, independent of the UI.
+  void _requireLocation(BusinessModel business) {
+    if (business.latitude == null || business.longitude == null) {
+      throw const BusinessServiceException(
+        'Ingresa la latitud y longitud del negocio antes de guardar.',
+      );
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _select() async {
     try {
       final rows = await _client.from('businesses').select().order('created_at');
@@ -150,15 +181,20 @@ class BusinessStorageService {
       'city': b.city,
       'address_text': b.locationText,
       // EWKT text — PostGIS parses this directly for a geography(Point,4326)
-      // column. Only sent when the wizard actually collected coordinates;
-      // never a fabricated point.
-      if (b.latitude != null && b.longitude != null)
-        'location': 'SRID=4326;POINT(${b.longitude} ${b.latitude})',
+      // column. Always present by this point: _requireLocation already
+      // rejected the call above if either coordinate was missing.
+      'location': 'SRID=4326;POINT(${b.longitude} ${b.latitude})',
       'phone': b.contactPhone,
       'instagram_handle': b.instagramLink,
       'photos': b.localImagePaths,
     };
   }
+
+  /// Parses a raw `businesses` row into a [BusinessModel] — public so other
+  /// services can reuse it when Supabase returns a nested `businesses`
+  /// object via a foreign-table join (e.g. `select('*, businesses(*)')` in
+  /// [BookingService]) instead of duplicating this parsing logic.
+  BusinessModel businessFromRow(Map<String, dynamic> row) => _fromRow(row);
 
   BusinessModel _fromRow(Map<String, dynamic> row) {
     final point = _parseLocation(row['location']);
@@ -183,18 +219,36 @@ class BusinessStorageService {
     );
   }
 
-  /// Best-effort GeoJSON point parser for the `location` geography column
-  /// — `{"type":"Point","coordinates":[lng,lat]}` is Supabase/PostgREST's
-  /// common wire format for PostGIS geography. Falls back to null
-  /// coordinates (never fabricated) if the shape doesn't match, since this
-  /// project's exact PostgREST config can't be verified from here — it may
-  /// return raw EWKB hex instead, which would need a real WKB parser.
+  /// Regex for `POINT(lng lat)`, with or without a leading `SRID=4326;`
+  /// prefix — matches both `SRID=4326;POINT(-86.2513 12.1363)` (EWKT) and
+  /// plain `POINT(-86.2513 12.1363)` (WKT).
+  static final RegExp _wktPointPattern = RegExp(
+    r'POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)',
+    caseSensitive: false,
+  );
+
+  /// Parses the `location` geography column into (lat, lng). Confirmed
+  /// against this project's actual Supabase/PostgREST response: it comes
+  /// back as EWKT text (e.g. `SRID=4326;POINT(-86.2513 12.1363)`), not
+  /// GeoJSON — but GeoJSON is still handled too in case that ever changes
+  /// (some PostgREST configs do return `{"type":"Point","coordinates":[...]}`).
+  /// Falls back to null coordinates (never fabricated) if neither shape
+  /// matches.
   (double, double)? _parseLocation(dynamic raw) {
     if (raw is Map) {
       final coordinates = raw['coordinates'];
       if (coordinates is List && coordinates.length >= 2) {
         final lng = (coordinates[0] as num?)?.toDouble();
         final lat = (coordinates[1] as num?)?.toDouble();
+        if (lng != null && lat != null) return (lat, lng);
+      }
+      return null;
+    }
+    if (raw is String) {
+      final match = _wktPointPattern.firstMatch(raw);
+      if (match != null) {
+        final lng = double.tryParse(match.group(1)!);
+        final lat = double.tryParse(match.group(2)!);
         if (lng != null && lat != null) return (lat, lng);
       }
     }

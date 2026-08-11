@@ -122,7 +122,7 @@ class _SplashLogo extends StatelessWidget {
           fit: BoxFit.contain,
           filterQuality: FilterQuality.high,
         ),
-        Text('NIKARA', style: AppTextStyles.logoWordmark),
+        Text('NÍKARA', style: AppTextStyles.logoWordmark),
       ],
     );
   }

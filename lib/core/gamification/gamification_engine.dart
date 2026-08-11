@@ -35,7 +35,7 @@ class LevelInfo {
 }
 
 /// Turns a raw point total into a level name, progress percentage and
-/// points-remaining figure — the single source of truth for Nikara's
+/// points-remaining figure — the single source of truth for Níkara's
 /// gamification ladder.
 abstract class GamificationEngine {
   static const List<_LevelThreshold> _levels = [

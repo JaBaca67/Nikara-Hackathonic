@@ -1,11 +1,31 @@
-enum BookingStatus { confirmada, pendiente, completada, cancelada }
+import 'package:nikara_app/features/business/domain/models/business_model.dart';
 
-class Booking {
-  const Booking({
+/// Mirrors Supabase's `public.bookings.status` enum (`booking_status`)
+/// exactly — the member names below (`.name`) are sent/read as-is against
+/// Postgres.
+enum BookingStatus { pendiente, confirmada, completada, cancelada }
+
+BookingStatus bookingStatusFromString(String? raw) {
+  switch (raw) {
+    case 'confirmada':
+      return BookingStatus.confirmada;
+    case 'completada':
+      return BookingStatus.completada;
+    case 'cancelada':
+      return BookingStatus.cancelada;
+    default:
+      return BookingStatus.pendiente;
+  }
+}
+
+/// A row from Supabase's `bookings` table, joined with its real owning
+/// [business] (`select('*, businesses(*)')` in [BookingService]) — there is
+/// no local/mock stand-in for either half of this data.
+class BookingModel {
+  const BookingModel({
     required this.id,
-    required this.destinationId,
-    required this.date,
-    required this.time,
+    required this.business,
+    required this.scheduledAt,
     required this.partySize,
     required this.code,
     required this.totalPaid,
@@ -13,9 +33,8 @@ class Booking {
   });
 
   final String id;
-  final String destinationId;
-  final String date;
-  final String time;
+  final BusinessModel business;
+  final DateTime scheduledAt;
   final int partySize;
   final String code;
   final double totalPaid;
@@ -23,57 +42,34 @@ class Booking {
 
   String get formattedTotal => 'C\$${totalPaid.toStringAsFixed(0)}';
 
-  Booking copyWith({BookingStatus? status}) => Booking(
-    id: id,
-    destinationId: destinationId,
-    date: date,
-    time: time,
-    partySize: partySize,
-    code: code,
-    totalPaid: totalPaid,
-    status: status ?? this.status,
-  );
-}
+  static const _monthAbbreviations = [
+    'ene',
+    'feb',
+    'mar',
+    'abr',
+    'may',
+    'jun',
+    'jul',
+    'ago',
+    'sep',
+    'oct',
+    'nov',
+    'dic',
+  ];
 
-const List<Booking> mockBookings = [
-  Booking(
-    id: 'b1',
-    destinationId: 'laguna-de-apoyo',
-    date: '20 Jul 2026',
-    time: '8:00 AM',
-    partySize: 2,
-    code: 'NKR-2847',
-    totalPaid: 725,
-    status: BookingStatus.confirmada,
-  ),
-  Booking(
-    id: 'b2',
-    destinationId: 'isletas-de-granada',
-    date: '5 Ago 2026',
-    time: '9:30 AM',
-    partySize: 3,
-    code: 'NKR-2831',
-    totalPaid: 1455,
-    status: BookingStatus.pendiente,
-  ),
-  Booking(
-    id: 'b3',
-    destinationId: 'playa-maderas',
-    date: '12 Jun 2026',
-    time: '7:00 AM',
-    partySize: 2,
-    code: 'NKR-2719',
-    totalPaid: 605,
-    status: BookingStatus.completada,
-  ),
-  Booking(
-    id: 'b4',
-    destinationId: 'volcan-telica',
-    date: '3 May 2026',
-    time: '6:00 AM',
-    partySize: 4,
-    code: 'NKR-2680',
-    totalPaid: 1680,
-    status: BookingStatus.completada,
-  ),
-];
+  /// e.g. "20 Jul 2026" — formatted by hand (no `intl` dependency) to match
+  /// the rest of the app's self-contained formatting getters.
+  String get formattedDate {
+    final month = _monthAbbreviations[scheduledAt.month - 1];
+    final capitalized = month[0].toUpperCase() + month.substring(1);
+    return '${scheduledAt.day} $capitalized ${scheduledAt.year}';
+  }
+
+  /// e.g. "8:00 AM" — 12-hour clock, formatted by hand for the same reason.
+  String get formattedTime {
+    final hour12 = scheduledAt.hour % 12 == 0 ? 12 : scheduledAt.hour % 12;
+    final period = scheduledAt.hour < 12 ? 'AM' : 'PM';
+    final minute = scheduledAt.minute.toString().padLeft(2, '0');
+    return '$hour12:$minute $period';
+  }
+}

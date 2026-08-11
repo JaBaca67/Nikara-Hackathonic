@@ -1,10 +1,26 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ¡Actualizamos la ruta para que busque MyApp en app.dart!
 import 'package:nikara_app/app.dart';
 
 void main() {
+  setUpAll(() async {
+    // AuthService touches Supabase.instance synchronously (even just to
+    // check isLoggedIn), which throws an assertion error if Supabase was
+    // never initialized — real credentials aren't needed, initialize()
+    // only needs to complete its local setup for that assertion to pass.
+    // Supabase.initialize() reaches for SharedPreferences internally
+    // (GoTrue's local session storage), so the mock store has to exist
+    // before initialize() runs, not just before each test.
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://example.supabase.co',
+      publishableKey: 'test-anon-key-not-real',
+    );
+  });
+
   setUp(() {
     // Some services still read local SharedPreferences state (favorites,
     // avatar cache) — without a mocked store this hits a real platform

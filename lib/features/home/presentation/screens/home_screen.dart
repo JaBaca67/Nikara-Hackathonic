@@ -667,7 +667,7 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             Text(
-              'Aún no hay negocios registrados en Nikara',
+              'Aún no hay negocios registrados en Níkara',
               textAlign: TextAlign.center,
               style: AppTextStyles.sectionTitle,
             ),

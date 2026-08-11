@@ -282,25 +282,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildRegisterPrompt() {
-  return Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      // 1. Quita el espacio en blanco al final del texto
-      Text('¿No tienes cuenta?', style: AppTextStyles.registerPrompt),
-      
-      // 2. Agrega un SizedBox para dar el espacio exacto que deseas (ej. 6 u 8 píxeles)
-      const SizedBox(width: 8), 
-      
-      GestureDetector(
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-          );
-        },
-        child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
-      ),
-    ],
-  );
+    // Wrap, not Row: on a very narrow screen (or with a substituted font
+    // whose metrics run wider) "¿No tienes cuenta? Regístrate aquí" can
+    // exceed the card's width — Wrap drops to a second line instead of
+    // overflowing, and looks identical to a Row on any normal-width device.
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('¿No tienes cuenta?', style: AppTextStyles.registerPrompt),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+            );
+          },
+          child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
+        ),
+      ],
+    );
 }
 }
 
@@ -324,7 +325,7 @@ class _Logo extends StatelessWidget {
         ),
         Transform.translate(
           offset: const Offset(0, -1), // mueve el texto hacia arriba
-          child: Text('NIKARA', style: AppTextStyles.logoWordmark),
+          child: Text('NÍKARA', style: AppTextStyles.logoWordmark),
         ),
       ],
     );

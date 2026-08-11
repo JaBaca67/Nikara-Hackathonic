@@ -6,6 +6,8 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
+import 'package:nikara_app/features/bookings/domain/models/booking.dart';
+import 'package:nikara_app/features/bookings/presentation/widgets/booking_request_sheet.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
@@ -13,6 +15,7 @@ import 'package:nikara_app/features/business/presentation/widgets/social_contact
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -111,7 +114,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     final profile = _currentProfile ?? await _authService.getCurrentProfile();
     final authorName = profile != null && profile.fullName.trim().isNotEmpty
         ? profile.fullName
-        : 'Viajero Nikara';
+        : 'Viajero Níkara';
 
     final review = ReviewModel(
       id: const Uuid().v4(),
@@ -136,9 +139,32 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
+  /// Opens the real reservation form and, on success, hands the user
+  /// straight to "Mis Reservas" so their new booking is right there —
+  /// [MainTabController] is what makes that possible from a screen that
+  /// was `Navigator.push`ed on top of `MainLayout`, not one of its 4 tabs.
+  Future<void> _openBookingSheet() async {
+    final booking = await showModalBottomSheet<BookingModel>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => BookingRequestSheet(business: _business),
+    );
+    if (booking == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('¡Reserva confirmada! Código ${booking.code}')),
+    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    MainTabController().switchTo(2);
+  }
+
   void _openLocationOnMap() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Abriendo el mapa de Nikara...')),
+      const SnackBar(content: Text('Abriendo el mapa de Níkara...')),
     );
     Future.delayed(const Duration(milliseconds: 400), () {
       if (!mounted) return;
@@ -217,7 +243,10 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _ContactBar(business: _business),
+      bottomNavigationBar: _ContactBar(
+        business: _business,
+        onBook: _openBookingSheet,
+      ),
     );
   }
 }
@@ -477,15 +506,10 @@ class _QuickInfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, 4),
-            blurRadius: 12,
-          ),
-        ],
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Row(
         children: [
@@ -901,11 +925,15 @@ class _ChipSection extends StatelessWidget {
                   children: [
                     Icon(iconOf(label), size: 14, color: tint),
                     const SizedBox(width: 6),
-                    Text(
-                      label,
-                      style: AppTextStyles.detailRowText.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: tint,
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: AppTextStyles.detailRowText.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: tint,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -1208,7 +1236,7 @@ class _SchedulesAndSocialSection extends StatelessWidget {
         SocialContact.whatsapp(
           business.contactPhone,
           message:
-              'Hola, vi su negocio en Nikara y me gustaría más información '
+              'Hola, vi su negocio en Níkara y me gustaría más información '
               'sobre ${business.name}.',
         ),
       if (business.contactPhone.isNotEmpty)
@@ -1290,7 +1318,7 @@ class _IconValueRow extends StatelessWidget {
 }
 
 /// Premium host card — big avatar, name + "Anfitrión Verificado" badge (a
-/// fair claim: every host here went through Nikara's own registration
+/// fair claim: every host here went through Níkara's own registration
 /// wizard, unlike a fabricated trust score), and a real capability line
 /// instead of a made-up "responds in ~1 hour" metric this app has no data
 /// to back — there's no messaging system to time a response against.
@@ -1318,7 +1346,7 @@ class _HostRow extends StatelessWidget {
     final linkedName = this.linkedName;
     final displayName = linkedName != null && linkedName.trim().isNotEmpty
         ? linkedName
-        : (hostName.isEmpty ? 'Anfitrión Nikara' : hostName);
+        : (hostName.isEmpty ? 'Anfitrión Níkara' : hostName);
     final avatarPath = linkedAvatarPath;
     final initial = displayName.trim().isEmpty
         ? '?'
@@ -1327,15 +1355,10 @@ class _HostRow extends StatelessWidget {
     final card = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Row(
         children: [
@@ -1388,11 +1411,15 @@ class _HostRow extends StatelessWidget {
                         color: AppColors.ecoForest,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'Anfitrión Verificado',
-                        style: AppTextStyles.reviewMeta.copyWith(
-                          color: AppColors.ecoForest,
-                          fontWeight: FontWeight.w700,
+                      Flexible(
+                        child: Text(
+                          'Anfitrión Verificado',
+                          style: AppTextStyles.reviewMeta.copyWith(
+                            color: AppColors.ecoForest,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -1542,15 +1569,10 @@ class _RatingSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, 4),
-            blurRadius: 12,
-          ),
-        ],
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1660,15 +1682,10 @@ class _ReviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            offset: const Offset(0, 4),
-            blurRadius: 12,
-          ),
-        ],
+        border: Border.all(color: AppColors.cardBorder),
+        boxShadow: AppColors.cardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1746,13 +1763,16 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// Fixed bottom bar — WhatsApp is the one and only call to action, worded
-/// and priced differently depending on whether the business has a set
-/// price (reservable) or is free/consult-to-book.
+/// Fixed bottom bar. A business that takes reservations and has a set
+/// price gets a real "Reservar ahora" CTA (writes to Supabase's `bookings`
+/// table) plus a compact WhatsApp icon for direct contact; everything else
+/// keeps the original WhatsApp-only "consultar disponibilidad" flow, since
+/// there's no price to build a booking against.
 class _ContactBar extends StatelessWidget {
-  const _ContactBar({required this.business});
+  const _ContactBar({required this.business, required this.onBook});
 
   final BusinessModel business;
+  final VoidCallback onBook;
 
   bool get _hasPrice => business.allowsReservations && business.price != null;
 
@@ -1761,7 +1781,7 @@ class _ContactBar extends StatelessWidget {
       context,
       business.contactPhone,
       message:
-          'Hola, vi su negocio en Nikara y me gustaría más información '
+          'Hola, vi su negocio en Níkara y me gustaría más información '
           'sobre ${business.name}.',
     );
   }
@@ -1800,34 +1820,77 @@ class _ContactBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    _hasPrice ? 'Reserva por WhatsApp' : 'e información',
+                    _hasPrice ? 'Reserva en la app' : 'e información',
                     style: AppTextStyles.reviewMeta,
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 12),
-            SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: () => _contact(context),
-                icon: const Icon(Icons.chat, size: 20),
-                label: Text(
-                  _hasPrice ? 'Chatear por WhatsApp' : 'Contactar por WhatsApp',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            if (_hasPrice) ...[
+              SizedBox(
+                height: 52,
+                width: 52,
+                child: OutlinedButton(
+                  onPressed: () => _contact(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    side: const BorderSide(color: Color(0xFF25D366)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
-                  textStyle: AppTextStyles.buttonMd,
+                  child: const Icon(Icons.chat, color: Color(0xFF25D366)),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: onBook,
+                    icon: const Icon(Icons.event_available, size: 20),
+                    label: const Text(
+                      'Reservar ahora',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary500,
+                      foregroundColor: AppColors.textInk,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      textStyle: AppTextStyles.buttonMd,
+                    ),
+                  ),
+                ),
+              ),
+            ] else
+              Flexible(
+                child: SizedBox(
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: () => _contact(context),
+                    icon: const Icon(Icons.chat, size: 20),
+                    label: const Text(
+                      'Contactar por WhatsApp',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      textStyle: AppTextStyles.buttonMd,
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1903,7 +1966,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
       hintText: 'Cuéntanos cómo fue tu experiencia...',
       hintStyle: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral600),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: AppColors.surface100,
       contentPadding: const EdgeInsets.all(14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),

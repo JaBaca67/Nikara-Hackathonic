@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -55,6 +58,21 @@ const List<String> _kDepartments = [
   'Región Autónoma de la Costa Caribe Sur',
 ];
 
+/// Fallback map center when geolocation isn't available (permission denied,
+/// location services off, or any lookup failure) — Managua, Nicaragua's
+/// capital, rather than an arbitrary 0,0.
+const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
+
+/// Keeps the camera from zooming/panning out into empty, tile-less ocean —
+/// without this (and the min/maxZoom below), pinch-zooming out far enough
+/// drives the camera's zoom to a value tile math can't convert to a valid
+/// tile index, crashing with "Unsupported operation: Infinity or NaN
+/// toInt". Same bounding box as the main exploration map for consistency.
+final LatLngBounds _kMapBounds = LatLngBounds(
+  const LatLng(7.0, -92.0),
+  const LatLng(18.5, -77.0),
+);
+
 const List<String> _kActivities = [
   'Senderismo',
   'Kayak',
@@ -105,11 +123,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _instagramController = TextEditingController();
   final _tiktokController = TextEditingController();
 
-  /// Optional — feeds `businesses.location` (a PostGIS geography point) in
-  /// Supabase. There's no map picker in this wizard yet, so these stay
-  /// blank/null unless the owner types real coordinates in by hand.
-  final _latitudeController = TextEditingController();
-  final _longitudeController = TextEditingController();
+  /// Feeds `businesses.location` — a NOT NULL PostGIS geography point in
+  /// Supabase. Picked on a live map (Waze-style: the pin stays fixed in the
+  /// center of the viewport, the map pans underneath it) rather than typed
+  /// in by hand.
+  final _mapController = MapController();
+  LatLng _mapCenter = _kDefaultMapCenter;
+  LatLng? _confirmedLocation;
+  bool _locatingUser = false;
 
   final Set<String> _selectedAmenities = {};
   final Set<String> _selectedActivities = {};
@@ -129,7 +150,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   void initState() {
     super.initState();
     final business = widget.existingBusiness;
-    if (business == null) return;
+    if (business == null) {
+      // New listing — no coordinates to fall back on, so try to center the
+      // map on the owner's actual location instead of the Managua default.
+      _locateUser();
+      return;
+    }
     _nameController.text = business.name;
     _descriptionController.text = business.description;
     _category = _kCategories.contains(business.category)
@@ -142,11 +168,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.text = business.contactPhone;
     _instagramController.text = business.instagramLink;
     _tiktokController.text = business.tiktokLink;
-    if (business.latitude != null) {
-      _latitudeController.text = business.latitude!.toString();
-    }
-    if (business.longitude != null) {
-      _longitudeController.text = business.longitude!.toString();
+    // Editing always has real coordinates already (businesses.location is
+    // NOT NULL), so the map opens centered right where the listing already
+    // is instead of requesting the device's current position.
+    if (business.latitude != null && business.longitude != null) {
+      final existingLocation = LatLng(business.latitude!, business.longitude!);
+      _mapCenter = existingLocation;
+      _confirmedLocation = existingLocation;
     }
     _selectedAmenities.addAll(business.amenities);
     _selectedActivities.addAll(business.activities);
@@ -167,8 +195,6 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.dispose();
     _instagramController.dispose();
     _tiktokController.dispose();
-    _latitudeController.dispose();
-    _longitudeController.dispose();
     _customActivityController.dispose();
     _schedulesController.dispose();
     _priceController.dispose();
@@ -182,6 +208,53 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       _selectedActivities.add(text);
       _customActivityController.clear();
     });
+  }
+
+  /// Best-effort: centers the map on the device's current position. Any
+  /// failure along the way (location services off, permission denied,
+  /// timeout) is swallowed silently — the map just stays on the Managua
+  /// fallback already set in [_mapCenter], exactly as asked for.
+  Future<void> _locateUser() async {
+    setState(() => _locatingUser = true);
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
+      );
+      if (!mounted) return;
+      final here = LatLng(position.latitude, position.longitude);
+      setState(() => _mapCenter = here);
+      try {
+        _mapController.move(here, 15);
+      } catch (_) {
+        // The map may not have attached yet if this resolves unusually
+        // fast — _mapCenter above already covers that as the initial
+        // center, so a failed move() here is harmless.
+      }
+    } catch (_) {
+      // See doc comment above.
+    } finally {
+      if (mounted) setState(() => _locatingUser = false);
+    }
+  }
+
+  /// Locks in whatever the map's center is right now (the fixed pin marks
+  /// that exact spot) as the business's location.
+  void _confirmLocation() {
+    setState(() => _confirmedLocation = _mapController.camera.center);
   }
 
   void _goToStep(int step) {
@@ -200,6 +273,17 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   void _nextFromStep2() {
     if (!(_step2FormKey.currentState?.validate() ?? false)) return;
+    if (_confirmedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ubica tu negocio en el mapa y presiona "Confirmar esta '
+            'ubicación" antes de continuar.',
+          ),
+        ),
+      );
+      return;
+    }
     _goToStep(2);
   }
 
@@ -246,7 +330,24 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     // attributed to whoever is actually signed in even if they've since
     // renamed themselves in Settings.
     final profile = await _authService.getCurrentProfile();
+    if (!mounted) return;
     final ownerId = _authService.currentAuthUser?.id ?? existing?.ownerId ?? '';
+    // `owner_id` is a Postgres uuid column — sending '' instead of a real
+    // uuid fails with "invalid input syntax for type uuid" before the row
+    // is even validated. Fail fast here with a clear message instead of
+    // letting Supabase reject the request.
+    if (ownerId.isEmpty) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo identificar tu cuenta. Cierra sesión y vuelve a '
+            'iniciar sesión para continuar.',
+          ),
+        ),
+      );
+      return;
+    }
     final hostName = profile != null && profile.fullName.trim().isNotEmpty
         ? profile.fullName
         : (existing?.hostName ?? '');
@@ -261,11 +362,20 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     );
     final tiktokHandle = _tiktokController.text.trim().replaceFirst('@', '');
 
-    // Both optional — genuinely null (not 0.0) unless the owner actually
-    // typed real coordinates, so BusinessStorageService never sends a
-    // fabricated point to Supabase's geography column.
-    final latitude = double.tryParse(_latitudeController.text.trim());
-    final longitude = double.tryParse(_longitudeController.text.trim());
+    // `businesses.location` is a NOT NULL column, so a confirmed map pin is
+    // required — Step 2's "Siguiente" button already enforces this before
+    // letting the user reach this step, but that's a UI-level guarantee,
+    // not a database one, so this stays as a last line of defense.
+    final location = _confirmedLocation;
+    if (location == null) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Confirma la ubicación del negocio en el mapa antes de guardar.'),
+        ),
+      );
+      return;
+    }
 
     final business = BusinessModel(
       id: existing?.id ?? const Uuid().v4(),
@@ -274,8 +384,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       description: _descriptionController.text.trim(),
       city: _city,
       locationText: _addressController.text.trim(),
-      latitude: latitude,
-      longitude: longitude,
+      latitude: location.latitude,
+      longitude: location.longitude,
       contactPhone: _phoneController.text.trim(),
       instagramLink: instagramHandle,
       tiktokLink: tiktokHandle,
@@ -398,7 +508,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface100,
               borderRadius: BorderRadius.circular(16),
               boxShadow: const [
                 BoxShadow(
@@ -538,37 +648,46 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
             decoration: _decoration('tunegocio').copyWith(prefixText: '@ '),
           ),
           const SizedBox(height: 16),
-          _FieldLabel('Coordenadas exactas (opcional)'),
+          _FieldLabel('Ubicación exacta'),
+          _MapLocationPicker(
+            mapController: _mapController,
+            initialCenter: _mapCenter,
+            isLocating: _locatingUser,
+            onConfirm: _confirmLocation,
+          ),
+          const SizedBox(height: 8),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _latitudeController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: _decoration('Latitud, ej: 12.1364'),
-                ),
+              Icon(
+                _confirmedLocation == null
+                    ? Icons.info_outline
+                    : Icons.check_circle,
+                size: 14,
+                color: _confirmedLocation == null
+                    ? AppColors.neutral600
+                    : AppColors.primary700,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 6),
               Expanded(
-                child: TextFormField(
-                  controller: _longitudeController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
+                child: Text(
+                  _confirmedLocation == null
+                      ? 'Mueve el mapa hasta ubicar tu negocio y presiona '
+                            '"Confirmar esta ubicación".'
+                      : 'Ubicación confirmada: '
+                            '${_confirmedLocation!.latitude.toStringAsFixed(5)}, '
+                            '${_confirmedLocation!.longitude.toStringAsFixed(5)}',
+                  style: AppTextStyles.legend.copyWith(
+                    color: _confirmedLocation == null
+                        ? AppColors.neutral600
+                        : AppColors.primary700,
+                    fontWeight: _confirmedLocation == null
+                        ? FontWeight.w400
+                        : FontWeight.w700,
                   ),
-                  decoration: _decoration('Longitud, ej: -86.2514'),
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Ubica tu negocio con precisión en el mapa (puedes copiarlas '
-            'de Google Maps).',
-            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
           ),
         ],
         backButton: _SecondaryButton(
@@ -654,7 +773,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
               Switch(
                 value: _allowsReservations,
                 onChanged: (v) => setState(() => _allowsReservations = v),
-                activeThumbColor: Colors.white,
+                activeThumbColor: AppColors.surface100,
                 activeTrackColor: AppColors.primary500,
               ),
             ],
@@ -799,6 +918,142 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         borderSide: BorderSide(color: AppColors.wizardFocus, width: 1.5),
       ),
       errorStyle: const TextStyle(color: Color(0xFFD64545), fontSize: 11),
+    );
+  }
+}
+
+/// A live map that always shows a pin fixed at the exact center of its
+/// viewport — the user pans the map underneath it (Waze/Uber-style "drop
+/// pin at my precise spot") instead of dragging a marker around.
+/// "Confirmar esta ubicación" reads [MapController.camera.center] at the
+/// moment it's pressed and hands it back via [onConfirm].
+class _MapLocationPicker extends StatelessWidget {
+  const _MapLocationPicker({
+    required this.mapController,
+    required this.initialCenter,
+    required this.isLocating,
+    required this.onConfirm,
+  });
+
+  final MapController mapController;
+  final LatLng initialCenter;
+  final bool isLocating;
+  final VoidCallback onConfirm;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 220,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            FlutterMap(
+              mapController: mapController,
+              options: MapOptions(
+                initialCenter: initialCenter,
+                initialZoom: 15,
+                minZoom: 6,
+                maxZoom: 18,
+                cameraConstraint: CameraConstraint.contain(
+                  bounds: _kMapBounds,
+                ),
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.drag |
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom |
+                      InteractiveFlag.flingAnimation,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                  subdomains: const ['a', 'b', 'c', 'd'],
+                  userAgentPackageName: 'com.example.nikara_app',
+                  retinaMode: RetinaMode.isHighDensity(context),
+                  minZoom: 6,
+                  maxZoom: 19,
+                ),
+              ],
+            ),
+            // The pin never moves — only the map underneath it does — so
+            // it always marks the exact point that gets confirmed.
+            IgnorePointer(
+              child: Center(
+                child: Transform.translate(
+                  offset: const Offset(0, -21),
+                  child: const Icon(
+                    Icons.location_on,
+                    size: 42,
+                    color: AppColors.primary700,
+                    shadows: [
+                      Shadow(
+                        color: Color(0x40000000),
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (isLocating)
+              const Positioned(top: 10, right: 10, child: _LocatingBadge()),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: SizedBox(
+                height: 40,
+                child: FilledButton.icon(
+                  onPressed: onConfirm,
+                  icon: const Text('📍'),
+                  label: const Text('Confirmar esta ubicación'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary500,
+                    foregroundColor: AppColors.textInk,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocatingBadge extends StatelessWidget {
+  const _LocatingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: const BoxDecoration(
+        color: AppColors.surface100,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.primary500,
+        ),
+      ),
     );
   }
 }
@@ -956,7 +1211,7 @@ class _WizardStepper extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
@@ -987,21 +1242,27 @@ class _WizardStepper extends StatelessWidget {
                   ),
                 ),
               ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _StepDot(index: i, currentStep: step, size: _dotSize),
-                const SizedBox(height: 6),
-                Text(
-                  _labels[i],
-                  style: AppTextStyles.legend.copyWith(
-                    color: i <= step
-                        ? AppColors.wizardFocus
-                        : AppColors.neutral500,
-                    fontWeight: i == step ? FontWeight.w700 : FontWeight.w400,
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _StepDot(index: i, currentStep: step, size: _dotSize),
+                  const SizedBox(height: 6),
+                  Text(
+                    _labels[i],
+                    style: AppTextStyles.legend.copyWith(
+                      color: i <= step
+                          ? AppColors.wizardFocus
+                          : AppColors.neutral500,
+                      fontWeight: i == step
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ],
@@ -1031,7 +1292,7 @@ class _StepDot extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: isActive ? AppColors.wizardFocus : Colors.white,
+        color: isActive ? AppColors.wizardFocus : AppColors.surface100,
         border: isActive
             ? null
             : Border.all(color: AppColors.warmChipBorder, width: 1.5),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Top-of-Home header: the "Nikara" wordmark, a search field and the
+/// Top-of-Home header: the "Níkara" wordmark, a search field and the
 /// notifications bell with an unread-count badge (Figma nodes 124:44–190:335).
 class SearchHeaderWidget extends StatelessWidget {
   const SearchHeaderWidget({
@@ -23,7 +23,7 @@ class SearchHeaderWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(child: Text('Nikara', style: AppTextStyles.headingXL)),
+        Center(child: Text('Níkara', style: AppTextStyles.headingXL)),
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -54,7 +54,7 @@ class _SearchField extends StatelessWidget {
     return Container(
       height: 42,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface100,
         borderRadius: BorderRadius.circular(25),
         border: Border.all(color: AppColors.neutral1100, width: 2),
       ),
@@ -65,7 +65,7 @@ class _SearchField extends StatelessWidget {
         decoration: InputDecoration(
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(vertical: 10),
-          hintText: 'Search...',
+          hintText: 'Buscar lagunas, tours, restaurantes...',
           hintStyle: AppTextStyles.caption.copyWith(
             color: const Color(0xFF808080),
           ),

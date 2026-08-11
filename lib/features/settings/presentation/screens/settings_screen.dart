@@ -80,7 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         title: Text('Cerrar sesión', style: AppTextStyles.settingsTitle.copyWith(fontSize: 18)),
         content: Text(
-          '¿Seguro que quieres cerrar tu sesión de Nikara?',
+          '¿Seguro que quieres cerrar tu sesión de Níkara?',
           style: AppTextStyles.body,
         ),
         actions: [
@@ -227,7 +227,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _SettingsRow(
                     icon: Icons.info_outline,
-                    title: 'Acerca de Nikara',
+                    title: 'Acerca de Níkara',
                     value: 'v1.0.0',
                     onTap: () => _showSnack('Próximamente'),
                   ),
@@ -283,12 +283,24 @@ class _SettingsHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Ajustes', style: AppTextStyles.settingsTitle),
-              Text('Cuenta y preferencias', style: AppTextStyles.settingsSubtitle),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ajustes',
+                  style: AppTextStyles.settingsTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'Cuenta y preferencias',
+                  style: AppTextStyles.settingsSubtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -317,7 +329,7 @@ class _SettingsSection extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface100,
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: const [
                   BoxShadow(
@@ -457,9 +469,9 @@ class _SettingsToggleRow extends StatelessWidget {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeThumbColor: Colors.white,
+            activeThumbColor: AppColors.surface100,
             activeTrackColor: AppColors.settingsAccent,
-            inactiveThumbColor: Colors.white,
+            inactiveThumbColor: AppColors.surface100,
             inactiveTrackColor: AppColors.settingsToggleOff,
           ),
         ],
