@@ -27,6 +27,8 @@ class BusinessModel {
     this.price,
     this.amenities = const [],
     this.activities = const [],
+    this.ecoSealRequested = false,
+    this.ecoPractices = const [],
     required this.hostName,
     this.ownerId = '',
     this.schedules = '',
@@ -34,6 +36,7 @@ class BusinessModel {
     this.otherNotes = '',
     this.localImagePaths = const [],
     this.reviews = const [],
+    this.isVerified = false,
   });
 
   final String id;
@@ -61,6 +64,18 @@ class BusinessModel {
 
   final List<String> amenities;
   final List<String> activities;
+
+  /// Owner opted in to the "Sello ECO" self-declaration (Pantalla 4c). Not
+  /// an admin-verified badge by itself — see [ecoPractices].
+  final bool ecoSealRequested;
+
+  /// Which of the fixed sustainability-practice checklist items (Pantalla
+  /// 4c: "Atendido por familias...", "Manejo de residuos...", etc.) the
+  /// owner checked. The seal shows as "por verificar" in the wizard until
+  /// at least 2 are checked — that's a UI hint, not an enforced gate, since
+  /// there's no admin review workflow wired up to actually verify them yet.
+  final List<String> ecoPractices;
+
   final String hostName;
 
   /// Supabase `auth.users.id` (== `profiles.id`) of whoever created this
@@ -79,6 +94,12 @@ class BusinessModel {
 
   final List<String> localImagePaths;
   final List<ReviewModel> reviews;
+
+  /// `businesses.is_verified` — read-only from the client. Nothing in this
+  /// app ever writes `true` here (that's an auditor-role action, done
+  /// directly in Supabase); it only reflects whatever an admin has already
+  /// set, never a fabricated "verified" claim.
+  final bool isVerified;
 
   double get averageRating {
     if (reviews.isEmpty) return 0;
@@ -106,6 +127,8 @@ class BusinessModel {
     double? price,
     List<String>? amenities,
     List<String>? activities,
+    bool? ecoSealRequested,
+    List<String>? ecoPractices,
     String? hostName,
     String? ownerId,
     String? schedules,
@@ -113,6 +136,7 @@ class BusinessModel {
     String? otherNotes,
     List<String>? localImagePaths,
     List<ReviewModel>? reviews,
+    bool? isVerified,
   }) {
     return BusinessModel(
       id: id,
@@ -132,6 +156,8 @@ class BusinessModel {
       price: price ?? this.price,
       amenities: amenities ?? this.amenities,
       activities: activities ?? this.activities,
+      ecoSealRequested: ecoSealRequested ?? this.ecoSealRequested,
+      ecoPractices: ecoPractices ?? this.ecoPractices,
       hostName: hostName ?? this.hostName,
       ownerId: ownerId ?? this.ownerId,
       schedules: schedules ?? this.schedules,
@@ -139,6 +165,7 @@ class BusinessModel {
       otherNotes: otherNotes ?? this.otherNotes,
       localImagePaths: localImagePaths ?? this.localImagePaths,
       reviews: reviews ?? this.reviews,
+      isVerified: isVerified ?? this.isVerified,
     );
   }
 
@@ -160,6 +187,8 @@ class BusinessModel {
     'price': price,
     'amenities': amenities,
     'activities': activities,
+    'ecoSealRequested': ecoSealRequested,
+    'ecoPractices': ecoPractices,
     'hostName': hostName,
     'ownerId': ownerId,
     'schedules': schedules,
@@ -167,6 +196,7 @@ class BusinessModel {
     'otherNotes': otherNotes,
     'localImagePaths': localImagePaths,
     'reviews': reviews.map((r) => r.toJson()).toList(),
+    'isVerified': isVerified,
   };
 
   factory BusinessModel.fromJson(Map<String, dynamic> json) {
@@ -193,6 +223,9 @@ class BusinessModel {
           (json['amenities'] as List<dynamic>?)?.cast<String>() ?? const [],
       activities:
           (json['activities'] as List<dynamic>?)?.cast<String>() ?? const [],
+      ecoSealRequested: json['ecoSealRequested'] as bool? ?? false,
+      ecoPractices:
+          (json['ecoPractices'] as List<dynamic>?)?.cast<String>() ?? const [],
       hostName: json['hostName'] as String,
       ownerId: json['ownerId'] as String? ?? '',
       schedules: json['schedules'] as String? ?? '',
@@ -206,6 +239,7 @@ class BusinessModel {
               ?.map((r) => ReviewModel.fromJson(r as Map<String, dynamic>))
               .toList() ??
           const [],
+      isVerified: json['isVerified'] as bool? ?? false,
     );
   }
 }

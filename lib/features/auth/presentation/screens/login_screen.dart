@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show TextInput;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
-import 'package:nikara_app/models/mock_data.dart';
+import 'package:nikara_app/features/auth/presentation/widgets/social_auth_row.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
+import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -101,6 +104,16 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (result.success) {
+      // A real session now exists — a guest who came back here from the
+      // GuestGuardBottomSheet's "Ya tengo cuenta" shouldn't stay flagged
+      // as a guest afterwards.
+      await GuestSessionService().exitGuestMode();
+      if (!mounted) return;
+      // Signals iOS/Android's autofill service that this "autofill
+      // context" finished successfully, so it actually offers to save the
+      // credentials just entered — without this, some platforms never
+      // trigger the save prompt even inside an AutofillGroup.
+      TextInput.finishAutofillContext();
       // Clears the login screen (and anything behind it) from the stack so
       // the back button can't return to it once inside the app.
       Navigator.of(context).pushAndRemoveUntil(
@@ -145,7 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
             left: 0,
             width: screenSize.width,
             height: screenSize.height,
-            child: _GradientBackground(size: screenSize),
+            child: const AuroraBackgroundWidget(),
           ),
           // Capa de contenido: se puede desplazar y se centra sola cuando
           // sobra espacio (teclado cerrado).
@@ -220,7 +233,12 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Form(
           key: _formKey,
           autovalidateMode: _autovalidateMode,
-          child: Column(
+          // Groups both fields for the platform's password manager (iCloud
+          // Keychain / Google Credential Manager) — combined with each
+          // field's AutofillHints below, this is what makes the OS offer to
+          // fill (and later save) real saved credentials.
+          child: AutofillGroup(
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Bienvenido de nuevo', style: AppTextStyles.heading),
@@ -236,6 +254,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: emailController,
                 iconAsset: 'assets/images/icon_email.svg',
                 keyboardType: TextInputType.emailAddress,
+                autofillHints: const [
+                  AutofillHints.username,
+                  AutofillHints.email,
+                ],
                 validator: _validateEmail,
               ),
               const SizedBox(height: 14),
@@ -246,6 +268,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 iconAsset: 'assets/images/icon_lock.svg',
                 isPassword: true,
                 obscureText: _obscurePassword,
+                autofillHints: const [AutofillHints.password],
                 onToggleObscure: () {
                   setState(() => _obscurePassword = !_obscurePassword);
                 },
@@ -271,13 +294,32 @@ class _LoginScreenState extends State<LoginScreen> {
                 isLoading: _isSubmitting,
               ),
               const SizedBox(height: 40),
-              const _SocialAuthRow(),
+              const SocialAuthRow(),
               const SizedBox(height: 24),
               _buildRegisterPrompt(),
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
+                  onPressed: _isSubmitting ? null : _continueAsGuest,
+                  child: Text('Explorar como invitado', style: AppTextStyles.link),
+                ),
+              ),
             ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _continueAsGuest() async {
+    await GuestSessionService().enterGuestMode();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
+      ),
+      (route) => false,
     );
   }
 
@@ -328,99 +370,6 @@ class _Logo extends StatelessWidget {
           child: Text('NÍKARA', style: AppTextStyles.logoWordmark),
         ),
       ],
-    );
-  }
-}
-
-/// Full-bleed gradient background with the two decorative radial blurs from
-/// the Figma frame (nodes 157:5 and 157:74), positioned proportionally.
-class _GradientBackground extends StatelessWidget {
-  const _GradientBackground({required this.size});
-
-  final Size size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment(-0.65, -0.76),
-          end: Alignment(0.65, 0.76),
-          colors: [
-            AppColors.primary500,
-            Color(0xFFFFCC33),
-            AppColors.primary400,
-          ],
-          stops: [0.0893, 0.4265, 0.9323],
-        ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: size.width * (262 / 390),
-            top: size.height * (-32 / 844),
-            child: _radialBlur(
-              diameter: size.width * (160 / 390),
-              colors: [
-                Colors.white.withValues(alpha: 0.25),
-                Colors.white.withValues(alpha: 0),
-              ],
-            ),
-          ),
-          Positioned(
-            right: size.width * (-30 / 390),
-            top: size.height * (-10 / 844),
-            child: _topRightGlow(diameter: size.width * (160 / 390)),
-          ),
-          Positioned(
-            left: size.width * (-79 / 390),
-            top: size.height * (97 / 844),
-            child: _radialBlur(
-              diameter: size.width * (224 / 390),
-              colors: [
-                AppColors.accent300.withValues(alpha: 0.3),
-                AppColors.accent300.withValues(alpha: 0),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _radialBlur({required double diameter, required List<Color> colors}) {
-    return Container(
-      width: diameter,
-      height: diameter,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    );
-  }
-
-  Widget _topRightGlow({required double diameter}) {
-    // A soft, warm bloom rather than a glassy disc: every stop fades the
-    // *same* hue down to zero alpha instead of mixing white toward
-    // black-at-zero-alpha, which is what produced the grayish "cristal" ring.
-    // A wide, gentle stop curve stands in for a real blur (cheaper and
-    // consistent across web renderers).
-    return Container(
-      width: diameter,
-      height: diameter,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            Colors.white.withValues(alpha: 0.5),
-            Colors.white.withValues(alpha: 0.22),
-            AppColors.primary700.withValues(alpha: 0.10),
-            AppColors.primary700.withValues(alpha: 0),
-          ],
-          stops: const [0.0, 0.3, 0.65, 1.0],
-        ),
-      ),
     );
   }
 }
@@ -483,71 +432,6 @@ class _PrimaryButton extends StatelessWidget {
   }
 }
 
-class _SocialAuthRow extends StatelessWidget {
-  const _SocialAuthRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (final provider in mockSocialAuthProviders) ...[
-          _SocialAuthButton(provider: provider),
-          if (provider != mockSocialAuthProviders.last)
-            const SizedBox(width: 16),
-        ],
-      ],
-    );
-  }
-}
-
-class _SocialAuthButton extends StatelessWidget {
-  const _SocialAuthButton({required this.provider});
-
-  final SocialAuthProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: 'Continuar con ${provider.label}',
-      child: Material(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {},
-          child: Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x12000000),
-                  offset: Offset(0, 2),
-                  blurRadius: 5,
-                ),
-              ],
-            ),
-            child: Center(
-              child: provider.assetPath.endsWith('.svg')
-                  ? SvgPicture.asset(provider.assetPath, width: 36, height: 36)
-                  : Image.asset(
-                      provider.assetPath,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _InputField extends StatelessWidget {
   const _InputField({
     required this.label,
@@ -558,6 +442,7 @@ class _InputField extends StatelessWidget {
     this.obscureText = false,
     this.onToggleObscure,
     this.keyboardType,
+    this.autofillHints,
     this.validator,
   });
 
@@ -569,6 +454,7 @@ class _InputField extends StatelessWidget {
   final bool obscureText;
   final VoidCallback? onToggleObscure;
   final TextInputType? keyboardType;
+  final Iterable<String>? autofillHints;
   final FormFieldValidator<String>? validator;
 
   @override
@@ -601,6 +487,7 @@ class _InputField extends StatelessWidget {
                   controller: controller,
                   obscureText: isPassword && obscureText,
                   keyboardType: keyboardType,
+                  autofillHints: autofillHints,
                   validator: validator,
                   style: AppTextStyles.inputText,
                   decoration: InputDecoration(

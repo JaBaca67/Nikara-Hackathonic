@@ -39,6 +39,14 @@ class UserModel {
   /// whatever value the row already has, genuinely 0 for a fresh signup.
   final int points;
 
+  /// Just the first token of [fullName], e.g. "Ixchel Galo Martínez" ->
+  /// "Ixchel" — used for the Home header's "Buen día, {firstName}" greeting.
+  String get firstName {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.split(RegExp(r'\s+')).first;
+  }
+
   /// First-name + last-initial, e.g. "Ixchel Galo" -> "IG" — used for the
   /// avatar fallback since `profiles` has no avatar column.
   String get initials {

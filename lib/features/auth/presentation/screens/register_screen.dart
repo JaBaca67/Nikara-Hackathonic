@@ -1,17 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/guest_session_service.dart';
+import 'package:nikara_app/core/services/local_profile_extras_service.dart';
+import 'package:nikara_app/core/utils/input_formatters.dart';
+import 'package:nikara_app/features/auth/presentation/widgets/social_auth_row.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/shared/widgets/otp_input_row.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
+import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
-/// Registro screen (Figma nodes 157:96 "Datos Personales" and 113:95
-/// "Credenciales de acceso") built as a 2-step form inside the same
-/// fixed-background/scrollable-card shell as [LoginScreen]. Step switching
-/// is driven by a local `_step` index rather than a `PageView` — the visual
-/// progress indicator (the two numbered circles) is what the Figma design
-/// actually calls for; the content underneath just needs to swap.
+/// Real, non-mock interest categories offered in Paso 4 — the same
+/// vocabulary the rest of the app already uses for destinations/business
+/// categories (eco-tourism, adventure, culture...), not an invented list.
+const List<String> _kInterestCategories = [
+  'Playas',
+  'Volcanes',
+  'Eco Turismo',
+  'Aventura',
+  'Cultura',
+  'Gastronomía',
+  'Naturaleza',
+  'Relajación',
+];
+
+/// 4-step registration wizard (Figma nodes 157:96 / 113:95 as the visual
+/// starting point, extended per the UX redesign):
+///
+/// 1. Identidad — correo + contraseña (o social login), fuerza de
+///    contraseña en vivo.
+/// 2. Perfil — foto, nombre completo, usuario, celular. The real Supabase
+///    account is created at the end of this step (needs email+password
+///    from Paso 1 and phone from here) — Pasos 3 y 4 are then onboarding
+///    for an account that already exists.
+/// 3. Verificación — cajas OTP independientes. There's no SMS/email OTP
+///    provider configured in Supabase, so "Verificar código" is an honest
+///    stub (never fakes success) and "Saltar por ahora" — which stores
+///    `isPhoneVerified: false` locally — is the fully-supported path.
+/// 4. Preferencias — categorías de interés, guardadas localmente (no
+///    columna en Supabase todavía) via [LocalProfileExtrasService].
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -21,62 +53,60 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _authService = AuthService();
+  final _extrasService = LocalProfileExtrasService();
 
   int _step = 0;
-  bool _isSubmitting = false;
+  bool _isCreatingAccount = false;
+  bool _isFinishing = false;
 
+  // Paso 1: Identidad.
   final _step1FormKey = GlobalKey<FormState>();
-  final _step2FormKey = GlobalKey<FormState>();
-
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-
-  /// Same "only nag after the first failed attempt" UX as [LoginScreen] —
-  /// starts disabled so nothing turns red while the user is still typing
-  /// their very first keystroke in either step.
   AutovalidateMode _step1AutovalidateMode = AutovalidateMode.disabled;
+
+  // Paso 2: Perfil.
+  final _step2FormKey = GlobalKey<FormState>();
+  final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  String? _avatarPath;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
+
+  // Paso 3: Verificación.
+  String _otpCode = '';
+
+  // Paso 4: Preferencias.
+  final Set<String> _selectedCategories = {};
 
   static final RegExp _emailRegex = RegExp(
     r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
   );
 
+  static final RegExp _usernameRegex = RegExp(r'^[a-zA-Z0-9_.]+$');
+
   @override
   void initState() {
     super.initState();
+    // Only these two drive live visual feedback (strength meter, username
+    // availability copy) — no other field needs a rebuild on every
+    // keystroke, keeping typing elsewhere in the form cheap.
     _passwordController.addListener(() => setState(() {}));
+    _usernameController.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _fullNameController.dispose();
+    _usernameController.dispose();
+    _phoneController.dispose();
     super.dispose();
-  }
-
-  void _goToStep2() {
-    FocusScope.of(context).unfocus();
-    if (!(_step1FormKey.currentState?.validate() ?? false)) {
-      setState(() => _step1AutovalidateMode = AutovalidateMode.onUserInteraction);
-      return;
-    }
-    setState(() => _step = 1);
-  }
-
-  void _goToStep1() {
-    FocusScope.of(context).unfocus();
-    setState(() => _step = 0);
   }
 
   String? _required(String? value, String message) {
@@ -102,19 +132,97 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  Future<void> _submit() async {
+  String? _validateUsername(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Elige un nombre de usuario';
+    if (trimmed.length < 3) return 'Mínimo 3 caracteres';
+    if (!_usernameRegex.hasMatch(trimmed)) {
+      return 'Solo letras, números, "." y "_"';
+    }
+    return null;
+  }
+
+  bool get _usernameLooksGood =>
+      _usernameController.text.trim().isNotEmpty &&
+      _validateUsername(_usernameController.text) == null;
+
+  void _goToProfileStep() {
+    FocusScope.of(context).unfocus();
+    if (!(_step1FormKey.currentState?.validate() ?? false)) {
+      setState(
+        () => _step1AutovalidateMode = AutovalidateMode.onUserInteraction,
+      );
+      return;
+    }
+    setState(() => _step = 1);
+  }
+
+  void _goToIdentityStep() {
+    FocusScope.of(context).unfocus();
+    setState(() => _step = 0);
+  }
+
+  Future<void> _pickAvatar() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Text('Foto de perfil', style: AppTextStyles.detailSectionTitle),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(
+                Icons.photo_camera_outlined,
+                color: AppColors.wizardFocus,
+              ),
+              title: const Text('Tomar foto'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.photo_library_outlined,
+                color: AppColors.wizardFocus,
+              ),
+              title: const Text('Elegir de galería'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 800,
+      imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _avatarPath = picked.path);
+  }
+
+  /// Validates Perfil, then actually creates the Supabase account (needs
+  /// email/password from Paso 1 plus phone from here) and saves
+  /// username/photo locally. Pasos 3-4 that follow are onboarding for an
+  /// account that already exists — there's no "Atrás" past this point.
+  Future<void> _createAccountAndContinue() async {
     FocusScope.of(context).unfocus();
     if (!(_step2FormKey.currentState?.validate() ?? false)) {
-      setState(() => _step2AutovalidateMode = AutovalidateMode.onUserInteraction);
+      setState(
+        () => _step2AutovalidateMode = AutovalidateMode.onUserInteraction,
+      );
       return;
     }
 
-    setState(() => _isSubmitting = true);
-    final fullName =
-        '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
-            .trim();
+    setState(() => _isCreatingAccount = true);
     final result = await _authService.signUp(
-      fullName: fullName,
+      fullName: _fullNameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
       phone: _phoneController.text.trim(),
@@ -122,15 +230,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (!mounted) return;
 
     if (!result.success) {
-      setState(() => _isSubmitting = false);
+      setState(() => _isCreatingAccount = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result.message ?? 'No se pudo crear la cuenta')),
       );
       return;
     }
 
-    // Clears the whole registration stack (both steps) so the back button
-    // can't return to a completed sign-up flow once inside the app.
+    // Best-effort: the real account already exists at this point even if
+    // these local writes somehow fail, so failures here don't block
+    // moving forward.
+    final username = _usernameController.text.trim();
+    if (username.isNotEmpty) {
+      await _extrasService.updateUsername(username);
+    }
+    final avatarPath = _avatarPath;
+    if (avatarPath != null) {
+      await _extrasService.updateAvatar(avatarPath);
+    }
+    if (!mounted) return;
+
+    // A real account now exists — clears any leftover guest flag from
+    // whoever arrived here via "Explorar como invitado" or the guest
+    // guard's "Crear mi cuenta" CTA.
+    await GuestSessionService().exitGuestMode();
+    if (!mounted) return;
+    // Lets the OS actually offer to save the credentials just created.
+    TextInput.finishAutofillContext();
+    setState(() {
+      _isCreatingAccount = false;
+      _step = 2;
+    });
+  }
+
+  void _attemptVerifyOtp() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'La verificación por SMS todavía no está disponible. Usa '
+          '"Saltar por ahora" para continuar — no afecta tu cuenta.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _skipVerification() async {
+    await _extrasService.updateIsPhoneVerified(false);
+    if (!mounted) return;
+    setState(() => _step = 3);
+  }
+
+  Future<void> _finish() async {
+    setState(() => _isFinishing = true);
+    await _extrasService.updateInterestCategories(_selectedCategories.toList());
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
@@ -142,7 +295,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
-    final logoAreaHeight = screenSize.height * (235 / 844);
+    final logoAreaHeight = screenSize.height * (200 / 844);
     final cardBottomGap = screenSize.height * (16 / 844);
 
     return Scaffold(
@@ -155,7 +308,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             left: 0,
             width: screenSize.width,
             height: screenSize.height,
-            child: _RegisterGradientBackground(size: screenSize),
+            child: const AuroraBackgroundWidget(),
           ),
           SafeArea(
             child: GestureDetector(
@@ -174,15 +327,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         children: [
                           SizedBox(
                             height: logoAreaHeight,
-                            // _RegisterLogo's content (150px image + 40sp
-                            // wordmark) is fixed-size, but logoAreaHeight
-                            // scales down proportionally with the screen —
-                            // on a short viewport (e.g. iPhone SE) that
-                            // proportional area can shrink below the logo's
-                            // natural height, overflowing the Column.
-                            // FittedBox lets it scale down to fit instead —
-                            // same fix LoginScreen already has for the
-                            // identical layout.
+                            // Same short-viewport safety net as
+                            // LoginScreen's logo — fixed-size content
+                            // inside a proportionally-scaling area.
                             child: const Center(
                               child: FittedBox(
                                 fit: BoxFit.scaleDown,
@@ -230,11 +377,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Crea una cuenta', style: AppTextStyles.registerHeading),
-            const SizedBox(height: 4),
-            Text('Únete a la comunidad Níkara', style: AppTextStyles.body),
-            const SizedBox(height: 20),
-            _StepIndicator(step: _step),
+            _WizardProgressBar(step: _step),
             const SizedBox(height: 18),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
@@ -249,7 +392,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: child,
                 ),
               ),
-              child: _step == 0 ? _buildStep1() : _buildStep2(),
+              child: switch (_step) {
+                0 => _buildStepIdentity(),
+                1 => _buildStepProfile(),
+                2 => _buildStepVerification(),
+                _ => _buildStepPreferences(),
+              },
             ),
           ],
         ),
@@ -257,175 +405,441 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildStep1() {
+  Widget _buildStepIdentity() {
     return KeyedSubtree(
-      key: const ValueKey('register-step-1'),
+      key: const ValueKey('register-step-identity'),
       child: Form(
         key: _step1FormKey,
         autovalidateMode: _step1AutovalidateMode,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _RegisterField(
-              label: 'Nombres',
-              hintText: 'ej: Samanta Ixchel',
-              controller: _firstNameController,
-              icon: Icons.person_outline,
-              textCapitalization: TextCapitalization.words,
-              validator: (v) => _required(v, 'Ingresa tu nombre'),
-            ),
-            const SizedBox(height: 14),
-            _RegisterField(
-              label: 'Apellidos',
-              hintText: 'ej: Galo Olivas',
-              controller: _lastNameController,
-              icon: Icons.badge_outlined,
-              textCapitalization: TextCapitalization.words,
-              validator: (v) => _required(v, 'Ingresa tu apellido'),
-            ),
-            const SizedBox(height: 14),
-            _RegisterField(
-              label: 'Celular',
-              hintText: 'ej: +505 8545-9245',
-              controller: _phoneController,
-              icon: Icons.call_outlined,
-              keyboardType: TextInputType.phone,
-              validator: (v) => _required(v, 'Ingresa tu celular'),
-            ),
-            const SizedBox(height: 20),
-            _PrimaryButton(onPressed: _goToStep2, label: 'Siguiente'),
-          ],
+        child: AutofillGroup(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Crea tu cuenta', style: AppTextStyles.registerHeading),
+              const SizedBox(height: 4),
+              Text('Empecemos con lo básico', style: AppTextStyles.body),
+              const SizedBox(height: 18),
+              _RegisterField(
+                label: 'Correo electrónico',
+                hintText: 'ej: jose@example.com',
+                controller: _emailController,
+                iconAsset: 'assets/images/icon_email.svg',
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                validator: _validateEmail,
+              ),
+              const SizedBox(height: 14),
+              _RegisterField(
+                label: 'Contraseña',
+                hintText: '••••••••',
+                controller: _passwordController,
+                iconAsset: 'assets/images/icon_lock.svg',
+                isPassword: true,
+                obscureText: _obscurePassword,
+                autofillHints: const [AutofillHints.newPassword],
+                onToggleObscure: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+                validator: _validatePassword,
+              ),
+              if (_passwordController.text.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                _PasswordStrengthMeter(password: _passwordController.text),
+              ],
+              const SizedBox(height: 14),
+              _RegisterField(
+                label: 'Confirmar contraseña',
+                hintText: '••••••••',
+                controller: _confirmPasswordController,
+                iconAsset: 'assets/images/icon_lock.svg',
+                isPassword: true,
+                obscureText: _obscureConfirmPassword,
+                autofillHints: const [AutofillHints.newPassword],
+                onToggleObscure: () {
+                  setState(
+                    () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                  );
+                },
+                validator: _validateConfirmPassword,
+              ),
+              const SizedBox(height: 20),
+              _PrimaryButton(onPressed: _goToProfileStep, label: 'Siguiente'),
+              const SizedBox(height: 24),
+              _CenteredDivider(label: 'o continúa con'),
+              const SizedBox(height: 16),
+              const SocialAuthRow(),
+              const SizedBox(height: 20),
+              _buildLoginPrompt(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildStep2() {
+  Widget _buildStepProfile() {
     return KeyedSubtree(
-      key: const ValueKey('register-step-2'),
+      key: const ValueKey('register-step-profile'),
       child: Form(
         key: _step2FormKey,
         autovalidateMode: _step2AutovalidateMode,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _RegisterField(
-              label: 'Correo electrónico',
-              hintText: 'ej: jose@example.com',
-              controller: _emailController,
-              iconAsset: 'assets/images/icon_email.svg',
-              keyboardType: TextInputType.emailAddress,
-              validator: _validateEmail,
-            ),
-            const SizedBox(height: 14),
-            _RegisterField(
-              label: 'Contraseña',
-              hintText: '••••••••',
-              controller: _passwordController,
-              iconAsset: 'assets/images/icon_lock.svg',
-              isPassword: true,
-              obscureText: _obscurePassword,
-              onToggleObscure: () {
-                setState(() => _obscurePassword = !_obscurePassword);
-              },
-              validator: _validatePassword,
-            ),
-            if (_passwordController.text.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _PasswordStrengthMeter(password: _passwordController.text),
-            ],
-            const SizedBox(height: 14),
-            _RegisterField(
-              label: 'Confirmar contraseña',
-              hintText: '••••••••',
-              controller: _confirmPasswordController,
-              iconAsset: 'assets/images/icon_lock.svg',
-              isPassword: true,
-              obscureText: _obscureConfirmPassword,
-              onToggleObscure: () {
-                setState(
-                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
-                );
-              },
-              validator: _validateConfirmPassword,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: _isSubmitting ? null : _goToStep1,
-                  child: Text('Atrás', style: AppTextStyles.link),
+        child: AutofillGroup(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Cuéntanos sobre ti', style: AppTextStyles.registerHeading),
+              const SizedBox(height: 4),
+              Text(
+                'Así te vamos a reconocer en Níkara',
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: 18),
+              Center(child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar)),
+              const SizedBox(height: 20),
+              _RegisterField(
+                label: 'Nombre completo',
+                hintText: 'ej: Samanta Ixchel Galo',
+                controller: _fullNameController,
+                icon: Icons.person_outline,
+                textCapitalization: TextCapitalization.words,
+                autofillHints: const [AutofillHints.name],
+                validator: (v) => _required(v, 'Ingresa tu nombre completo'),
+              ),
+              const SizedBox(height: 14),
+              _RegisterField(
+                label: 'Nombre de usuario',
+                hintText: 'ej: samy.ixchel',
+                controller: _usernameController,
+                icon: Icons.alternate_email,
+                autofillHints: const [AutofillHints.newUsername],
+                validator: _validateUsername,
+              ),
+              if (_usernameLooksGood) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.check_circle,
+                      size: 14,
+                      color: AppColors.ecoForest,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '¡Se ve bien!',
+                      style: AppTextStyles.legend.copyWith(
+                        color: AppColors.ecoForest,
+                      ),
+                    ),
+                  ],
                 ),
-                const Spacer(),
               ],
-            ),
-            const SizedBox(height: 4),
-            _PrimaryButton(
-              onPressed: _isSubmitting ? null : _submit,
-              label: 'Finalizar',
-              isLoading: _isSubmitting,
-            ),
-          ],
+              const SizedBox(height: 14),
+              _RegisterField(
+                label: 'Celular',
+                hintText: '8545-9245',
+                prefixText: '+505 ',
+                controller: _phoneController,
+                icon: Icons.call_outlined,
+                keyboardType: TextInputType.phone,
+                inputFormatters: const [NicaraguaPhoneInputFormatter()],
+                autofillHints: const [AutofillHints.telephoneNumber],
+                validator: (v) => _required(v, 'Ingresa tu celular'),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: _isCreatingAccount ? null : _goToIdentityStep,
+                    child: Text('Atrás', style: AppTextStyles.link),
+                  ),
+                  const Spacer(),
+                ],
+              ),
+              const SizedBox(height: 4),
+              _PrimaryButton(
+                onPressed: _isCreatingAccount ? null : _createAccountAndContinue,
+                label: 'Crear mi cuenta',
+                isLoading: _isCreatingAccount,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-class _StepIndicator extends StatelessWidget {
-  const _StepIndicator({required this.step});
+  Widget _buildStepVerification() {
+    return KeyedSubtree(
+      key: const ValueKey('register-step-verification'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Verifica tu número', style: AppTextStyles.registerHeading),
+          const SizedBox(height: 4),
+          Text(
+            'La verificación por SMS estará disponible pronto. Mientras '
+            'tanto, puedes continuar sin problema.',
+            style: AppTextStyles.body,
+          ),
+          const SizedBox(height: 24),
+          OtpInputRow(
+            length: 6,
+            onChanged: (code) => setState(() => _otpCode = code),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton(
+              onPressed: _otpCode.length == 6 ? _attemptVerifyOtp : null,
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                  color: _otpCode.length == 6
+                      ? AppColors.wizardFocus
+                      : AppColors.cardBorder,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: Text(
+                'Verificar código',
+                style: AppTextStyles.buttonLg.copyWith(
+                  color: AppColors.neutral900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _PrimaryButton(onPressed: _skipVerification, label: 'Saltar por ahora'),
+        ],
+      ),
+    );
+  }
 
-  final int step;
+  Widget _buildStepPreferences() {
+    return KeyedSubtree(
+      key: const ValueKey('register-step-preferences'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('¿Qué te gusta explorar?', style: AppTextStyles.registerHeading),
+          const SizedBox(height: 4),
+          Text(
+            'Elige tus intereses — nos ayuda a recomendarte mejores lugares.',
+            style: AppTextStyles.body,
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final category in _kInterestCategories)
+                _InterestChip(
+                  label: category,
+                  selected: _selectedCategories.contains(category),
+                  onTap: () => setState(() {
+                    if (!_selectedCategories.remove(category)) {
+                      _selectedCategories.add(category);
+                    }
+                  }),
+                ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          _PrimaryButton(
+            onPressed: _isFinishing ? null : _finish,
+            label: 'Explorar la app',
+            isLoading: _isFinishing,
+          ),
+        ],
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Row(
+  Widget _buildLoginPrompt() {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _StepCircle(number: 1, active: step >= 0, filled: step >= 0),
-        Expanded(
-          child: Container(
-            height: 1,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            color: AppColors.primary500,
-          ),
-        ),
-        _StepCircle(number: 2, active: step >= 1, filled: step >= 1),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 3,
-          child: Text(
-            step == 0 ? 'Datos Personales' : 'Credenciales de acceso',
-            style: AppTextStyles.stepIndicatorCaption,
-          ),
+        Text('¿Ya tienes cuenta?', style: AppTextStyles.registerPrompt),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => Navigator.of(context).maybePop(),
+          child: Text('Inicia sesión', style: AppTextStyles.registerLink),
         ),
       ],
     );
   }
 }
 
-class _StepCircle extends StatelessWidget {
-  const _StepCircle({
-    required this.number,
-    required this.active,
-    required this.filled,
-  });
+/// Slim 4-segment progress bar + "Paso X de 4 · Nombre" caption — replaces
+/// the earlier 2-circle indicator now that there are 4 steps.
+class _WizardProgressBar extends StatelessWidget {
+  const _WizardProgressBar({required this.step});
 
-  final int number;
-  final bool active;
-  final bool filled;
+  final int step;
+
+  static const _labels = ['Identidad', 'Perfil', 'Verificación', 'Preferencias'];
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 25,
-      height: 25,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: filled ? AppColors.primary500 : AppColors.surface100,
-        border: Border.all(color: AppColors.primary500, width: 1),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < _labels.length; i++) ...[
+              if (i != 0) const SizedBox(width: 6),
+              Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: i <= step
+                        ? AppColors.wizardFocus
+                        : AppColors.warmChipBorder,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Paso ${step + 1} de ${_labels.length} · ${_labels[step]}',
+          style: AppTextStyles.stepIndicatorCaption,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+class _AvatarPicker extends StatelessWidget {
+  const _AvatarPicker({required this.path, required this.onTap});
+
+  final String? path;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 88,
+            height: 88,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.surface100,
+              border: Border.all(color: AppColors.cardBorder),
+              boxShadow: AppColors.cardShadow,
+            ),
+            child: path == null
+                ? const Icon(
+                    Icons.person_outline,
+                    size: 36,
+                    color: AppColors.neutral600,
+                  )
+                : ClipOval(child: LocalImage(path: path)),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.wizardFocus,
+                border: Border.all(color: AppColors.backgroundCream, width: 2),
+              ),
+              child: const Icon(
+                Icons.photo_camera,
+                size: 14,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
-      child: Text('$number', style: AppTextStyles.stepIndicatorNumber),
+    );
+  }
+}
+
+class _InterestChip extends StatelessWidget {
+  const _InterestChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.wizardFocus : AppColors.surface100,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? AppColors.wizardFocus : AppColors.cardBorder,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.wizardFocus.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 200),
+          style: AppTextStyles.bodyText2.copyWith(
+            color: selected ? Colors.white : AppColors.neutral900,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+          child: Text(label),
+        ),
+      ),
+    );
+  }
+}
+
+class _CenteredDivider extends StatelessWidget {
+  const _CenteredDivider({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: AppColors.cardBorder)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            label,
+            style: AppTextStyles.legend.copyWith(color: AppColors.neutral600),
+          ),
+        ),
+        Expanded(child: Divider(color: AppColors.cardBorder)),
+      ],
     );
   }
 }
@@ -442,8 +856,8 @@ class _RegisterLogo extends StatelessWidget {
           offset: const Offset(0, 8),
           child: Image.asset(
             'assets/images/nikara_logo.png',
-            width: 150,
-            height: 150,
+            width: 120,
+            height: 120,
             fit: BoxFit.contain,
             filterQuality: FilterQuality.high,
           ),
@@ -453,72 +867,6 @@ class _RegisterLogo extends StatelessWidget {
           child: Text('NÍKARA', style: AppTextStyles.logoWordmark),
         ),
       ],
-    );
-  }
-}
-
-/// Full-bleed gradient background matching the login screen's, reused here
-/// as a private copy since the two decorative blurs are per-node absolute
-/// coordinates in Figma (157:98/101 vs 113:97/98) and not identical enough
-/// to justify a shared widget.
-class _RegisterGradientBackground extends StatelessWidget {
-  const _RegisterGradientBackground({required this.size});
-
-  final Size size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment(-0.65, -0.76),
-          end: Alignment(0.65, 0.76),
-          colors: [
-            AppColors.primary500,
-            Color(0xFFFFCC33),
-            AppColors.primary400,
-          ],
-          stops: [0.0893, 0.4265, 0.9323],
-        ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: size.width * (262 / 390),
-            top: size.height * (-32 / 844),
-            child: _radialBlur(
-              diameter: size.width * (160 / 390),
-              colors: [
-                Colors.white.withValues(alpha: 0.25),
-                Colors.white.withValues(alpha: 0),
-              ],
-            ),
-          ),
-          Positioned(
-            left: size.width * (-79 / 390),
-            top: size.height * (97 / 844),
-            child: _radialBlur(
-              diameter: size.width * (224 / 390),
-              colors: [
-                AppColors.accent300.withValues(alpha: 0.3),
-                AppColors.accent300.withValues(alpha: 0),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _radialBlur({required double diameter, required List<Color> colors}) {
-    return Container(
-      width: diameter,
-      height: diameter,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
     );
   }
 }
@@ -582,11 +930,11 @@ class _PrimaryButton extends StatelessWidget {
 }
 
 /// Live checklist + strength bar shown under the password field as the
-/// user types — UX audit addition: real-time feedback instead of only
-/// finding out a password is too weak after tapping "Finalizar". Purely
-/// informational (the actual submit gate stays the existing 6-character
-/// minimum in [_RegisterScreenState._validatePassword]); this doesn't
-/// silently tighten the account-creation policy underneath the user.
+/// user types — real-time feedback instead of only finding out a password
+/// is too weak after tapping "Siguiente". Purely informational (the actual
+/// submit gate stays the existing 6-character minimum in
+/// [_RegisterScreenState._validatePassword]); this doesn't silently
+/// tighten the account-creation policy underneath the user.
 class _PasswordStrengthMeter extends StatelessWidget {
   const _PasswordStrengthMeter({required this.password});
 
@@ -700,6 +1048,9 @@ class _RegisterField extends StatelessWidget {
     this.onToggleObscure,
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
+    this.autofillHints,
+    this.inputFormatters,
+    this.prefixText,
     this.validator,
   }) : assert(
          icon != null || iconAsset != null,
@@ -716,6 +1067,9 @@ class _RegisterField extends StatelessWidget {
   final VoidCallback? onToggleObscure;
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
+  final Iterable<String>? autofillHints;
+  final List<TextInputFormatter>? inputFormatters;
+  final String? prefixText;
   final FormFieldValidator<String>? validator;
 
   @override
@@ -749,12 +1103,18 @@ class _RegisterField extends StatelessWidget {
                     : Icon(icon, size: 16, color: AppColors.neutral600),
               ),
               const SizedBox(width: 12),
+              if (prefixText != null) ...[
+                Text(prefixText!, style: AppTextStyles.inputText),
+                const SizedBox(width: 4),
+              ],
               Expanded(
                 child: TextFormField(
                   controller: controller,
                   obscureText: isPassword && obscureText,
                   keyboardType: keyboardType,
                   textCapitalization: textCapitalization,
+                  autofillHints: autofillHints,
+                  inputFormatters: inputFormatters,
                   validator: validator,
                   style: AppTextStyles.inputText,
                   decoration: InputDecoration(

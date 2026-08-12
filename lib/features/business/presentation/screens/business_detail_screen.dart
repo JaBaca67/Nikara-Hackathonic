@@ -1,29 +1,33 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
-import 'package:nikara_app/features/bookings/domain/models/booking.dart';
-import 'package:nikara_app/features/bookings/presentation/widgets/booking_request_sheet.dart';
+import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
-import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
-import 'package:nikara_app/shared/services/main_tab_controller.dart';
+import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Airbnb-style detail screen for a [BusinessModel] (Figma nodes 284:2256
-/// "Informacion lugar" and 233:437 "Reseñas Lugar"). The cover + floating
-/// info card + segmented tabs are a plain [Stack] rather than a
-/// [SliverAppBar] — simpler to reason about and consistent with how every
-/// other screen in this app is built.
+/// Detail screen for a [BusinessModel] — cover + floating quick-info card +
+/// segmented tabs, all in one continuous scroll (no fixed sheet), per
+/// Claude Design's turn 3 ("Perfil del negocio / lugar — unificación
+/// prototipo + Figma"), Pantalla 3a ("pestaña Información, scroll
+/// completo"). No price, no reservation CTA anywhere on this screen — the
+/// same discovery-first pivot already applied to the Map redesign.
 class BusinessDetailScreen extends StatefulWidget {
   const BusinessDetailScreen({super.key, required this.business});
 
@@ -34,7 +38,7 @@ class BusinessDetailScreen extends StatefulWidget {
 }
 
 class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
-  static const _coverHeight = 320.0;
+  static const _coverHeight = 296.0;
 
   final _favoritesService = FavoritesService();
   final _authService = AuthService();
@@ -45,6 +49,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   bool _isFavorite = false;
   UserModel? _currentProfile;
   String? _currentAvatarPath;
+  Position? _userPosition;
 
   /// Starts as [widget.business] but gets a new `reviews` list appended
   /// in-place after a successful submission, so the rating/opinions/photos
@@ -53,16 +58,21 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
 
   BusinessModel get _business => _businessState;
 
-  /// Simulated distance — there's no real geolocation wired up, so this is
-  /// a stable, per-business pseudo-random figure (never a literal constant,
-  /// never re-randomized on rebuild).
-  int get _simulatedDistanceKm => 5 + (_business.id.hashCode.abs() % 40);
+  /// Real straight-line distance from the device's last known position —
+  /// `null` (shown as "—") when location isn't available, never a
+  /// fabricated number.
+  double? get _distanceKm => LocationService.distanceKm(
+    _userPosition,
+    _business.latitude,
+    _business.longitude,
+  );
 
   @override
   void initState() {
     super.initState();
     _loadFavoriteState();
     _loadCurrentUser();
+    _loadUserPosition();
   }
 
   Future<void> _loadFavoriteState() async {
@@ -81,6 +91,15 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     });
   }
 
+  /// Best-effort, silent on failure — same shared cache as MapScreen via
+  /// [LocationService], so whichever screen asks first is the only one
+  /// that prompts for permission.
+  Future<void> _loadUserPosition() async {
+    final position = await LocationService().getCurrentPosition();
+    if (!mounted || position == null) return;
+    setState(() => _userPosition = position);
+  }
+
   void _openOwnerProfile() {
     Navigator.of(
       context,
@@ -88,6 +107,8 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _toggleFavorite() async {
+    if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
+    if (!mounted) return;
     final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
     if (!mounted) return;
     setState(() => _isFavorite = nowFavorite);
@@ -139,52 +160,32 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  /// Opens the real reservation form and, on success, hands the user
-  /// straight to "Mis Reservas" so their new booking is right there —
-  /// [MainTabController] is what makes that possible from a screen that
-  /// was `Navigator.push`ed on top of `MainLayout`, not one of its 4 tabs.
-  Future<void> _openBookingSheet() async {
-    final booking = await showModalBottomSheet<BookingModel>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.surface100,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => BookingRequestSheet(business: _business),
+  /// Opens Google Maps with real directions to this business's exact
+  /// coordinates — same external-maps approach as MapScreen's preview
+  /// card, replacing the old in-app "open MapScreen" placeholder.
+  Future<void> _openDirections() async {
+    final lat = _business.latitude;
+    final lng = _business.longitude;
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
     );
-    if (booking == null || !mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('¡Reserva confirmada! Código ${booking.code}')),
-    );
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    MainTabController().switchTo(2);
-  }
-
-  void _openLocationOnMap() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Abriendo el mapa de Níkara...')),
-    );
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const MapScreen()));
-    });
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir el mapa de rutas')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.surface100,
-      // Stack sizes itself to its non-positioned children (just the cover)
-      // under the loose constraints Scaffold hands its body, which left the
-      // sheet below squeezed into a sliver and the rest of the screen blank.
-      // SizedBox.expand forces the Stack to the full body size so the
-      // Positioned.fill sheet gets its real height.
-      body: SizedBox.expand(
-        child: Stack(
+      backgroundColor: AppColors.settingsBackground,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 110),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _CoverImage(
               business: _business,
@@ -194,50 +195,43 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
               onShare: _showComingSoon,
               onToggleFavorite: _toggleFavorite,
             ),
-            Positioned.fill(
-              top: _coverHeight - 28,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.surface100,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            Transform.translate(
+              offset: const Offset(0, -18),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _QuickInfoCard(
+                  business: _business,
+                  distanceKm: _distanceKm,
                 ),
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 110),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _QuickInfoCard(
-                        business: _business,
-                        distanceKm: _simulatedDistanceKm,
-                        onLocationTap: _openLocationOnMap,
-                      ),
-                      const SizedBox(height: 16),
-                      _SegmentedTabs(
-                        tab: _tab,
-                        onChanged: (t) => setState(() => _tab = t),
-                      ),
-                      const Divider(
-                        height: 32,
-                        thickness: 1,
-                        color: Color(0xFFEEEEEE),
-                      ),
-                      if (_tab == 0)
-                        _InformationTab(
-                          business: _business,
-                          onLocationTap: _openLocationOnMap,
-                          currentProfile: _currentProfile,
-                          currentAvatarPath: _currentAvatarPath,
-                          onOwnerTap: _openOwnerProfile,
-                        )
-                      else
-                        _ReviewsTab(
-                          business: _business,
-                          onWriteReview: _openWriteReview,
-                        ),
-                    ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _SegmentedTabs(
+                    tab: _tab,
+                    onChanged: (t) => setState(() => _tab = t),
                   ),
-                ),
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _tab == 0
+                        ? _InformationTab(
+                            business: _business,
+                            currentProfile: _currentProfile,
+                            currentAvatarPath: _currentAvatarPath,
+                            onOwnerTap: _openOwnerProfile,
+                            onDirections: _openDirections,
+                            onReport: _showComingSoon,
+                          )
+                        : _ReviewsTab(
+                            business: _business,
+                            onWriteReview: _openWriteReview,
+                          ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -245,7 +239,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       ),
       bottomNavigationBar: _ContactBar(
         business: _business,
-        onBook: _openBookingSheet,
+        onDirections: _openDirections,
       ),
     );
   }
@@ -253,7 +247,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
 
 /// Cover: swipeable [PageView] over every photo the business has (falls
 /// back to a single placeholder frame when there are none), with a
-/// "1/N" counter badge and the usual back/favorite/share overlay.
+/// "1 / N" photo-library counter badge and the usual frosted
+/// back/favorite/share overlay — sizes and colors match Pantalla 3a
+/// exactly, including its two-stop top/bottom gradient.
 class _CoverImage extends StatefulWidget {
   const _CoverImage({
     required this.business,
@@ -305,8 +301,7 @@ class _CoverImageState extends State<_CoverImage> {
               : PageView.builder(
                   controller: _pageController,
                   itemCount: photos.length,
-                  onPageChanged: (index) =>
-                      setState(() => _photoIndex = index),
+                  onPageChanged: (index) => setState(() => _photoIndex = index),
                   itemBuilder: (context, index) => LocalImage(
                     path: photos[index],
                     fallbackIcon: Icons.image_outlined,
@@ -322,10 +317,22 @@ class _CoverImageState extends State<_CoverImage> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x6B1A1510), Color(0x001A1510)],
+                  stops: [0.0, 0.32],
+                ),
+              ),
+            ),
+          ),
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Color(0xB31A1510), Color(0x001A1510)],
-                  stops: [0.0, 0.55],
+                  colors: [Color(0xCC1A1510), Color(0x001A1510)],
+                  stops: [0.0, 0.6],
                 ),
               ),
             ),
@@ -371,17 +378,17 @@ class _CoverImageState extends State<_CoverImage> {
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
+                            horizontal: 13,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: AppColors.primary500,
+                            color: AppColors.tagGold600,
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             business.category,
                             style: AppTextStyles.detailTagPill.copyWith(
-                              color: AppColors.textInk,
+                              color: AppColors.settingsTextDark,
                             ),
                           ),
                         ),
@@ -392,8 +399,8 @@ class _CoverImageState extends State<_CoverImage> {
                               business.reviews.isEmpty
                                   ? Icons.star_border_rounded
                                   : Icons.star_rounded,
-                              size: 12,
-                              color: Colors.white,
+                              size: 15,
+                              color: AppColors.tagGold600,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -406,12 +413,12 @@ class _CoverImageState extends State<_CoverImage> {
                             Text(
                               '(${business.reviews.length} reseñas)',
                               style: AppTextStyles.detailRatingCount.copyWith(
-                                color: Colors.white.withValues(alpha: 0.65),
+                                color: Colors.white.withValues(alpha: 0.8),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 5),
                         Text(
                           business.name,
                           style: AppTextStyles.detailTitle.copyWith(
@@ -423,9 +430,7 @@ class _CoverImageState extends State<_CoverImage> {
                       ],
                     ),
                   ),
-                  // Generous bottom margin so the title never sits under the
-                  // sliding white sheet, regardless of how long the name is.
-                  const SizedBox(height: 44),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -433,22 +438,35 @@ class _CoverImageState extends State<_CoverImage> {
           if (photos.length > 1)
             Positioned(
               right: 16,
-              bottom: 40,
+              bottom: 88,
               child: IgnorePointer(
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 11,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
+                    color: const Color(0x801A1510),
                     borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0x40FDFDFD)),
                   ),
-                  child: Text(
-                    '${_photoIndex + 1}/${photos.length}',
-                    style: AppTextStyles.detailRatingValue.copyWith(
-                      color: Colors.white,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.photo_library,
+                        size: 13,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${_photoIndex + 1} / ${photos.length}',
+                        style: AppTextStyles.detailTagPill.copyWith(
+                          color: Colors.white,
+                          fontSize: 10.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -459,6 +477,8 @@ class _CoverImageState extends State<_CoverImage> {
   }
 }
 
+/// 40px frosted-glass circle — translucent white fill, hairline border,
+/// backdrop blur — per Pantalla 3a's back/share/favorite buttons.
 class _CoverIconButton extends StatelessWidget {
   const _CoverIconButton({required this.icon, required this.onTap});
 
@@ -469,78 +489,90 @@ class _CoverIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.25),
-          shape: BoxShape.circle,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+          child: Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+            ),
+            child: Icon(icon, size: 19, color: Colors.white),
+          ),
         ),
-        child: Icon(icon, size: 18, color: Colors.white),
       ),
     );
   }
 }
 
+/// Floating quick-info card — Ubicación / Distancia / Hoy, three plain
+/// centered text columns (no icons, no price) separated by hairline
+/// dividers, per Pantalla 3a.
 class _QuickInfoCard extends StatelessWidget {
-  const _QuickInfoCard({
-    required this.business,
-    required this.distanceKm,
-    required this.onLocationTap,
-  });
+  const _QuickInfoCard({required this.business, required this.distanceKm});
 
   final BusinessModel business;
-  final int distanceKm;
-  final VoidCallback onLocationTap;
+  final double? distanceKm;
 
-  static Widget get _quickInfoDivider => Container(
-    width: 1,
-    height: 32,
-    margin: const EdgeInsets.symmetric(horizontal: 8),
-    color: AppColors.primary500.withValues(alpha: 0.3),
-  );
+  static Widget get _divider =>
+      Container(width: 1, height: 32, color: AppColors.profileDivider);
+
+  /// The business's own free-text hours, first line only — never a
+  /// fabricated "Abierto"/"Cerrado" claim there's no structured schedule
+  /// data to back.
+  String get _todayValue {
+    final schedules = business.schedules.trim();
+    if (schedules.isEmpty) return 'No especificado';
+    final firstLine = schedules.split('\n').first.trim();
+    return firstLine.isEmpty ? 'No especificado' : firstLine;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final km = distanceKm;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: AppColors.cardShadow,
+        border: Border.all(color: AppColors.mapControlBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.mapControlShadowSoft,
+            offset: Offset(0, 6),
+            blurRadius: 20,
+          ),
+        ],
       ),
       child: Row(
         children: [
           Expanded(
             child: _QuickInfoItem(
-              icon: Icons.location_on_outlined,
               label: 'Ubicación',
-              value: business.city,
-              onTap: onLocationTap,
+              value: business.city.isEmpty ? 'No especificado' : business.city,
             ),
           ),
-          _quickInfoDivider,
+          _divider,
           Expanded(
             child: _QuickInfoItem(
-              icon: Icons.near_me_outlined,
               label: 'Distancia',
-              value: '$distanceKm km',
+              value: km == null ? '—' : '${km.toStringAsFixed(0)} km',
             ),
           ),
-          if (business.allowsReservations) ...[
-            _quickInfoDivider,
-            Expanded(
-              child: _QuickInfoItem(
-                icon: null,
-                label: 'Precio',
-                value: business.formattedPrice,
-                valueColor: AppColors.ecoForest,
-                valueSuffix: '/p',
-              ),
+          _divider,
+          Expanded(
+            child: _QuickInfoItem(
+              label: 'Hoy',
+              value: _todayValue,
+              valueColor: business.schedules.trim().isEmpty
+                  ? AppColors.settingsTextMuted
+                  : AppColors.accent300,
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -549,85 +581,39 @@ class _QuickInfoCard extends StatelessWidget {
 
 class _QuickInfoItem extends StatelessWidget {
   const _QuickInfoItem({
-    required this.icon,
     required this.label,
     required this.value,
     this.valueColor,
-    this.valueSuffix,
-    this.onTap,
   });
 
-  final IconData? icon;
   final String label;
   final String value;
   final Color? valueColor;
-  final String? valueSuffix;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: AppTextStyles.quickInfoLabel,
         ),
-        const SizedBox(height: 2),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            // Without a Flexible here, this Text lays out at its natural
-            // (unbounded) width — a long value has nowhere to shrink and
-            // the Row overflows horizontally instead of eliding.
-            Flexible(
-              child: Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.quickInfoValue.copyWith(
-                  color: valueColor ?? AppColors.textInk,
-                ),
-              ),
-            ),
-            if (valueSuffix != null)
-              Text(
-                valueSuffix!,
-                style: AppTextStyles.legend.copyWith(
-                  color: AppColors.neutral600,
-                ),
-              ),
-          ],
+        const SizedBox(height: 3),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.quickInfoValue.copyWith(
+            color: valueColor ?? AppColors.settingsTextDark,
+          ),
         ),
       ],
     );
-
-    final result = icon == null
-        ? content
-        : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: AppColors.primary500.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, size: 15, color: AppColors.primary500),
-              ),
-              const SizedBox(width: 8),
-              Flexible(child: content),
-            ],
-          );
-
-    if (onTap == null) return result;
-    return GestureDetector(onTap: onTap, child: result);
   }
 }
 
@@ -684,16 +670,16 @@ class _SegmentButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(13),
           boxShadow: selected
               ? const [
                   BoxShadow(
-                    color: Color(0x4DFDBE02),
+                    color: Color(0x47F0B500),
                     offset: Offset(0, 2),
-                    blurRadius: 4,
+                    blurRadius: 8,
                   ),
                 ]
               : null,
@@ -702,7 +688,11 @@ class _SegmentButton extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: AppTextStyles.segmentedTabLabel.copyWith(
-            color: selected ? AppColors.textInk : AppColors.neutral600,
+            fontWeight: FontWeight.w800,
+            fontSize: 12.5,
+            color: selected
+                ? AppColors.settingsTextDark
+                : AppColors.settingsTextMuted,
           ),
         ),
       ),
@@ -710,63 +700,79 @@ class _SegmentButton extends StatelessWidget {
   }
 }
 
-class _InformationTab extends StatelessWidget {
+/// "Información" tab body — Descripción, Actividades, Servicios del lugar,
+/// Anfitrión, Horarios, Contacto y redes, Cómo llegar and a report link,
+/// in that order — the exact section list and sequence from Pantalla 3a.
+/// Stateful only to hold the "ver todas las actividades" expand toggle.
+class _InformationTab extends StatefulWidget {
   const _InformationTab({
     required this.business,
-    required this.onLocationTap,
     required this.currentProfile,
     required this.currentAvatarPath,
     required this.onOwnerTap,
+    required this.onDirections,
+    required this.onReport,
   });
 
   final BusinessModel business;
-  final VoidCallback onLocationTap;
   final UserModel? currentProfile;
   final String? currentAvatarPath;
   final VoidCallback onOwnerTap;
+  final VoidCallback onDirections;
+  final VoidCallback onReport;
 
-  static const _sectionDivider = Divider(
-    height: 40,
-    thickness: 1,
-    color: Color(0xFFEEEEEE),
-  );
+  @override
+  State<_InformationTab> createState() => _InformationTabState();
+}
+
+class _InformationTabState extends State<_InformationTab> {
+  bool _showAllActivities = false;
 
   @override
   Widget build(BuildContext context) {
-    // Order matches the Figma spec: Comodidades, Descripción, módulo
-    // dinámico por categoría, Mapa de ubicación — everything else the
-    // wizard also collects (Actividades, Anfitrión, Horarios y contacto)
-    // follows after, since removing that real data isn't part of this fix.
-    final sections = <Widget>[
-      if (business.amenities.isNotEmpty)
-        _ChipSection(
-          title: 'Comodidades',
-          background: AppColors.warmChipBackground,
-          border: AppColors.warmChipBorder,
-          tint: AppColors.chipContentDark,
-          labels: business.amenities,
-          iconOf: amenityIcon,
+    final business = widget.business;
+    final contacts = <SocialContact>[
+      if (business.contactPhone.isNotEmpty)
+        SocialContact.whatsapp(
+          business.contactPhone,
+          message:
+              'Hola, vi su negocio en Níkara y me gustaría más información '
+              'sobre ${business.name}.',
         ),
+      if (business.contactPhone.isNotEmpty)
+        SocialContact.phone(business.contactPhone),
+      if (business.instagramLink.isNotEmpty)
+        SocialContact.instagram(business.instagramLink),
+      if (business.facebookLink.isNotEmpty)
+        SocialContact.facebook(business.facebookLink),
+      if (business.tiktokLink.isNotEmpty)
+        SocialContact.tiktok(business.tiktokLink),
+      if (business.socialMediaLink.isNotEmpty)
+        SocialContact.link(business.socialMediaLink),
+    ];
+
+    final sections = <Widget>[
       _DescriptionSection(business: business),
       if (business.activities.isNotEmpty)
-        _DynamicCategorySection(business: business),
-      _LocationSection(business: business, onLocationTap: onLocationTap),
-      if (business.activities.isNotEmpty)
-        _ChipSection(
-          title: 'Actividades',
-          background: AppColors.warmChipBackgroundAlt,
-          border: AppColors.warmChipBorder,
-          tint: AppColors.chipContentDark,
-          labels: business.activities,
-          iconOf: activityIcon,
+        _ActivitiesSection(
+          activities: business.activities,
+          ecoSeal: business.ecoSealRequested,
+          expanded: _showAllActivities,
+          onToggle: () =>
+              setState(() => _showAllActivities = !_showAllActivities),
         ),
+      if (business.amenities.isNotEmpty)
+        _ServicesSection(amenities: business.amenities),
       _HostSection(
         business: business,
-        currentProfile: currentProfile,
-        currentAvatarPath: currentAvatarPath,
-        onTap: onOwnerTap,
+        currentProfile: widget.currentProfile,
+        currentAvatarPath: widget.currentAvatarPath,
+        onTap: widget.onOwnerTap,
       ),
-      _SchedulesAndSocialSection(business: business),
+      _ScheduleSection(business: business),
+      if (contacts.isNotEmpty) _ContactSection(contacts: contacts),
+      _DirectionsSection(business: business, onTap: widget.onDirections),
+      _ReportLinkSection(onTap: widget.onReport),
     ];
 
     return Column(
@@ -774,173 +780,8 @@ class _InformationTab extends StatelessWidget {
       children: [
         for (var i = 0; i < sections.length; i++) ...[
           sections[i],
-          if (i != sections.length - 1) _sectionDivider,
+          if (i != sections.length - 1) const SizedBox(height: 22),
         ],
-      ],
-    );
-  }
-}
-
-/// Picks the right prompt for `_buildDynamicCategorySection` per the
-/// business's category. The app models category as a free-text String
-/// (set by the wizard's fixed chip list, reused for Home's grouping and
-/// Map's filters) rather than an enum, so this matches on keywords instead
-/// of a `BusinessCategory` type.
-String _categoryPromptFor(String category) {
-  final key = category.toLowerCase();
-  if (key.contains('hospedaje')) return '¿Dónde vas a descansar?';
-  if (key.contains('restaurante') || key.contains('gastro')) {
-    return '¿Qué vas a degustar?';
-  }
-  if (key.contains('aventura') || key.contains('tour') || key.contains('cultura')) {
-    return '¿Qué vas a vivir?';
-  }
-  return '¿Qué vas a explorar?'; // Eco Turismo, Transporte, Otro, etc.
-}
-
-/// Category-aware highlight carousel — reuses [BusinessModel.activities] as
-/// the backing list (the model has no per-category data like rooms/dishes/
-/// stops yet) and cycles through the business's own photos, only changing
-/// the section title based on category.
-class _DynamicCategorySection extends StatelessWidget {
-  const _DynamicCategorySection({required this.business});
-
-  final BusinessModel business;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = business.activities;
-    if (items.isEmpty) return const SizedBox.shrink();
-    final photos = business.localImagePaths;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _categoryPromptFor(business.category),
-          style: AppTextStyles.detailSectionTitle,
-        ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 140,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 10),
-            itemBuilder: (context, index) {
-              final imagePath = photos.isEmpty
-                  ? null
-                  : photos[index % photos.length];
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: SizedBox(
-                  width: 130,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      LocalImage(
-                        path: imagePath,
-                        fallbackIcon: Icons.photo_outlined,
-                      ),
-                      const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            stops: [0.4, 1.0],
-                            colors: [Colors.transparent, Color(0xCC1A1510)],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 8,
-                        right: 8,
-                        bottom: 8,
-                        child: Text(
-                          items[index],
-                          style: AppTextStyles.detailRowText.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// A section title followed by a [Wrap] of warm, bordered chips — used for
-/// both Comodidades and Actividades, each with its own vector icon per
-/// item via [iconOf] (no emojis — see [amenityIcon]/[activityIcon]).
-class _ChipSection extends StatelessWidget {
-  const _ChipSection({
-    required this.title,
-    required this.background,
-    required this.border,
-    required this.tint,
-    required this.labels,
-    required this.iconOf,
-  });
-
-  final String title;
-  final Color background;
-  final Color border;
-  final Color tint;
-  final List<String> labels;
-  final IconData Function(String label) iconOf;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final label in labels)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: background,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: border),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(iconOf(label), size: 14, color: tint),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        label,
-                        style: AppTextStyles.detailRowText.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: tint,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
       ],
     );
   }
@@ -968,26 +809,27 @@ class _DescriptionSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Descripción', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 8),
         Text(
           business.description.isEmpty
               ? 'Este anfitrión aún no agregó una descripción.'
               : business.description,
-          style: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral800),
+          style: AppTextStyles.detailDescriptionText,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         GestureDetector(
           onTap: () => _showFullDescription(context),
-          child: Text(
-            'Mostrar más',
-            style: AppTextStyles.detailRowText.copyWith(
-              fontWeight: FontWeight.w700,
-              color: AppColors.accent300,
-              decoration: TextDecoration.underline,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Mostrar más', style: AppTextStyles.detailInlineLink),
+              const Icon(
+                Icons.expand_more,
+                size: 15,
+                color: AppColors.accent300,
+              ),
+            ],
           ),
         ),
       ],
@@ -1033,7 +875,7 @@ class _FullDescriptionSheet extends StatelessWidget {
                     child: const Icon(
                       Icons.close,
                       size: 18,
-                      color: AppColors.neutral900,
+                      color: AppColors.settingsTextDark,
                     ),
                   ),
                 ),
@@ -1081,93 +923,239 @@ class _FullDescriptionSheet extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTextStyles.detailRowText.copyWith(
+          style: AppTextStyles.detailActivityLabel.copyWith(
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          value,
-          style: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral800),
-        ),
+        Text(value, style: AppTextStyles.detailDescriptionText),
       ],
     );
   }
 }
 
-/// "Mapa de ubicación exacta e indicaciones" — the exact address
-/// ([BusinessModel.locationText], never the short [BusinessModel.city]
-/// shown on cards) plus a tap target that opens the map, matching
-/// [onLocationTap] used by the quick-info card above.
-class _LocationSection extends StatelessWidget {
-  const _LocationSection({required this.business, required this.onLocationTap});
+/// Actividades — icon rows with an optional "ECO" badge (shown only when
+/// the activity's own text literally mentions it, never guessed), showing
+/// the first 3 with a "Ver las N actividades" expand link, per Pantalla 3a.
+class _ActivitiesSection extends StatelessWidget {
+  const _ActivitiesSection({
+    required this.activities,
+    required this.ecoSeal,
+    required this.expanded,
+    required this.onToggle,
+  });
 
-  final BusinessModel business;
-  final VoidCallback onLocationTap;
+  final List<String> activities;
+  final bool ecoSeal;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = expanded ? activities : activities.take(3).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Actividades', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        Column(
+          children: [
+            for (final activity in visible) ...[
+              _ActivityRow(label: activity, ecoSeal: ecoSeal),
+              if (activity != visible.last) const SizedBox(height: 8),
+            ],
+          ],
+        ),
+        if (activities.length > 3) ...[
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: onToggle,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  expanded
+                      ? 'Ver menos'
+                      : 'Ver las ${activities.length} actividades',
+                  style: AppTextStyles.detailInlineLink,
+                ),
+                Icon(
+                  expanded ? Icons.expand_less : Icons.chevron_right,
+                  size: 15,
+                  color: AppColors.accent300,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.label, required this.ecoSeal});
+
+  final String label;
+
+  /// The business's own Sello ECO opt-in (Pantalla 4c) — applies to every
+  /// activity row, on top of the per-label "eco" text match below.
+  final bool ecoSeal;
+
+  bool get _isEco =>
+      ecoSeal || activityLabel(label).toLowerCase().contains('eco');
+
+  @override
+  Widget build(BuildContext context) {
+    final isEco = _isEco;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.mapControlBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isEco
+                  ? AppColors.detailActivityIconBg
+                  : AppColors.settingsBackground,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(
+              activityIcon(label),
+              size: 18,
+              color: isEco ? AppColors.accent300 : AppColors.settingsTextMuted,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              activityLabel(label),
+              style: AppTextStyles.detailActivityLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (isEco) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.detailActivityIconBg,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text('ECO', style: AppTextStyles.detailEcoBadge),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Servicios del lugar — a [Wrap] of hairline-bordered pills, one per
+/// amenity, per Pantalla 3a.
+class _ServicesSection extends StatelessWidget {
+  const _ServicesSection({required this.amenities});
+
+  final List<String> amenities;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ubicación exacta', style: AppTextStyles.detailSectionTitle),
+        Text('Servicios del lugar', style: AppTextStyles.detailSectionTitle),
         const SizedBox(height: 10),
-        GestureDetector(
-          onTap: onLocationTap,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.ecoForest.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: AppColors.ecoForest.withValues(alpha: 0.25),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppColors.ecoForest.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.map_outlined,
-                    color: AppColors.ecoForest,
-                    size: 20,
-                  ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final amenity in amenities)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 8,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        business.locationText.isEmpty
-                            ? 'Dirección no especificada'
-                            : business.locationText,
-                        style: AppTextStyles.detailRowText.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                        maxLines: 2,
+                decoration: BoxDecoration(
+                  color: AppColors.surface100,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: AppColors.mapControlBorder),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      amenityIcon(amenity),
+                      size: 15,
+                      color: AppColors.settingsTextMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        amenity,
+                        style: AppTextStyles.detailServicePill,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ver indicaciones en el mapa',
-                        style: AppTextStyles.reviewMeta.copyWith(
-                          color: AppColors.ecoForest,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const Icon(Icons.chevron_right, color: AppColors.ecoForest),
-              ],
-            ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Horarios — the business's own free-text hours in a single bordered
+/// card. Pantalla 3a shows a 3-row structured weekly table, but the data
+/// model only has one free-text [BusinessModel.schedules] field — this
+/// shows that real value rather than fabricating per-day hours.
+class _ScheduleSection extends StatelessWidget {
+  const _ScheduleSection({required this.business});
+
+  final BusinessModel business;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Horarios', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.mapControlBorder),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.access_time_rounded,
+                size: 18,
+                color: AppColors.settingsTextMuted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  business.schedules.trim().isEmpty
+                      ? 'Horario no especificado'
+                      : business.schedules,
+                  style: AppTextStyles.detailScheduleLabel,
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -1175,14 +1163,30 @@ class _LocationSection extends StatelessWidget {
   }
 }
 
-/// Anfitrión section — [BusinessModel.ownerId] is the account email that
-/// created the listing. This app is device-local/single-account (no
-/// backend), so the only case where that id can resolve to a REAL, richer
+class _ContactSection extends StatelessWidget {
+  const _ContactSection({required this.contacts});
+
+  final List<SocialContact> contacts;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Contacto y redes', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        SocialHub(contacts: contacts),
+      ],
+    );
+  }
+}
+
+/// Anfitrión — [BusinessModel.ownerId] is the account that created the
+/// listing. This app is device-local/single-account (no backend session
+/// sharing), so the only case where that id resolves to a REAL, richer
 /// profile (real photo, real name, a tappable link) is when it matches the
-/// device's own signed-in session. Every other business (created before
-/// [BusinessModel.ownerId] existed, or in a future multi-account world,
-/// owned by someone else) falls back to the wizard's free-text
-/// [BusinessModel.hostName] with an initials avatar, same as before.
+/// device's own signed-in session. Every other business falls back to the
+/// wizard's free-text [BusinessModel.hostName] with an initials avatar.
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
@@ -1208,7 +1212,7 @@ class _HostSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Anfitrión', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _HostRow(
           hostName: business.hostName,
           linkedName: isLinked ? currentProfile!.fullName : null,
@@ -1221,107 +1225,10 @@ class _HostSection extends StatelessWidget {
   }
 }
 
-/// Horarios (icon + bold title + value, always shown) followed by a
-/// [SocialHub] of whichever contact channels this business actually has
-/// data for.
-class _SchedulesAndSocialSection extends StatelessWidget {
-  const _SchedulesAndSocialSection({required this.business});
-
-  final BusinessModel business;
-
-  @override
-  Widget build(BuildContext context) {
-    final contacts = <SocialContact>[
-      if (business.contactPhone.isNotEmpty)
-        SocialContact.whatsapp(
-          business.contactPhone,
-          message:
-              'Hola, vi su negocio en Níkara y me gustaría más información '
-              'sobre ${business.name}.',
-        ),
-      if (business.contactPhone.isNotEmpty)
-        SocialContact.phone(business.contactPhone),
-      if (business.instagramLink.isNotEmpty)
-        SocialContact.instagram(business.instagramLink),
-      if (business.facebookLink.isNotEmpty)
-        SocialContact.facebook(business.facebookLink),
-      if (business.tiktokLink.isNotEmpty)
-        SocialContact.tiktok(business.tiktokLink),
-      if (business.socialMediaLink.isNotEmpty)
-        SocialContact.link(business.socialMediaLink),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _IconValueRow(
-          icon: Icons.access_time_rounded,
-          title: 'Horarios',
-          value: business.schedules.isEmpty
-              ? 'Horario no especificado'
-              : business.schedules,
-        ),
-        if (contacts.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text('Contacto y redes', style: AppTextStyles.detailSectionTitle),
-          const SizedBox(height: 10),
-          SocialHub(contacts: contacts),
-        ],
-      ],
-    );
-  }
-}
-
-class _IconValueRow extends StatelessWidget {
-  const _IconValueRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String title;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: AppColors.neutral600),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppTextStyles.detailRowText.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: AppTextStyles.bodyText2.copyWith(
-                  color: AppColors.neutral600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Premium host card — big avatar, name + "Anfitrión Verificado" badge (a
-/// fair claim: every host here went through Níkara's own registration
-/// wizard, unlike a fabricated trust score), and a real capability line
-/// instead of a made-up "responds in ~1 hour" metric this app has no data
-/// to back — there's no messaging system to time a response against.
+/// Compact host card — 48px avatar, name + "VERIFICADO" badge on one row,
+/// a single caption line, per Pantalla 3a's proportions. No invented
+/// "Anfitrión desde 2023 · N lugares" stat — the app has no per-owner
+/// join-date or listing-count data wired into this screen.
 class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
@@ -1332,10 +1239,6 @@ class _HostRow extends StatelessWidget {
   });
 
   final String hostName;
-
-  /// Non-null only when this business's [BusinessModel.ownerId] matches
-  /// the device's signed-in account — the one case with a real photo/name
-  /// to show instead of the wizard's free-text [hostName].
   final String? linkedName;
   final String? linkedAvatarPath;
   final bool hasWhatsapp;
@@ -1353,88 +1256,90 @@ class _HostRow extends StatelessWidget {
         : displayName.trim()[0].toUpperCase();
 
     final card = Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
-        boxShadow: AppColors.cardShadow,
+        border: Border.all(color: AppColors.mapControlBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14F0B500),
+            offset: Offset(0, 2),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Row(
         children: [
           ClipOval(
             child: SizedBox(
-              width: 64,
-              height: 64,
+              width: 48,
+              height: 48,
               child: avatarPath != null && avatarPath.isNotEmpty
                   ? LocalImage(path: avatarPath)
                   : Container(
-                      color: AppColors.ecoForest,
+                      color: AppColors.accent300,
                       alignment: Alignment.center,
                       child: Text(
                         initial,
-                        style: AppTextStyles.h5.copyWith(color: Colors.white),
+                        style: AppTextStyles.h6.copyWith(color: Colors.white),
                       ),
                     ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  displayName,
-                  style: AppTextStyles.detailRowText.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.ecoForest.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.verified_rounded,
-                        size: 13,
-                        color: AppColors.ecoForest,
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      displayName,
+                      style: AppTextStyles.detailHostName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                      const SizedBox(width: 4),
-                      Flexible(
-                        child: Text(
-                          'Anfitrión Verificado',
-                          style: AppTextStyles.reviewMeta.copyWith(
-                            color: AppColors.ecoForest,
-                            fontWeight: FontWeight.w700,
+                      decoration: BoxDecoration(
+                        color: AppColors.detailActivityIconBg,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.verified_rounded,
+                            size: 11,
+                            color: AppColors.accent300,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'VERIFICADO',
+                            style: AppTextStyles.detailVerifiedBadge,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
                 if (hasWhatsapp || onTap != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     onTap != null
                         ? 'Toca para ver el perfil'
                         : 'Disponible por WhatsApp',
-                    style: AppTextStyles.reviewMeta.copyWith(
+                    style: AppTextStyles.settingsSubtitle.copyWith(
                       color: onTap != null
                           ? AppColors.accent300
-                          : AppColors.neutral600,
+                          : AppColors.settingsTextMuted,
                       fontWeight: onTap != null ? FontWeight.w700 : null,
                     ),
                   ),
@@ -1443,13 +1348,189 @@ class _HostRow extends StatelessWidget {
             ),
           ),
           if (onTap != null)
-            const Icon(Icons.chevron_right, color: AppColors.neutral500),
+            const Icon(Icons.chevron_right, color: AppColors.neutral400),
         ],
       ),
     );
 
     if (onTap == null) return card;
     return GestureDetector(onTap: onTap, child: card);
+  }
+}
+
+/// Cómo llegar — a decorative mini-map illustration (the same warm,
+/// non-interactive "road + green area + pin" flourish from Pantalla 3a,
+/// not a real embedded map) plus the real exact address and an "Abrir
+/// mapa" pill that opens real Google Maps directions.
+class _DirectionsSection extends StatelessWidget {
+  const _DirectionsSection({required this.business, required this.onTap});
+
+  final BusinessModel business;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Cómo llegar', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface100,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.mapControlBorder),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 120, child: _MiniMapIllustration()),
+                Padding(
+                  padding: const EdgeInsets.all(13),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              business.locationText.isEmpty
+                                  ? 'Dirección no especificada'
+                                  : business.locationText,
+                              style: AppTextStyles.detailMapAddress,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Se abrirá en Google Maps',
+                              style: AppTextStyles.profileCaption10.copyWith(
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 13,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.settingsBackground,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Abrir mapa',
+                          style: AppTextStyles.detailPillAction,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniMapIllustration extends StatelessWidget {
+  const _MiniMapIllustration();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: AppColors.detailMapBg),
+        Positioned(
+          left: -20,
+          right: -20,
+          top: 38,
+          child: Transform.rotate(
+            angle: -7 * math.pi / 180,
+            child: Container(height: 12, color: AppColors.detailMapRoad),
+          ),
+        ),
+        Positioned(
+          left: 60,
+          top: -20,
+          bottom: -20,
+          width: 9,
+          child: Transform.rotate(
+            angle: 11 * math.pi / 180,
+            child: Container(color: AppColors.detailMapRoad),
+          ),
+        ),
+        const Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 56,
+          child: ColoredBox(color: AppColors.detailMapGreen),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 27,
+          child: Center(
+            child: Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: AppColors.primary500,
+                shape: BoxShape.circle,
+                border: Border.fromBorderSide(
+                  BorderSide(color: AppColors.surface100, width: 3),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x38261D0C),
+                    offset: Offset(0, 4),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.location_on,
+                size: 18,
+                color: AppColors.settingsTextDark,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReportLinkSection extends StatelessWidget {
+  const _ReportLinkSection({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Text(
+          'Reportar información incorrecta',
+          style: AppTextStyles.profileCaption10.copyWith(
+            fontSize: 10.5,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1581,13 +1662,20 @@ class _RatingSummaryCard extends StatelessWidget {
             width: 58,
             child: Column(
               children: [
-                Text(business.averageRating.toStringAsFixed(1), style: AppTextStyles.ratingBig),
+                Text(
+                  business.averageRating.toStringAsFixed(1),
+                  style: AppTextStyles.ratingBig,
+                ),
                 const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: List.generate(
                     5,
-                    (_) => const Icon(Icons.star, size: 10, color: AppColors.primary500),
+                    (_) => const Icon(
+                      Icons.star,
+                      size: 10,
+                      color: AppColors.primary500,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1632,7 +1720,12 @@ class _RatingBarRow extends StatelessWidget {
       children: [
         SizedBox(
           width: 8,
-          child: Text('$star', style: AppTextStyles.reviewMeta.copyWith(fontWeight: FontWeight.w700)),
+          child: Text(
+            '$star',
+            style: AppTextStyles.reviewMeta.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1697,7 +1790,9 @@ class _ReviewCard extends StatelessWidget {
                 backgroundColor: AppColors.ecoForest,
                 child: Text(
                   initial,
-                  style: AppTextStyles.reviewAuthor.copyWith(color: Colors.white),
+                  style: AppTextStyles.reviewAuthor.copyWith(
+                    color: Colors.white,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1763,18 +1858,17 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// Fixed bottom bar. A business that takes reservations and has a set
-/// price gets a real "Reservar ahora" CTA (writes to Supabase's `bookings`
-/// table) plus a compact WhatsApp icon for direct contact; everything else
-/// keeps the original WhatsApp-only "consultar disponibilidad" flow, since
-/// there's no price to build a booking against.
+/// Fixed bottom bar — exactly two actions, per Pantalla 3a: a compact
+/// "Cómo llegar" pill and a full-width gold "Escribir por WhatsApp" CTA.
+/// No price, no "Reservar ahora" — this screen's real reservation entry
+/// point was intentionally removed to match the design's discovery-first
+/// bottom bar (see [BookingRequestSheet], still wired to Supabase's
+/// `bookings` table, just no longer reachable from here).
 class _ContactBar extends StatelessWidget {
-  const _ContactBar({required this.business, required this.onBook});
+  const _ContactBar({required this.business, required this.onDirections});
 
   final BusinessModel business;
-  final VoidCallback onBook;
-
-  bool get _hasPrice => business.allowsReservations && business.price != null;
+  final VoidCallback onDirections;
 
   void _contact(BuildContext context) {
     launchWhatsApp(
@@ -1791,106 +1885,86 @@ class _ContactBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
         decoration: const BoxDecoration(
           color: AppColors.surface100,
+          border: Border(top: BorderSide(color: AppColors.mapControlBorder)),
           boxShadow: [
             BoxShadow(
-              color: Color(0x14000000),
-              offset: Offset(0, -2),
-              blurRadius: 8,
+              color: Color(0x14261D0C),
+              offset: Offset(0, -6),
+              blurRadius: 22,
             ),
           ],
         ),
         child: Row(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _hasPrice
-                        ? '${business.formattedPrice} / persona'
-                        : 'Consultar disponibilidad',
-                    style: AppTextStyles.detailRowText.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+            SizedBox(
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: business.latitude == null ? null : onDirections,
+                icon: const Icon(Icons.directions_outlined, size: 18),
+                label: const Text('Cómo llegar'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: AppColors.settingsBackground,
+                  foregroundColor: AppColors.settingsTextDark,
+                  side: const BorderSide(color: AppColors.mapControlBorder),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  Text(
-                    _hasPrice ? 'Reserva en la app' : 'e información',
-                    style: AppTextStyles.reviewMeta,
-                  ),
-                ],
+                  textStyle: AppTextStyles.detailBottomBarSecondary,
+                ),
               ),
             ),
-            const SizedBox(width: 12),
-            if (_hasPrice) ...[
-              SizedBox(
-                height: 52,
-                width: 52,
-                child: OutlinedButton(
-                  onPressed: () => _contact(context),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    side: const BorderSide(color: Color(0xFF25D366)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Icon(Icons.chat, color: Color(0xFF25D366)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: onBook,
-                    icon: const Icon(Icons.event_available, size: 20),
-                    label: const Text(
-                      'Reservar ahora',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary500,
-                      foregroundColor: AppColors.textInk,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+            const SizedBox(width: 10),
+            Expanded(
+              child: SizedBox(
+                height: 48,
+                child: business.contactPhone.isEmpty
+                    ? FilledButton.icon(
+                        onPressed: null,
+                        icon: const Icon(Icons.chat, size: 18),
+                        label: const Text('Sin WhatsApp'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.segmentedTrackBg,
+                          foregroundColor: AppColors.settingsTextMuted,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      )
+                    : DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x52F0B500),
+                              offset: Offset(0, 4),
+                              blurRadius: 14,
+                            ),
+                          ],
+                        ),
+                        child: FilledButton.icon(
+                          onPressed: () => _contact(context),
+                          icon: const Icon(Icons.chat, size: 18),
+                          label: const Text(
+                            'Escribir por WhatsApp',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.primary500,
+                            foregroundColor: AppColors.settingsTextDark,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            textStyle: AppTextStyles.detailBottomBarPrimary,
+                          ),
+                        ),
                       ),
-                      textStyle: AppTextStyles.buttonMd,
-                    ),
-                  ),
-                ),
               ),
-            ] else
-              Flexible(
-                child: SizedBox(
-                  height: 52,
-                  child: FilledButton.icon(
-                    onPressed: () => _contact(context),
-                    icon: const Icon(Icons.chat, size: 20),
-                    label: const Text(
-                      'Contactar por WhatsApp',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: AppTextStyles.buttonMd,
-                    ),
-                  ),
-                ),
-              ),
+            ),
           ],
         ),
       ),
@@ -1970,11 +2044,15 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
       contentPadding: const EdgeInsets.all(14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
+        borderSide: BorderSide(
+          color: AppColors.neutral600.withValues(alpha: 0.35),
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: AppColors.neutral600.withValues(alpha: 0.35)),
+        borderSide: BorderSide(
+          color: AppColors.neutral600.withValues(alpha: 0.35),
+        ),
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -2017,7 +2095,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     child: const Icon(
                       Icons.close,
                       size: 18,
-                      color: AppColors.neutral900,
+                      color: AppColors.settingsTextDark,
                     ),
                   ),
                 ),
@@ -2048,7 +2126,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
             const SizedBox(height: 20),
             Text(
               'Tu comentario',
-              style: AppTextStyles.detailRowText.copyWith(
+              style: AppTextStyles.detailActivityLabel.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2079,7 +2157,10 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                       size: 28,
                     ),
                     const SizedBox(height: 6),
-                    Text('Adjuntar fotos o videos', style: AppTextStyles.subtitle2),
+                    Text(
+                      'Adjuntar fotos o videos',
+                      style: AppTextStyles.subtitle2,
+                    ),
                   ],
                 ),
               ),

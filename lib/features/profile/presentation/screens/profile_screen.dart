@@ -10,7 +10,7 @@ import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/presentation/screens/edit_business_hub_screen.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
@@ -141,7 +141,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _editBusiness(BusinessModel business) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => RegisterBusinessWizard(existingBusiness: business),
+        builder: (_) => EditBusinessHubScreen(business: business),
       ),
     );
     await _loadAll();
@@ -226,10 +226,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(badge.title, style: AppTextStyles.h6.copyWith(
-                color: AppColors.settingsTextDark,
-                fontSize: 16,
-              )),
+              child: Text(
+                badge.title,
+                style: AppTextStyles.h6.copyWith(
+                  color: AppColors.settingsTextDark,
+                  fontSize: 16,
+                ),
+              ),
             ),
           ],
         ),
@@ -435,10 +438,7 @@ class _ProfileHeaderCard extends StatelessWidget {
                       onTap: onSettingsTap,
                     ),
                     const SizedBox(width: 10),
-                    _HeaderIconButton(
-                      icon: Icons.ios_share,
-                      onTap: onShareTap,
-                    ),
+                    _HeaderIconButton(icon: Icons.ios_share, onTap: onShareTap),
                   ],
                 ),
               ],
@@ -581,18 +581,32 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.profileDivider, width: 0.8)),
+        border: Border(
+          top: BorderSide(color: AppColors.profileDivider, width: 0.8),
+        ),
       ),
       child: Row(
         children: [
           Expanded(
-            child: _StatColumn(value: '$tripsCount', label: 'Viajes', showDivider: true),
+            child: _StatColumn(
+              value: '$tripsCount',
+              label: 'Viajes',
+              showDivider: true,
+            ),
           ),
           Expanded(
-            child: _StatColumn(value: '$badgesCount', label: 'Insignias', showDivider: true),
+            child: _StatColumn(
+              value: '$badgesCount',
+              label: 'Insignias',
+              showDivider: true,
+            ),
           ),
           Expanded(
-            child: _StatColumn(value: '$points', label: 'Puntos', showDivider: false),
+            child: _StatColumn(
+              value: '$points',
+              label: 'Puntos',
+              showDivider: false,
+            ),
           ),
         ],
       ),
@@ -663,9 +677,12 @@ class _LevelProgressCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(levelInfo.currentLevelName, style: AppTextStyles.h6.copyWith(
-                      color: AppColors.settingsTextDark,
-                    )),
+                    Text(
+                      levelInfo.currentLevelName,
+                      style: AppTextStyles.h6.copyWith(
+                        color: AppColors.settingsTextDark,
+                      ),
+                    ),
                     const SizedBox(height: 1),
                     Text(
                       levelInfo.isMaxLevel
@@ -717,7 +734,10 @@ class _LevelProgressCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${levelInfo.points} puntos', style: AppTextStyles.profileCaption10),
+              Text(
+                '${levelInfo.points} puntos',
+                style: AppTextStyles.profileCaption10,
+              ),
               Text(
                 levelInfo.isMaxLevel
                     ? 'Nivel máximo'
@@ -856,9 +876,10 @@ class _FavoritesTab extends StatelessWidget {
       children: [
         Align(
           alignment: Alignment.centerRight,
-          child: Text('Ver todos ▼', style: AppTextStyles.buttonSm.copyWith(
-            color: AppColors.neutral900,
-          )),
+          child: Text(
+            'Ver todos ▼',
+            style: AppTextStyles.buttonSm.copyWith(color: AppColors.neutral900),
+          ),
         ),
         const SizedBox(height: 8),
         for (final destination in destinations) ...[
@@ -1234,7 +1255,10 @@ class _BadgeCard extends StatelessWidget {
               const SizedBox(height: 6),
               if (unlocked)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: badge.tint.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),

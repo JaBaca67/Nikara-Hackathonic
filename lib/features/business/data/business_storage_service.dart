@@ -43,20 +43,26 @@ class BusinessStorageService {
   Future<List<BusinessModel>> getBusinesses() async {
     final rows = await _select();
     final localExtras = await _readLocalExtras();
-    return rows.map((row) {
-      final core = _fromRow(row);
-      final cached = localExtras[core.id];
-      return cached == null ? core : _mergeExtras(core, cached);
-    }).toList(growable: false);
+    return rows
+        .map((row) {
+          final core = _fromRow(row);
+          final cached = localExtras[core.id];
+          return cached == null ? core : _mergeExtras(core, cached);
+        })
+        .toList(growable: false);
   }
 
   Future<void> addBusiness(BusinessModel business) async {
     _requireOwnerId(business);
     _requireLocation(business);
     try {
-      await _client.from('businesses').insert(_toRow(business, includeId: true));
+      await _client
+          .from('businesses')
+          .insert(_toRow(business, includeId: true));
     } on PostgrestException catch (e) {
-      throw BusinessServiceException('No se pudo guardar el negocio: ${e.message}');
+      throw BusinessServiceException(
+        'No se pudo guardar el negocio: ${e.message}',
+      );
     } catch (_) {
       throw const BusinessServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
@@ -143,7 +149,10 @@ class BusinessStorageService {
 
   Future<List<Map<String, dynamic>>> _select() async {
     try {
-      final rows = await _client.from('businesses').select().order('created_at');
+      final rows = await _client
+          .from('businesses')
+          .select()
+          .order('created_at');
       return (rows as List<dynamic>).cast<Map<String, dynamic>>();
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
@@ -162,6 +171,8 @@ class BusinessStorageService {
       price: cached.price,
       amenities: cached.amenities,
       activities: cached.activities,
+      ecoSealRequested: cached.ecoSealRequested,
+      ecoPractices: cached.ecoPractices,
       facebookLink: cached.facebookLink,
       socialMediaLink: cached.socialMediaLink,
       schedules: cached.schedules,
@@ -212,6 +223,7 @@ class BusinessStorageService {
       instagramLink: row['instagram_handle'] as String? ?? '',
       localImagePaths:
           (row['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
+      isVerified: row['is_verified'] as bool? ?? false,
       // No column for these — real defaults, not placeholders; the local
       // extras merge (see getBusinesses) fills them back in when available.
       allowsReservations: false,

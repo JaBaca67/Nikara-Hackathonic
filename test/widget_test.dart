@@ -33,7 +33,11 @@ void main() {
     // session persisted in the test environment), so it renders LoginScreen
     // directly.
     await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
+    // Not pumpAndSettle: LoginScreen's AuroraBackgroundWidget runs an
+    // intentionally infinite repeating animation, which would never let
+    // pumpAndSettle finish.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     // Verificamos que nuestra pantalla de Login cargó correctamente
     // buscando los textos de tu diseño.

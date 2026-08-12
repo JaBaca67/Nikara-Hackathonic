@@ -53,6 +53,7 @@ class SocialContact {
     required this.label,
     required this.handle,
     required this.tint,
+    required this.iconBackground,
     required this.uri,
   });
 
@@ -65,6 +66,10 @@ class SocialContact {
   /// when there's nothing meaningful to show (e.g. a bare "Llamar" action).
   final String handle;
   final Color tint;
+
+  /// Icon-circle fill — a distinct pale tint per channel in Claude Design
+  /// Pantalla 3a, not simply [tint] at low alpha.
+  final Color iconBackground;
   final Uri uri;
 
   /// WhatsApp chat pre-filled with [message].
@@ -77,7 +82,8 @@ class SocialContact {
       icon: Icons.chat,
       label: 'WhatsApp',
       handle: phone.trim(),
-      tint: const Color(0xFF25D366),
+      tint: AppColors.detailWhatsappIcon,
+      iconBackground: AppColors.detailWhatsappIconBg,
       uri: Uri.parse('https://wa.me/$digits$query'),
     );
   }
@@ -87,7 +93,8 @@ class SocialContact {
       icon: Icons.call_rounded,
       label: 'Llamar',
       handle: phone.trim(),
-      tint: AppColors.accent300,
+      tint: AppColors.settingsTextMuted,
+      iconBackground: AppColors.profileDivider,
       uri: Uri.parse('tel:${digitsOnly(phone)}'),
     );
   }
@@ -98,21 +105,30 @@ class SocialContact {
   factory SocialContact.instagram(String handleOrLink) {
     final handle = _extractHandle(handleOrLink, hostFragment: 'instagram.com');
     return SocialContact(
-      icon: Icons.camera_alt_outlined,
+      icon: Icons.photo_camera,
       label: 'Instagram',
       handle: handle.isEmpty ? '' : '@$handle',
-      tint: const Color(0xFFE1306C),
+      tint: AppColors.favoriteActive,
+      iconBackground: AppColors.detailInstagramIconBg,
       uri: Uri.parse('https://instagram.com/$handle'),
     );
   }
 
-  factory SocialContact.facebook(String link) => SocialContact(
-    icon: Icons.facebook,
-    label: 'Facebook',
-    handle: '',
-    tint: const Color(0xFF1877F2),
-    uri: Uri.parse(link),
-  );
+  /// [handleOrLink] is a bare handle since the Pantalla 4a redesign (same
+  /// input style as Instagram) but also tolerates a legacy full URL from
+  /// before that change — same handle-first tolerance as
+  /// [SocialContact.instagram].
+  factory SocialContact.facebook(String handleOrLink) {
+    final handle = _extractHandle(handleOrLink, hostFragment: 'facebook.com');
+    return SocialContact(
+      icon: Icons.thumb_up,
+      label: 'Facebook',
+      handle: '',
+      tint: AppColors.wizardFacebookIcon,
+      iconBackground: AppColors.wizardFacebookIconBg,
+      uri: Uri.parse('https://facebook.com/$handle'),
+    );
+  }
 
   /// Same handle-first tolerance as [SocialContact.instagram] — TikTok
   /// profile URLs keep the "@" in their path (`tiktok.com/@handle`).
@@ -123,6 +139,7 @@ class SocialContact {
       label: 'TikTok',
       handle: handle.isEmpty ? '' : '@$handle',
       tint: AppColors.neutral900,
+      iconBackground: AppColors.neutral900.withValues(alpha: 0.1),
       uri: Uri.parse('https://www.tiktok.com/@$handle'),
     );
   }
@@ -132,6 +149,7 @@ class SocialContact {
     label: 'Enlace',
     handle: '',
     tint: AppColors.neutral600,
+    iconBackground: AppColors.neutral600.withValues(alpha: 0.1),
     uri: Uri.parse(link),
   );
 }
@@ -164,6 +182,9 @@ class SocialHub extends StatelessWidget {
   }
 }
 
+/// A flat, hairline-bordered row — no elevation — matching the rest of
+/// Pantalla 3a's list rows (Actividades/Servicios/Horarios all share this
+/// same flat-card language).
 class _SocialHubCard extends StatelessWidget {
   const _SocialHubCard({required this.contact, required this.onTap});
 
@@ -174,51 +195,43 @@ class _SocialHubCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surface100,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.mapControlBorder),
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 38,
+                height: 38,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: contact.tint.withValues(alpha: 0.12),
+                  color: contact.iconBackground,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(contact.icon, color: contact.tint, size: 22),
+                child: Icon(contact.icon, color: contact.tint, size: 19),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       contact.label,
-                      style: AppTextStyles.detailRowText.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: AppTextStyles.quickInfoValue,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (contact.handle.isNotEmpty)
                       Text(
                         contact.handle,
-                        style: AppTextStyles.reviewMeta,
+                        style: AppTextStyles.settingsSubtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -228,31 +241,14 @@ class _SocialHubCard extends StatelessWidget {
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: 13,
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: contact.tint.withValues(alpha: 0.1),
+                  color: AppColors.settingsBackground,
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Abrir',
-                      style: AppTextStyles.reviewMeta.copyWith(
-                        color: contact.tint,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 12,
-                      color: contact.tint,
-                    ),
-                  ],
-                ),
+                child: Text('Abrir', style: AppTextStyles.detailPillAction),
               ),
             ],
           ),
