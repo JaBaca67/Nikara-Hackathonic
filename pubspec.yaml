@@ -57,8 +57,33 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Generates every platform's app/launcher icon from assets/icon/ — run
+  # `dart run flutter_launcher_icons` after changing any of those sources.
+  flutter_launcher_icons: ^0.14.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
+
+# flutter_launcher_icons config — sources are generated from the real
+# Níkara flower mark (assets/images/nikara_logo.png) composited on the
+# exact splash-screen gradient (see _SplashGradientBackground in
+# lib/shared/widgets/splash_transition_screen.dart), not a new/invented
+# look. Regenerate the three PNGs in assets/icon/ (via the same recipe)
+# before re-running this if the brand mark or gradient ever changes.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#FFCC33"
+    theme_color: "#FFCC33"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
 
 # The following section is specific to Flutter packages.
 flutter:

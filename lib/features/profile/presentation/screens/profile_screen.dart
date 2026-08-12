@@ -252,6 +252,88 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Routes a badge-card tap to the right dialog — the gray "how to
+  /// unlock" one for a still-locked badge, or [_showBadgeUnlocked] (full
+  /// color, celebratory) for one the traveler already earned.
+  void _onBadgeTap(BadgeInfo badge) {
+    if (badge.unlocked) {
+      _showBadgeUnlocked(badge);
+    } else {
+      _showBadgeRequirement(badge);
+    }
+  }
+
+  /// Shown for an already-earned badge — same layout as the locked
+  /// requirement dialog, but in the badge's real [BadgeInfo.tint] instead
+  /// of gray, confirming what was achieved rather than what's missing.
+  void _showBadgeUnlocked(BadgeInfo badge) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface100,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: badge.tint.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(badge.icon, size: 18, color: badge.tint),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                badge.title,
+                style: AppTextStyles.h6.copyWith(
+                  color: AppColors.settingsTextDark,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: badge.tint.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                '✓ Insignia obtenida',
+                style: AppTextStyles.badgeStatusPill.copyWith(
+                  color: badge.tint,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Lograste: ${badge.requirementLabel}',
+              style: AppTextStyles.bodyText2.copyWith(
+                color: AppColors.settingsTextMuted,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(foregroundColor: badge.tint),
+            child: const Text('¡Genial!'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -326,63 +408,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.settingsBackground,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ProfileHeaderCard(
-                fullName: fullName,
-                initials: initials,
-                avatarPath: _avatarPath,
-                tripsCount: _stats.tripsCount,
-                badgesCount: unlockedCount,
-                points: points,
-                onAvatarTap: _pickAvatar,
-                onEditTap: _openSettings,
-                onSettingsTap: _openSettings,
-                onShareTap: _showComingSoon,
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _LevelProgressCard(levelInfo: levelInfo),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _ProfileTabSelector(
-                  activeTab: _activeTab,
-                  onChanged: (tab) => setState(() => _activeTab = tab),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                child: _activeTab == 0
-                    ? _FavoritesTab(
-                        destinations: _favoriteDestinations,
-                        businesses: _favoriteBusinesses,
-                        onToggleFavorite: _toggleFavorite,
-                        onExplore: widget.onExploreRequested,
-                      )
-                    : _BadgesTab(
-                        badges: badges,
-                        onLockedTap: _showBadgeRequirement,
-                      ),
-              ),
-              if (_myBusinesses.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                  child: _MyBusinessesSection(
-                    businesses: _myBusinesses,
-                    onEdit: _editBusiness,
-                    onDelete: _confirmDeleteBusiness,
-                  ),
-                ),
-            ],
+      body: Column(
+        children: [
+          // The status-bar-safe strip SafeArea reserves at the top would
+          // otherwise show the Scaffold's cream background — a hard seam
+          // right where the phone's status bar sits, immediately above
+          // _ProfileHeaderCard's own surface100. Painting it the same
+          // surface100 here makes the two read as one continuous surface.
+          Container(
+            height: MediaQuery.paddingOf(context).top,
+            color: AppColors.surface100,
           ),
-        ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                // Extra clearance (not just 24) because MainLayout's
+                // Scaffold uses extendBody: true so the floating nav bar
+                // overlaps the bottom of this scroll view instead of
+                // reserving its own space — without it, "Mis Negocios"
+                // gets cut off behind the nav bar.
+                padding: const EdgeInsets.only(bottom: 110),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ProfileHeaderCard(
+                      fullName: fullName,
+                      initials: initials,
+                      avatarPath: _avatarPath,
+                      tripsCount: _stats.tripsCount,
+                      badgesCount: unlockedCount,
+                      points: points,
+                      onAvatarTap: _pickAvatar,
+                      onEditTap: _openSettings,
+                      onSettingsTap: _openSettings,
+                      onShareTap: _showComingSoon,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _LevelProgressCard(levelInfo: levelInfo),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: _ProfileTabSelector(
+                        activeTab: _activeTab,
+                        onChanged: (tab) => setState(() => _activeTab = tab),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      // Favoritos and Insignias are two fully independent tab
+                      // bodies — AnimatedSwitcher cross-fades between them
+                      // instead of an instant swap, keyed by the tab index so it
+                      // actually detects the change.
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 280),
+                        switchInCurve: Curves.easeInOutCubic,
+                        switchOutCurve: Curves.easeInOutCubic,
+                        transitionBuilder: (child, animation) =>
+                            FadeTransition(opacity: animation, child: child),
+                        child: _activeTab == 0
+                            ? _FavoritesTab(
+                                key: const ValueKey('favoritos'),
+                                destinations: _favoriteDestinations,
+                                businesses: _favoriteBusinesses,
+                                onToggleFavorite: _toggleFavorite,
+                                onExplore: widget.onExploreRequested,
+                              )
+                            : _BadgesTab(
+                                key: const ValueKey('insignias'),
+                                badges: badges,
+                                onBadgeTap: _onBadgeTap,
+                              ),
+                      ),
+                    ),
+                    // "Mis Negocios" is a business-owner-only section that only
+                    // makes sense under Favoritos (both are "your saved/owned
+                    // places" lists) — deliberately hidden while Insignias is
+                    // active instead of always showing beneath either tab, since
+                    // it has nothing to do with badges/gamification. The divider
+                    // + extra top gap (vs. the 12px used between the other
+                    // sections) keeps it visually distinct from the tab content
+                    // above it even when it IS shown.
+                    if (_activeTab == 0 && _myBusinesses.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+                        child: Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: AppColors.profileDivider,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                        child: _MyBusinessesSection(
+                          businesses: _myBusinesses,
+                          onEdit: _editBusiness,
+                          onDelete: _confirmDeleteBusiness,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -415,6 +548,9 @@ class _ProfileHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // AppColors.surface100 — the same soft off-white (never pure #FFFFFF)
+    // every other card on this screen (level card, badge cards) already
+    // uses, and what Figma node 377:483 itself specifies for this block.
     return Container(
       color: AppColors.surface100,
       child: Column(
@@ -752,16 +888,34 @@ class _LevelProgressCard extends StatelessWidget {
   }
 }
 
+/// One continuous pill (Figma's "Barra favoritos y medallas") — a single
+/// sliding gradient indicator behind two equal tap zones, not two
+/// independently-rounded buttons with a gap between them. The slide uses a
+/// real (implicit) Flutter animation — [AnimatedAlign] with an
+/// overshoot curve — for a livelier feel than a flat linear cross-fade;
+/// [ClipRRect] keeps that overshoot from poking past the pill's rounded
+/// corners mid-bounce.
 class _ProfileTabSelector extends StatelessWidget {
   const _ProfileTabSelector({required this.activeTab, required this.onChanged});
 
   final int activeTab;
   final ValueChanged<int> onChanged;
 
+  static const _labels = ['Favoritos', 'Insignias'];
+  static const _icons = [
+    Icons.favorite_border_rounded,
+    Icons.workspace_premium_outlined,
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 44,
+      // A touch bigger than before (52 vs 48) — a plain Stack child (the
+      // Row below) shrink-wraps to its own content height and then sits
+      // at the Stack's default top-start corner instead of filling it, so
+      // growing this container without also fixing that would have just
+      // pushed the icon/label further off-center instead of "bigger."
+      height: 52,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppColors.surface100,
@@ -774,25 +928,51 @@ class _ProfileTabSelector extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ProfileTabButton(
-              icon: Icons.favorite_border,
-              label: 'Favoritos',
-              selected: activeTab == 0,
-              onTap: () => onChanged(0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 340),
+                curve: Curves.easeOutBack,
+                alignment: activeTab == 0
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  heightFactor: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary500, AppColors.primary700],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-          Expanded(
-            child: _ProfileTabButton(
-              icon: Icons.workspace_premium_outlined,
-              label: 'Insignias',
-              selected: activeTab == 1,
-              onTap: () => onChanged(1),
+            // Positioned.fill (not a bare Row) so the icon+label content
+            // is centered across the *entire* pill height/width, not just
+            // shrink-wrapped and pinned to the top-left corner.
+            Positioned.fill(
+              child: Row(
+                children: [
+                  for (var i = 0; i < _labels.length; i++)
+                    Expanded(
+                      child: _ProfileTabButton(
+                        icon: _icons[i],
+                        label: _labels[i],
+                        selected: activeTab == i,
+                        onTap: () => onChanged(i),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -814,32 +994,27 @@ class _ProfileTabButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: AnimatedContainer(
+      child: AnimatedDefaultTextStyle(
         duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          gradient: selected
-              ? const LinearGradient(
-                  colors: [AppColors.primary500, AppColors.primary700],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(12),
+        style: AppTextStyles.buttonMd.copyWith(
+          color: selected ? AppColors.neutral1100 : AppColors.neutral700,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? AppColors.neutral1100 : AppColors.neutral700,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: AppTextStyles.buttonMd.copyWith(
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                icon,
+                key: ValueKey(selected),
+                size: 24,
                 color: selected ? AppColors.neutral1100 : AppColors.neutral700,
               ),
             ),
+            const SizedBox(width: 6),
+            Text(label),
           ],
         ),
       ),
@@ -854,6 +1029,7 @@ class _ProfileTabButton extends StatelessWidget {
 /// cross-referenced for a saved business to actually show up here.
 class _FavoritesTab extends StatelessWidget {
   const _FavoritesTab({
+    super.key,
     required this.destinations,
     required this.businesses,
     required this.onToggleFavorite,
@@ -980,7 +1156,7 @@ class _FavoritePlaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -997,8 +1173,8 @@ class _FavoritePlaceCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
-              width: 58,
-              height: 52,
+              width: 64,
+              height: 58,
               child: destination.imageAsset != null
                   ? Image.asset(destination.imageAsset!, fit: BoxFit.cover)
                   : ColoredBox(color: destination.imagePlaceholderColor),
@@ -1015,7 +1191,7 @@ class _FavoritePlaceCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Row(
                   children: [
                     const Icon(
@@ -1034,24 +1210,16 @@ class _FavoritePlaceCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '${destination.formattedPrice} ',
-                      style: AppTextStyles.favoriteCardPrice,
-                    ),
-                    Text('/persona', style: AppTextStyles.profileCaption10),
-                  ],
-                ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: onFavoriteToggle,
-            icon: const Icon(Icons.favorite, color: Color(0xFFE8798F)),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onFavoriteToggle,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.favorite, size: 20, color: Color(0xFFE8798F)),
+            ),
           ),
         ],
       ),
@@ -1075,10 +1243,9 @@ class _FavoriteBusinessCard extends StatelessWidget {
     final imagePath = business.localImagePaths.isNotEmpty
         ? business.localImagePaths.first
         : null;
-    final hasPrice = business.allowsReservations && business.price != null;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -1095,8 +1262,8 @@ class _FavoriteBusinessCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
-              width: 58,
-              height: 52,
+              width: 64,
+              height: 58,
               child: LocalImage(
                 path: imagePath,
                 fallbackIcon: Icons.storefront_outlined,
@@ -1114,7 +1281,7 @@ class _FavoriteBusinessCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Row(
                   children: [
                     const Icon(
@@ -1133,32 +1300,16 @@ class _FavoriteBusinessCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                hasPrice
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '${business.formattedPrice} ',
-                            style: AppTextStyles.favoriteCardPrice,
-                          ),
-                          Text(
-                            '/persona',
-                            style: AppTextStyles.profileCaption10,
-                          ),
-                        ],
-                      )
-                    : Text(
-                        'Consultar precio',
-                        style: AppTextStyles.profileCaption10,
-                      ),
               ],
             ),
           ),
-          IconButton(
-            onPressed: onFavoriteToggle,
-            icon: const Icon(Icons.favorite, color: Color(0xFFE8798F)),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onFavoriteToggle,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.favorite, size: 20, color: Color(0xFFE8798F)),
+            ),
           ),
         ],
       ),
@@ -1167,10 +1318,13 @@ class _FavoriteBusinessCard extends StatelessWidget {
 }
 
 class _BadgesTab extends StatelessWidget {
-  const _BadgesTab({required this.badges, required this.onLockedTap});
+  const _BadgesTab({super.key, required this.badges, required this.onBadgeTap});
 
   final List<BadgeInfo> badges;
-  final ValueChanged<BadgeInfo> onLockedTap;
+
+  /// Called for *every* tap, locked or unlocked — the parent decides which
+  /// dialog to show based on [BadgeInfo.unlocked].
+  final ValueChanged<BadgeInfo> onBadgeTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1180,23 +1334,30 @@ class _BadgesTab extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      childAspectRatio: 0.88,
+      // Figma's 112.66×106.80 cell is a single measured instance (a
+      // 1-line title), not a hard constraint — Flutter's GridView forces
+      // every cell to that exact ratio, so a 2-line badge title (very
+      // common here: "Guardián del Bosque", "Viajero Consciente"...) plus
+      // the unlocked status pill genuinely needs more height, which is
+      // exactly what was overflowing. 0.92 gives that real content room
+      // instead of reproducing Figma's one sampled measurement verbatim.
+      childAspectRatio: 0.92,
       children: [
         for (final badge in badges)
-          _BadgeCard(
-            badge: badge,
-            onTap: badge.unlocked ? null : () => onLockedTap(badge),
-          ),
+          _BadgeCard(badge: badge, onTap: () => onBadgeTap(badge)),
       ],
     );
   }
 }
 
 class _BadgeCard extends StatelessWidget {
-  const _BadgeCard({required this.badge, this.onTap});
+  const _BadgeCard({required this.badge, required this.onTap});
 
   final BadgeInfo badge;
-  final VoidCallback? onTap;
+
+  /// Always tappable now — locked shows the gray requirement dialog,
+  /// unlocked shows the full-color "insignia obtenida" one.
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1253,30 +1414,25 @@ class _BadgeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              if (unlocked)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: badge.tint.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '✓ Obtenida',
-                    style: AppTextStyles.badgeStatusPill.copyWith(
-                      color: badge.tint,
-                    ),
-                  ),
-                )
-              else
-                Text(
-                  'Bloqueada',
+              // Same padded box for both states (only the fill color
+              // differs) — mismatched box heights between "✓ Obtenida"
+              // and a bare "Bloqueada" Text was exactly what pushed
+              // unlocked cards past the grid cell's height.
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: unlocked
+                      ? badge.tint.withValues(alpha: 0.08)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  unlocked ? '✓ Obtenida' : 'Bloqueada',
                   style: AppTextStyles.badgeStatusPill.copyWith(
-                    color: AppColors.profileMuted,
+                    color: unlocked ? badge.tint : AppColors.profileMuted,
                   ),
                 ),
+              ),
             ],
           ),
         ),

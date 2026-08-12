@@ -18,4 +18,4 @@ Future<void> main() async {
   await GuestSessionService().load();
   // Arranca la aplicación llamando a MyApp
   runApp(const MyApp());
-} 
+}

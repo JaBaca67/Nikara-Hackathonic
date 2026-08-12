@@ -25,7 +25,11 @@ enum _SortMode { recientes, cercanos }
 /// available (no permission, location services off, or [from] hasn't
 /// resolved yet) — callers fall back to showing just the city in that case.
 String? _distanceLabel(Position? from, BusinessModel business) {
-  final km = LocationService.distanceKm(from, business.latitude, business.longitude);
+  final km = LocationService.distanceKm(
+    from,
+    business.latitude,
+    business.longitude,
+  );
   return km == null ? null : 'a ${km.toStringAsFixed(0)} km';
 }
 
@@ -174,8 +178,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final withDistance = [...filtered];
     withDistance.sort((a, b) {
-      final da = LocationService.distanceKm(_userPosition, a.latitude, a.longitude);
-      final db = LocationService.distanceKm(_userPosition, b.latitude, b.longitude);
+      final da = LocationService.distanceKm(
+        _userPosition,
+        a.latitude,
+        a.longitude,
+      );
+      final db = LocationService.distanceKm(
+        _userPosition,
+        b.latitude,
+        b.longitude,
+      );
       if (da == null && db == null) return 0;
       if (da == null) return 1;
       if (db == null) return -1;
@@ -207,14 +219,13 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: 12),
             SearchHeaderWidget(
               userName: _userName,
-              isGuest: GuestSessionService().isGuest || !AuthService().isLoggedIn,
+              isGuest:
+                  GuestSessionService().isGuest || !AuthService().isLoggedIn,
               notificationCount: 0,
               onFilterTap: _openFilterSheet,
             ),
-            const SizedBox(height: 16),
             Expanded(
               child: _loadError != null
                   ? _LoadErrorState(
@@ -256,9 +267,9 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           if (heroBusinesses.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius: BorderRadius.circular(20),
                 child: _HeroCarousel(
                   controller: _heroPageController,
                   businesses: heroBusinesses,
@@ -274,7 +285,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _CategoryChipsRow(
             categories: categories,
             selected: _selectedCategory,
-            onSelect: (category) => setState(() => _selectedCategory = category),
+            onSelect: (category) =>
+                setState(() => _selectedCategory = category),
           ),
           _DestacadosSection(
             businesses: visible,
@@ -369,10 +381,10 @@ class _CategoryChipsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     if (categories.length <= 1) return const SizedBox.shrink();
     return SizedBox(
-      height: 40,
+      height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         physics: const ClampingScrollPhysics(),
         itemCount: categories.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
@@ -383,20 +395,34 @@ class _CategoryChipsRow extends StatelessWidget {
             onTap: () => onSelect(category),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 15),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: isSelected ? AppColors.primary500 : AppColors.surface100,
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: isSelected ? AppColors.primary500 : AppColors.surface200,
-                ),
+                border: isSelected
+                    ? null
+                    : Border.all(
+                        color: AppColors.settingsTextDark.withValues(
+                          alpha: 0.08,
+                        ),
+                      ),
+                boxShadow: isSelected
+                    ? const [
+                        BoxShadow(
+                          color: Color(0x47F0B500),
+                          offset: Offset(0, 2),
+                          blurRadius: 8,
+                        ),
+                      ]
+                    : null,
               ),
               child: Text(
                 category,
-                style: AppTextStyles.link.copyWith(
-                  color: isSelected ? AppColors.textInk : AppColors.neutral700,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                style: AppTextStyles.homeChipLabel.copyWith(
+                  color: isSelected
+                      ? AppColors.settingsTextDark
+                      : AppColors.settingsTextMuted,
                 ),
               ),
             ),
@@ -426,7 +452,7 @@ class _HeroCarousel extends StatelessWidget {
     required this.onTapDetail,
   });
 
-  static const _height = 310.0;
+  static const _height = 224.0;
 
   final PageController controller;
   final List<BusinessModel> businesses;
@@ -439,7 +465,7 @@ class _HeroCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // The parent (_buildFeed) wraps this whole carousel in the padded,
-    // rounded (24) frame the spec calls for — this card itself just fills
+    // rounded (20) frame the spec calls for — this card itself just fills
     // that frame edge-to-edge.
     return SizedBox(
       height: _height,
@@ -499,7 +525,7 @@ class _HeroCard extends StatelessWidget {
               fallbackIconSize: 40,
             ),
           ),
-          // Dark gradient confined to roughly the bottom 140px of the card,
+          // Dark gradient confined to roughly the bottom 150px of the card,
           // so the text/thumbnails overlay stays legible.
           Positioned.fill(
             child: DecoratedBox(
@@ -507,41 +533,40 @@ class _HeroCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  stops: [0.0, 1 - (140 / _HeroCarousel._height), 1.0],
+                  stops: [0.0, 1 - (150 / _HeroCarousel._height), 1.0],
                   colors: [
                     Colors.transparent,
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.85),
+                    Colors.black.withValues(alpha: 0.78),
                   ],
                 ),
               ),
             ),
           ),
           Positioned(
-            left: 16,
-            top: 16,
+            left: 14,
+            top: 14,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.tagGold600,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 business.category,
-                style: AppTextStyles.tagPill.copyWith(
-                  fontSize: 11,
-                  color: AppColors.neutral1100,
+                style: AppTextStyles.homeHeroPill.copyWith(
+                  color: AppColors.settingsTextDark,
                 ),
               ),
             ),
           ),
           if (isEco)
             Positioned(
-              right: 16,
-              top: 16,
+              right: 14,
+              top: 14,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
+                  horizontal: 12,
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
@@ -553,37 +578,38 @@ class _HeroCard extends StatelessWidget {
                   children: [
                     const Icon(
                       Icons.eco,
-                      size: 10,
+                      size: 12,
                       color: AppColors.surface100,
                     ),
-                    const SizedBox(width: 4),
-                    Text('ECO', style: AppTextStyles.tagPill),
+                    const SizedBox(width: 5),
+                    Text(
+                      'ECO',
+                      style: AppTextStyles.homeHeroPill.copyWith(
+                        color: AppColors.surface100,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           Positioned(
-            left: 20,
-            right: 20,
-            bottom: 16,
+            left: 16,
+            right: 16,
+            bottom: 14,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(business.name, style: AppTextStyles.heroTitle),
+                Text(business.name, style: AppTextStyles.homeHeroTitle),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 12,
-                      color: AppColors.surface100,
-                    ),
-                    const SizedBox(width: 4),
+                    const Icon(Icons.near_me, size: 13, color: Colors.white),
+                    const SizedBox(width: 5),
                     Flexible(
                       child: Text(
                         '${business.city} · Nicaragua',
-                        style: AppTextStyles.heroLocation,
+                        style: AppTextStyles.homeHeroLocation,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -597,7 +623,7 @@ class _HeroCard extends StatelessWidget {
                     if (photos.length > 1)
                       Expanded(
                         child: SizedBox(
-                          height: 40,
+                          height: 38,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: photos.length,
@@ -608,15 +634,16 @@ class _HeroCard extends StatelessWidget {
                               return GestureDetector(
                                 onTap: () => onSelectPhoto(index),
                                 child: Container(
-                                  width: 40,
-                                  height: 40,
-                                  padding: const EdgeInsets.all(2),
+                                  width: 38,
+                                  height: 38,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
                                       color: selected
                                           ? Colors.white
-                                          : Colors.transparent,
+                                          : Colors.white.withValues(
+                                              alpha: 0.35,
+                                            ),
                                       width: 2,
                                     ),
                                   ),
@@ -635,7 +662,7 @@ class _HeroCard extends StatelessWidget {
                       )
                     else
                       const Spacer(),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     GestureDetector(
                       onTap: onTap,
                       child: ClipRRect(
@@ -644,19 +671,19 @@ class _HeroCard extends StatelessWidget {
                           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 13,
-                              vertical: 9,
+                              horizontal: 15,
+                              vertical: 10,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.4),
+                                color: Colors.white.withValues(alpha: 0.42),
                               ),
                             ),
                             child: Text(
                               'Ver detalle →',
-                              style: AppTextStyles.ctaPill,
+                              style: AppTextStyles.homeCtaPill,
                             ),
                           ),
                         ),
@@ -689,7 +716,7 @@ class _DestacadosSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -697,22 +724,29 @@ class _DestacadosSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                Expanded(child: Text('Destacados', style: AppTextStyles.sectionTitle)),
+                Expanded(
+                  child: Text(
+                    'Destacados',
+                    style: AppTextStyles.homeSectionTitle,
+                  ),
+                ),
                 if (onSeeAll != null)
                   GestureDetector(
                     onTap: onSeeAll,
-                    child: Text('Ver todos', style: AppTextStyles.seeMore),
+                    child: Text('Ver todos', style: AppTextStyles.homeSeeMore),
                   ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           if (businesses.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
                 'Ningún negocio coincide con esta categoría.',
-                style: AppTextStyles.bodyText2.copyWith(color: AppColors.neutral600),
+                style: AppTextStyles.bodyText2.copyWith(
+                  color: AppColors.neutral600,
+                ),
               ),
             )
           else
@@ -720,7 +754,7 @@ class _DestacadosSection extends StatelessWidget {
               height: 220,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 physics: const ClampingScrollPhysics(),
                 itemCount: businesses.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
@@ -753,7 +787,7 @@ class _DestacadoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const width = 168.0;
+    const width = 196.0;
     final imagePath = business.localImagePaths.isNotEmpty
         ? business.localImagePaths.first
         : null;
@@ -764,19 +798,20 @@ class _DestacadoCard extends StatelessWidget {
       label: '${business.name}, $locationLabel',
       child: Material(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Ink(
             width: width,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x24FDBE02),
-                  offset: Offset(0, 4),
-                  blurRadius: 18,
+                  color: Color(0x1AF0B500),
+                  offset: Offset(0, 2),
+                  blurRadius: 10,
                 ),
               ],
             ),
@@ -786,10 +821,10 @@ class _DestacadoCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
+                    top: Radius.circular(18),
                   ),
                   child: SizedBox(
-                    height: 130,
+                    height: 96,
                     width: double.infinity,
                     child: Stack(
                       fit: StackFit.expand,
@@ -804,8 +839,8 @@ class _DestacadoCard extends StatelessWidget {
                             top: 8,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
+                                horizontal: 9,
+                                vertical: 4,
                               ),
                               decoration: BoxDecoration(
                                 color: AppColors.ecoGreen500,
@@ -813,48 +848,41 @@ class _DestacadoCard extends StatelessWidget {
                               ),
                               child: Text(
                                 'ECO',
-                                style: AppTextStyles.tagPill.copyWith(fontSize: 9),
+                                style: AppTextStyles.homeMiniBadge.copyWith(
+                                  color: AppColors.surface100,
+                                ),
                               ),
                             ),
                           ),
                         Positioned(
                           right: 8,
                           top: 8,
-                          child: _FavoriteButton(businessId: business.id),
+                          child: _FavoriteButton(
+                            businessId: business.id,
+                            size: 30,
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         business.name,
-                        style: AppTextStyles.cardTitle,
+                        style: AppTextStyles.homeCardTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on,
-                            size: 10,
-                            color: AppColors.neutral700,
-                          ),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: Text(
-                              locationLabel,
-                              style: AppTextStyles.cardLocation,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        locationLabel,
+                        style: AppTextStyles.homeCardLocation,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -888,8 +916,16 @@ class _CercaDeTiSection extends StatelessWidget {
     final withDistance = [...businesses]
       ..removeWhere((b) => b.latitude == null || b.longitude == null)
       ..sort((a, b) {
-        final da = LocationService.distanceKm(userPosition, a.latitude, a.longitude)!;
-        final db = LocationService.distanceKm(userPosition, b.latitude, b.longitude)!;
+        final da = LocationService.distanceKm(
+          userPosition,
+          a.latitude,
+          a.longitude,
+        )!;
+        final db = LocationService.distanceKm(
+          userPosition,
+          b.latitude,
+          b.longitude,
+        )!;
         return da.compareTo(db);
       });
     return withDistance.take(5).toList(growable: false);
@@ -901,17 +937,17 @@ class _CercaDeTiSection extends StatelessWidget {
     if (nearest.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.only(top: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('Cerca de ti', style: AppTextStyles.sectionTitle),
+            child: Text('Cerca de ti', style: AppTextStyles.homeSectionTitle),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
               children: [
                 for (final business in nearest)
@@ -955,27 +991,34 @@ class _NearbyRow extends StatelessWidget {
       label: '${business.name}, $locationLabel',
       child: Material(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Ink(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: AppColors.cardShadow,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.mapControlBorder),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1AF0B500),
+                  offset: Offset(0, 2),
+                  blurRadius: 8,
+                ),
+              ],
             ),
             child: Row(
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                   child: SizedBox(
-                    width: 64,
-                    height: 64,
+                    width: 52,
+                    height: 46,
                     child: LocalImage(
                       path: imagePath,
                       fallbackIcon: Icons.storefront_outlined,
-                      fallbackIconSize: 22,
+                      fallbackIconSize: 20,
                     ),
                   ),
                 ),
@@ -987,51 +1030,47 @@ class _NearbyRow extends StatelessWidget {
                     children: [
                       Text(
                         business.name,
-                        style: AppTextStyles.cardTitle,
+                        style: AppTextStyles.homeCardTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
-                          const Icon(
-                            Icons.location_on,
-                            size: 10,
-                            color: AppColors.neutral700,
-                          ),
-                          const SizedBox(width: 2),
-                          Expanded(
+                          Flexible(
                             child: Text(
                               locationLabel,
-                              style: AppTextStyles.cardLocation,
+                              style: AppTextStyles.homeCardLocation,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (isEco) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.ecoGreen500,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'ECO',
+                                style: AppTextStyles.homeMiniBadge.copyWith(
+                                  color: AppColors.surface100,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
-                      if (isEco) ...[
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.ecoGreen500,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'ECO',
-                            style: AppTextStyles.tagPill.copyWith(fontSize: 9),
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                _FavoriteButton(businessId: business.id),
+                _FavoriteButton(businessId: business.id, size: 32),
               ],
             ),
           ),
@@ -1046,9 +1085,13 @@ class _NearbyRow extends StatelessWidget {
 /// [FavoritesService.idsNotifier] so it stays in sync if the same business
 /// gets favorited/unfavorited from BusinessDetailScreen instead.
 class _FavoriteButton extends StatelessWidget {
-  const _FavoriteButton({required this.businessId});
+  const _FavoriteButton({required this.businessId, this.size = 30});
 
   final String businessId;
+
+  /// 30 on the Destacados card, 32 on the Cerca-de-ti row — the two exact
+  /// sizes Pantalla 2a uses for this button in each context.
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -1058,21 +1101,25 @@ class _FavoriteButton extends StatelessWidget {
         final isFavorite = ids.contains(businessId);
         return GestureDetector(
           onTap: () async {
-            if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
+            if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
+              return;
+            }
             await FavoritesService().toggleFavorite(businessId);
           },
           child: Container(
-            width: 28,
-            height: 28,
+            width: size,
+            height: size,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.85),
+            decoration: const BoxDecoration(
+              color: AppColors.profileDivider,
               shape: BoxShape.circle,
             ),
             child: Icon(
               isFavorite ? Icons.favorite : Icons.favorite_border,
               size: 14,
-              color: isFavorite ? AppColors.primary400 : AppColors.neutral700,
+              color: isFavorite
+                  ? AppColors.favoriteActive
+                  : AppColors.settingsTextMuted,
             ),
           ),
         );

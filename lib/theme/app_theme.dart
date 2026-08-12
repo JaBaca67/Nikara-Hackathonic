@@ -964,6 +964,119 @@ abstract class AppTextStyles {
   /// component.
   static TextStyle get wizardFooterSecondary => detailBottomBarSecondary;
   static TextStyle get wizardFooterPrimary => detailBottomBarPrimary;
+
+  // --- Home redesign (Claude Design turn 2, Pantalla 2a "Inicio") ---
+  // Dedicated getters (not reusing sectionTitle/caption/cardTitle/etc. —
+  // those are shared with Bookings/Map/legacy destination cards, and this
+  // pass is scoped to matching 2a's Home exactly without touching those
+  // other screens).
+
+  /// "Buen día, Ana": Nunito Regular 11.
+  static TextStyle get homeGreeting => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 11,
+    height: 15 / 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// "¿A dónde vamos?": League Spartan Black 22/1.2.
+  static TextStyle get homeHeading => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 22,
+    height: 1.2,
+    fontWeight: FontWeight.w900,
+  );
+
+  /// Search field hint/placeholder: Nunito Regular 12.5.
+  static TextStyle get homeSearchHint => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 12.5,
+    height: 1.3,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Hero card's category/ECO pill: League Spartan ExtraBold 11 — callers
+  /// pick the tint ([AppColors.settingsTextDark] on the gold category
+  /// pill, [AppColors.surface100] on the green ECO pill).
+  static TextStyle get homeHeroPill => GoogleFonts.leagueSpartan(
+    fontSize: 11,
+    height: 15 / 11,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Hero card title ("Laguna de Apoyo"): League Spartan Bold 20/1.2, white.
+  static TextStyle get homeHeroTitle => GoogleFonts.leagueSpartan(
+    color: Colors.white,
+    fontSize: 20,
+    height: 1.2,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Hero card location line: Nunito Regular 12, white @88%.
+  static TextStyle get homeHeroLocation => GoogleFonts.nunito(
+    color: Colors.white.withValues(alpha: 0.88),
+    fontSize: 12,
+    height: 1.4,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// "Ver detalle →" pill on the hero card: League Spartan Bold 11, white.
+  static TextStyle get homeCtaPill => GoogleFonts.leagueSpartan(
+    color: Colors.white,
+    fontSize: 11,
+    height: 15 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Category filter chip label: League Spartan Bold 12 — callers pick
+  /// [AppColors.settingsTextDark] (selected) or [AppColors.settingsTextMuted]
+  /// (unselected).
+  static TextStyle get homeChipLabel => GoogleFonts.leagueSpartan(
+    fontSize: 12,
+    height: 15 / 12,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// "Destacados" / "Cerca de ti" section heading: League Spartan
+  /// ExtraBold 15.
+  static TextStyle get homeSectionTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 15,
+    height: 20 / 15,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// "Ver todos": Nunito Bold 11.
+  static TextStyle get homeSeeMore => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 11,
+    height: 15 / 11,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// Destacados/Cerca-de-ti card title: League Spartan ExtraBold 13.
+  static TextStyle get homeCardTitle => GoogleFonts.leagueSpartan(
+    color: AppColors.settingsTextDark,
+    fontSize: 13,
+    height: 16 / 13,
+    fontWeight: FontWeight.w800,
+  );
+
+  /// Destacados/Cerca-de-ti card location line: Nunito Regular 10.5 — no
+  /// leading pin icon in Pantalla 2a, unlike the hero card's location line.
+  static TextStyle get homeCardLocation => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
+    fontSize: 10.5,
+    height: 14 / 10.5,
+    fontWeight: FontWeight.w400,
+  );
+
+  /// Small "ECO" badge text on a card thumbnail: League Spartan ExtraBold 9.
+  static TextStyle get homeMiniBadge => GoogleFonts.leagueSpartan(
+    fontSize: 9,
+    height: 12 / 9,
+    fontWeight: FontWeight.w800,
+  );
 }
 
 abstract class AppTheme {
