@@ -7,6 +7,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/utils/input_formatters.dart';
+import 'package:nikara_app/features/auth/domain/models/country_dial_code.dart';
 import 'package:nikara_app/features/auth/presentation/widgets/social_auth_row.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
@@ -63,17 +64,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _step1FormKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
   AutovalidateMode _step1AutovalidateMode = AutovalidateMode.disabled;
 
   // Paso 2: Perfil.
   final _step2FormKey = GlobalKey<FormState>();
-  final _fullNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
   String? _avatarPath;
+  CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
 
   // Paso 3: Verificación.
@@ -82,9 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Paso 4: Preferencias.
   final Set<String> _selectedCategories = {};
 
-  static final RegExp _emailRegex = RegExp(
-    r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
-  );
+  static final RegExp _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
 
   static final RegExp _usernameRegex = RegExp(r'^[a-zA-Z0-9_.]+$');
 
@@ -102,8 +101,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    _fullNameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _usernameController.dispose();
     _phoneController.dispose();
     super.dispose();
@@ -124,11 +123,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final trimmed = value?.trim() ?? '';
     if (trimmed.isEmpty) return 'Ingresa una contraseña';
     if (trimmed.length < 6) return 'Mínimo 6 caracteres';
-    return null;
-  }
-
-  String? _validateConfirmPassword(String? value) {
-    if (value != _passwordController.text) return 'No coinciden';
     return null;
   }
 
@@ -160,6 +154,69 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _goToIdentityStep() {
     FocusScope.of(context).unfocus();
     setState(() => _step = 0);
+  }
+
+  /// Single entry point for both the header's back button and the hardware
+  /// back gesture/button (wired via [PopScope] in [build]) — keeping them
+  /// on one method is what fixes the "Atrás borra todo y regresa al
+  /// Login" bug: stepping backward now always goes through `setState`
+  /// instead of ever popping the route while mid-wizard, so every
+  /// controller (and everything already typed into it) survives.
+  Future<void> _handleBackRequest() async {
+    FocusScope.of(context).unfocus();
+    if (_step == 1) {
+      _goToIdentityStep();
+      return;
+    }
+    if (_step >= 2) {
+      // Verificación/Preferencias — the real account already exists at
+      // this point (see [_createAccountAndContinue]'s doc comment), so
+      // there's no in-progress data left to protect; just let the user out.
+      Navigator.of(context).pop();
+      return;
+    }
+    // _step == 0: only here can leaving actually discard typed
+    // email/password, so confirm first instead of exiting silently.
+    final shouldExit = await _confirmCancelRegistration();
+    if (shouldExit && mounted) Navigator.of(context).pop();
+  }
+
+  Future<bool> _confirmCancelRegistration() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface100,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          '¿Cancelar registro?',
+          style: AppTextStyles.detailSectionTitle,
+        ),
+        content: Text(
+          'Perderás la información que ya ingresaste. ¿Deseas salir del '
+          'registro?',
+          style: AppTextStyles.body,
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Seguir aquí', style: AppTextStyles.link),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.settingsDanger,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   Future<void> _pickAvatar() async {
@@ -207,6 +264,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _avatarPath = picked.path);
   }
 
+  Future<void> _showCountryPicker() async {
+    FocusScope.of(context).unfocus();
+    final picked = await showModalBottomSheet<CountryDialCode>(
+      context: context,
+      backgroundColor: AppColors.surface100,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.6,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Text(
+                'Selecciona tu país',
+                style: AppTextStyles.detailSectionTitle,
+              ),
+              const SizedBox(height: 4),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: kCountryDialCodes.length,
+                  itemBuilder: (context, index) {
+                    final country = kCountryDialCodes[index];
+                    return ListTile(
+                      leading: Text(
+                        country.flagEmoji,
+                        style: const TextStyle(fontSize: 22),
+                      ),
+                      title: Text(country.name, style: AppTextStyles.inputText),
+                      trailing: Text(
+                        country.dialCode,
+                        style: AppTextStyles.inputLabel,
+                      ),
+                      onTap: () => Navigator.of(context).pop(country),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedCountry = picked);
+    }
+  }
+
   /// Validates Perfil, then actually creates the Supabase account (needs
   /// email/password from Paso 1 plus phone from here) and saves
   /// username/photo locally. Pasos 3-4 that follow are onboarding for an
@@ -221,11 +333,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _isCreatingAccount = true);
+    final fullName =
+        '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+            .trim();
+    final phone = '${_selectedCountry.dialCode} ${_phoneController.text.trim()}'
+        .trim();
     final result = await _authService.signUp(
-      fullName: _fullNameController.text.trim(),
+      fullName: fullName,
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
-      phone: _phoneController.text.trim(),
+      phone: phone,
     );
     if (!mounted) return;
 
@@ -298,61 +415,82 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final logoAreaHeight = screenSize.height * (200 / 844);
     final cardBottomGap = screenSize.height * (16 / 844);
 
-    return Scaffold(
-      backgroundColor: AppColors.primary500,
-      resizeToAvoidBottomInset: true,
-      body: Stack(
-        children: [
-          Positioned(
-            top: 0,
-            left: 0,
-            width: screenSize.width,
-            height: screenSize.height,
-            child: const AuroraBackgroundWidget(),
-          ),
-          SafeArea(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => FocusScope.of(context).unfocus(),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            height: logoAreaHeight,
-                            // Same short-viewport safety net as
-                            // LoginScreen's logo — fixed-size content
-                            // inside a proportionally-scaling area.
-                            child: const Center(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: _RegisterLogo(),
+    return PopScope(
+      // Never let the system back gesture/button pop this route directly —
+      // [_handleBackRequest] decides whether that means "go back one step"
+      // (preserving every controller) or a confirmed exit to Login.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBackRequest();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.primary500,
+        resizeToAvoidBottomInset: true,
+        body: Stack(
+          children: [
+            Positioned(
+              top: 0,
+              left: 0,
+              width: screenSize.width,
+              height: screenSize.height,
+              child: const AuroraBackgroundWidget(),
+            ),
+            SafeArea(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              height: logoAreaHeight,
+                              // Same short-viewport safety net as
+                              // LoginScreen's logo — fixed-size content
+                              // inside a proportionally-scaling area.
+                              child: const Center(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: _RegisterLogo(),
+                                ),
                               ),
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 27,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 27,
+                              ),
+                              child: _buildCard(),
                             ),
-                            child: _buildCard(),
-                          ),
-                          SizedBox(height: cardBottomGap),
-                        ],
+                            SizedBox(height: cardBottomGap),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-        ],
+            // Floating header back-button — top-left, 48x48dp tap target,
+            // same "floating control over a colorful background" language
+            // as MapScreen's recenter/filter buttons, per the project's UI
+            // standards for this kind of control.
+            Positioned(
+              top: 8,
+              left: 8,
+              child: SafeArea(
+                child: _HeaderBackButton(onTap: _handleBackRequest),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -384,11 +522,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               transitionBuilder: (child, animation) => FadeTransition(
                 opacity: animation,
                 child: SlideTransition(
-                  position:
-                      Tween<Offset>(
-                        begin: const Offset(0.06, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
+                  position: Tween<Offset>(
+                    begin: const Offset(0.06, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
                   child: child,
                 ),
               ),
@@ -446,22 +583,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const SizedBox(height: 10),
                 _PasswordStrengthMeter(password: _passwordController.text),
               ],
-              const SizedBox(height: 14),
-              _RegisterField(
-                label: 'Confirmar contraseña',
-                hintText: '••••••••',
-                controller: _confirmPasswordController,
-                iconAsset: 'assets/images/icon_lock.svg',
-                isPassword: true,
-                obscureText: _obscureConfirmPassword,
-                autofillHints: const [AutofillHints.newPassword],
-                onToggleObscure: () {
-                  setState(
-                    () => _obscureConfirmPassword = !_obscureConfirmPassword,
-                  );
-                },
-                validator: _validateConfirmPassword,
-              ),
               const SizedBox(height: 20),
               _PrimaryButton(onPressed: _goToProfileStep, label: 'Siguiente'),
               const SizedBox(height: 24),
@@ -494,16 +615,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 style: AppTextStyles.body,
               ),
               const SizedBox(height: 18),
-              Center(child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar)),
+              Center(
+                child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar),
+              ),
               const SizedBox(height: 20),
-              _RegisterField(
-                label: 'Nombre completo',
-                hintText: 'ej: Samanta Ixchel Galo',
-                controller: _fullNameController,
-                icon: Icons.person_outline,
-                textCapitalization: TextCapitalization.words,
-                autofillHints: const [AutofillHints.name],
-                validator: (v) => _required(v, 'Ingresa tu nombre completo'),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _RegisterField(
+                      label: 'Nombre',
+                      hintText: 'ej: Samanta',
+                      controller: _firstNameController,
+                      icon: Icons.person_outline,
+                      textCapitalization: TextCapitalization.words,
+                      autofillHints: const [AutofillHints.givenName],
+                      validator: (v) => _required(v, 'Ingresa tu nombre'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _RegisterField(
+                      label: 'Apellidos',
+                      hintText: 'ej: Ixchel Galo',
+                      controller: _lastNameController,
+                      icon: Icons.person_outline,
+                      textCapitalization: TextCapitalization.words,
+                      autofillHints: const [AutofillHints.familyName],
+                      validator: (v) => _required(v, 'Ingresa tus apellidos'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 14),
               _RegisterField(
@@ -534,30 +676,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ],
               const SizedBox(height: 14),
-              _RegisterField(
-                label: 'Celular',
-                hintText: '8545-9245',
-                prefixText: '+505 ',
+              _PhoneRegisterField(
                 controller: _phoneController,
-                icon: Icons.call_outlined,
-                keyboardType: TextInputType.phone,
-                inputFormatters: const [NicaraguaPhoneInputFormatter()],
-                autofillHints: const [AutofillHints.telephoneNumber],
+                selectedCountry: _selectedCountry,
+                onCountryTap: _showCountryPicker,
                 validator: (v) => _required(v, 'Ingresa tu celular'),
               ),
               const SizedBox(height: 20),
-              Row(
-                children: [
-                  TextButton(
-                    onPressed: _isCreatingAccount ? null : _goToIdentityStep,
-                    child: Text('Atrás', style: AppTextStyles.link),
-                  ),
-                  const Spacer(),
-                ],
-              ),
-              const SizedBox(height: 4),
               _PrimaryButton(
-                onPressed: _isCreatingAccount ? null : _createAccountAndContinue,
+                onPressed: _isCreatingAccount
+                    ? null
+                    : _createAccountAndContinue,
                 label: 'Crear mi cuenta',
                 isLoading: _isCreatingAccount,
               ),
@@ -611,7 +740,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _PrimaryButton(onPressed: _skipVerification, label: 'Saltar por ahora'),
+          _PrimaryButton(
+            onPressed: _skipVerification,
+            label: 'Saltar por ahora',
+          ),
         ],
       ),
     );
@@ -680,7 +812,12 @@ class _WizardProgressBar extends StatelessWidget {
 
   final int step;
 
-  static const _labels = ['Identidad', 'Perfil', 'Verificación', 'Preferencias'];
+  static const _labels = [
+    'Identidad',
+    'Perfil',
+    'Verificación',
+    'Preferencias',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -844,6 +981,47 @@ class _CenteredDivider extends StatelessWidget {
   }
 }
 
+/// Floating circular back button — top-left, 48x48dp tap target (meets the
+/// project's minimum touch-target standard), same floating-control styling
+/// MapScreen uses for controls sitting directly over a busy background
+/// (surface100 fill, hairline border, soft shadow) rather than the plain
+/// profileDivider circle used in AppBar-based headers elsewhere, since this
+/// screen has no AppBar to anchor to.
+class _HeaderBackButton extends StatelessWidget {
+  const _HeaderBackButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.mapControlBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.mapControlShadow,
+              offset: Offset(0, 4),
+              blurRadius: 14,
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.arrow_back,
+          size: 20,
+          color: AppColors.settingsTextDark,
+        ),
+      ),
+    );
+  }
+}
+
 class _RegisterLogo extends StatelessWidget {
   const _RegisterLogo();
 
@@ -946,10 +1124,12 @@ class _PasswordStrengthMeter extends StatelessWidget {
   bool get _hasDigit => password.contains(RegExp(r'[0-9]'));
   bool get _hasSymbol => password.contains(RegExp(r'[^a-zA-Z0-9]'));
 
-  int get _score =>
-      [_hasMinLength, _hasUpperAndLower, _hasDigit, _hasSymbol]
-          .where((met) => met)
-          .length;
+  int get _score => [
+    _hasMinLength,
+    _hasUpperAndLower,
+    _hasDigit,
+    _hasSymbol,
+  ].where((met) => met).length;
 
   (String, Color) get _label => switch (_score) {
     0 || 1 => ('Débil', AppColors.settingsDanger),
@@ -997,7 +1177,10 @@ class _PasswordStrengthMeter extends StatelessWidget {
             runSpacing: 6,
             children: [
               _Criterion(met: _hasMinLength, label: 'Mínimo 8 caracteres'),
-              _Criterion(met: _hasUpperAndLower, label: 'Mayúsculas y minúsculas'),
+              _Criterion(
+                met: _hasUpperAndLower,
+                label: 'Mayúsculas y minúsculas',
+              ),
               _Criterion(met: _hasDigit, label: 'Al menos 1 número'),
               _Criterion(met: _hasSymbol, label: 'Al menos 1 símbolo'),
             ],
@@ -1049,8 +1232,6 @@ class _RegisterField extends StatelessWidget {
     this.keyboardType,
     this.textCapitalization = TextCapitalization.none,
     this.autofillHints,
-    this.inputFormatters,
-    this.prefixText,
     this.validator,
   }) : assert(
          icon != null || iconAsset != null,
@@ -1068,8 +1249,6 @@ class _RegisterField extends StatelessWidget {
   final TextInputType? keyboardType;
   final TextCapitalization textCapitalization;
   final Iterable<String>? autofillHints;
-  final List<TextInputFormatter>? inputFormatters;
-  final String? prefixText;
   final FormFieldValidator<String>? validator;
 
   @override
@@ -1103,10 +1282,6 @@ class _RegisterField extends StatelessWidget {
                     : Icon(icon, size: 16, color: AppColors.neutral600),
               ),
               const SizedBox(width: 12),
-              if (prefixText != null) ...[
-                Text(prefixText!, style: AppTextStyles.inputText),
-                const SizedBox(width: 4),
-              ],
               Expanded(
                 child: TextFormField(
                   controller: controller,
@@ -1114,7 +1289,6 @@ class _RegisterField extends StatelessWidget {
                   keyboardType: keyboardType,
                   textCapitalization: textCapitalization,
                   autofillHints: autofillHints,
-                  inputFormatters: inputFormatters,
                   validator: validator,
                   style: AppTextStyles.inputText,
                   decoration: InputDecoration(
@@ -1126,7 +1300,7 @@ class _RegisterField extends StatelessWidget {
                     border: InputBorder.none,
                     errorMaxLines: 1,
                     errorStyle: GoogleFonts.nunito(
-                      color: const Color(0xFFD64545),
+                      color: AppColors.formError,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1142,6 +1316,117 @@ class _RegisterField extends StatelessWidget {
                     color: AppColors.neutral600,
                   ),
                 ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Phone field with a tappable country-dial-code pill in place of a fixed
+/// "+505 " prefix — Nicaragua still gets its "XXXX-XXXX" mask
+/// ([NicaraguaPhoneInputFormatter]); every other country falls back to a
+/// plain digits-only input, since that formatter's dash placement/length
+/// cap is specific to Nicaraguan numbers.
+class _PhoneRegisterField extends StatelessWidget {
+  const _PhoneRegisterField({
+    required this.controller,
+    required this.selectedCountry,
+    required this.onCountryTap,
+    required this.validator,
+  });
+
+  final TextEditingController controller;
+  final CountryDialCode selectedCountry;
+  final VoidCallback onCountryTap;
+  final FormFieldValidator<String> validator;
+
+  @override
+  Widget build(BuildContext context) {
+    final isNicaragua = selectedCountry.dialCode == '+505';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('CELULAR', style: AppTextStyles.inputLabel),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.neutral600, width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1FFDBE02),
+                offset: Offset(0, 4),
+                blurRadius: 12,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: onCountryTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        selectedCountry.flagEmoji,
+                        style: const TextStyle(fontSize: 17),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        selectedCountry.dialCode,
+                        style: AppTextStyles.inputText,
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.expand_more,
+                        size: 16,
+                        color: AppColors.neutral600,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                height: 22,
+                width: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 10),
+                color: AppColors.cardBorder,
+              ),
+              Expanded(
+                child: TextFormField(
+                  controller: controller,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: isNicaragua
+                      ? const [NicaraguaPhoneInputFormatter()]
+                      : [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(12),
+                        ],
+                  autofillHints: const [AutofillHints.telephoneNumber],
+                  validator: validator,
+                  style: AppTextStyles.inputText,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: isNicaragua ? '8545-9245' : 'Número de celular',
+                    hintStyle: AppTextStyles.inputText.copyWith(
+                      color: AppColors.neutral600,
+                    ),
+                    border: InputBorder.none,
+                    errorMaxLines: 1,
+                    errorStyle: GoogleFonts.nunito(
+                      color: AppColors.formError,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

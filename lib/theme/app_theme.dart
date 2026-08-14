@@ -1079,6 +1079,25 @@ abstract class AppTextStyles {
   );
 }
 
+/// Shared background gradient for the Auth flow (Splash → Login → Register),
+/// extracted verbatim from Figma node 636:912 ("UI-NÍKARA") so the three
+/// screens read as one continuous surface instead of three near-misses.
+/// `linear-gradient(141.77deg, secundario6 8.49%, tagGold600 23.26%,
+/// coral500 91.51%)` — the begin/end [Alignment] pair below is that same
+/// 141.77° direction converted into Flutter's alignment space.
+abstract class AppGradients {
+  static const authBackgroundBegin = Alignment(-0.62, -0.79);
+  static const authBackgroundEnd = Alignment(0.62, 0.79);
+
+  static const List<Color> authBackgroundColors = [
+    AppColors.secundario6,
+    AppColors.tagGold600,
+    AppColors.coral500,
+  ];
+
+  static const List<double> authBackgroundStops = [0.0849, 0.2326, 0.9151];
+}
+
 abstract class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(

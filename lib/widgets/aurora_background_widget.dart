@@ -25,8 +25,7 @@ class AuroraBackgroundWidget extends StatefulWidget {
   final Widget? child;
 
   @override
-  State<AuroraBackgroundWidget> createState() =>
-      _AuroraBackgroundWidgetState();
+  State<AuroraBackgroundWidget> createState() => _AuroraBackgroundWidgetState();
 }
 
 class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
@@ -48,17 +47,15 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
       fit: StackFit.expand,
       children: [
         // Base brand gradient — painted once, never touched by the ticker.
+        // Figma node 636:912 ("UI-NÍKARA"), reused unmodified across
+        // Splash/Login/Register — see [AppGradients.authBackgroundColors].
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment(-0.65, -0.76),
-              end: Alignment(0.65, 0.76),
-              colors: [
-                AppColors.primary500,
-                Color(0xFFFFCC33),
-                AppColors.primary400,
-              ],
-              stops: [0.0893, 0.4265, 0.9323],
+              begin: AppGradients.authBackgroundBegin,
+              end: AppGradients.authBackgroundEnd,
+              colors: AppGradients.authBackgroundColors,
+              stops: AppGradients.authBackgroundStops,
             ),
           ),
         ),
@@ -85,6 +82,13 @@ class _AuroraPainter extends CustomPainter {
   const _AuroraPainter({required this.progress});
 
   final double progress;
+
+  /// How many seconds [progress] takes to complete one full 0→1 loop —
+  /// must match the driving [AnimationController]'s duration so the
+  /// breathing math below (which re-derives a *shorter* sub-cycle from
+  /// this same ticker instead of needing a second [AnimationController])
+  /// lands on an exact number of cycles per loop.
+  static const double _loopSeconds = 16;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -120,6 +124,23 @@ class _AuroraPainter extends CustomPainter {
       ),
       radius: size.width * 0.6,
     );
+
+    // Discreet ambient "breathing" glow, top-right — same soft-white/gold
+    // language as the old splash-only decorative glow, now shared by every
+    // screen on this background. Its opacity pulses on its own ~4s cadence
+    // (a sine derived from this same 16s-loop [progress], not a second
+    // controller) — subtle enough not to distract, per the design brief.
+    const breathePeriodSeconds = 4.0;
+    final breatheT =
+        2 * math.pi * (progress * _loopSeconds / breathePeriodSeconds);
+    final breathe = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(breatheT));
+    _blob(
+      canvas,
+      color: Colors.white,
+      alpha: 0.22 * breathe,
+      center: Offset(size.width * 0.82, size.height * 0.06),
+      radius: size.width * 0.32,
+    );
   }
 
   void _blob(
@@ -131,7 +152,10 @@ class _AuroraPainter extends CustomPainter {
   }) {
     final paint = Paint()
       ..shader = RadialGradient(
-        colors: [color.withValues(alpha: alpha), color.withValues(alpha: 0)],
+        colors: [
+          color.withValues(alpha: alpha),
+          color.withValues(alpha: 0),
+        ],
       ).createShader(Rect.fromCircle(center: center, radius: radius));
     canvas.drawCircle(center, radius, paint);
   }

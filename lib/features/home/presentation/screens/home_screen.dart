@@ -77,6 +77,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // BusinessStorageService.revision fires on every business write (add,
+    // edit, delete) — same pattern as ProfileScreen's "Mis Negocios". Home
+    // sits alive-but-offstage inside MainLayout's IndexedStack, so without
+    // this listener an edited business (new photos, updated info) never
+    // shows up here until the app restarts.
+    BusinessStorageService.revision.addListener(_onBusinessesChanged);
     _loadBusinesses();
     _loadUserName();
     _loadPosition();
@@ -84,9 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    BusinessStorageService.revision.removeListener(_onBusinessesChanged);
     _photoTimer?.cancel();
     _heroPageController.dispose();
     super.dispose();
+  }
+
+  void _onBusinessesChanged() {
+    if (!mounted) return;
+    _loadBusinesses();
   }
 
   Future<void> _loadUserName() async {

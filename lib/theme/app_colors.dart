@@ -217,6 +217,12 @@ abstract class AppColors {
   /// the app (previously inlined as a literal hex in several screens).
   static const textInk = Color(0xFF1A1510);
 
+  /// Inline form-field validation-error text (Login/Register). Distinct
+  /// from [settingsDanger], which is the destructive-*action* tint
+  /// (delete/cancel/log-out) — this is purely "this field is invalid".
+  /// Previously inlined as a literal hex in three separate Auth screens.
+  static const formError = Color(0xFFD64545);
+
   // --- Profile screen full redesign (Figma nodes 377:483, 421:361) ---
 
   /// Muted taupe — "9:41" mock status text, location caption, locked-badge

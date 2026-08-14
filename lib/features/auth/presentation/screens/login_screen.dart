@@ -31,9 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
   /// this to onUserInteraction so fixes are reflected live from then on.
   AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
-  static final RegExp _emailRegex = RegExp(
-    r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$',
-  );
+  static final RegExp _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
 
   static const Set<String> _weakPasswords = {
     '123456',
@@ -194,9 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 27,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 27),
                             child: _buildCard(),
                           ),
                           SizedBox(height: cardBottomGap),
@@ -239,72 +235,75 @@ class _LoginScreenState extends State<LoginScreen> {
           // fill (and later save) real saved credentials.
           child: AutofillGroup(
             child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Bienvenido de nuevo', style: AppTextStyles.heading),
-              const SizedBox(height: 8),
-              Text(
-                'Inicia sesión para continuar tu aventura',
-                style: AppTextStyles.body,
-              ),
-              const SizedBox(height: 20),
-              _InputField(
-                label: 'Correo electrónico',
-                hintText: 'ej: jose@example.com',
-                controller: emailController,
-                iconAsset: 'assets/images/icon_email.svg',
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [
-                  AutofillHints.username,
-                  AutofillHints.email,
-                ],
-                validator: _validateEmail,
-              ),
-              const SizedBox(height: 14),
-              _InputField(
-                label: 'Contraseña',
-                hintText: '••••••••',
-                controller: passwordController,
-                iconAsset: 'assets/images/icon_lock.svg',
-                isPassword: true,
-                obscureText: _obscurePassword,
-                autofillHints: const [AutofillHints.password],
-                onToggleObscure: () {
-                  setState(() => _obscurePassword = !_obscurePassword);
-                },
-                validator: _validatePassword,
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {},
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: Text(
-                    '¿Olvidaste tu contraseña?',
-                    style: AppTextStyles.link,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Bienvenido de nuevo', style: AppTextStyles.heading),
+                const SizedBox(height: 8),
+                Text(
+                  'Inicia sesión para continuar tu aventura',
+                  style: AppTextStyles.body,
+                ),
+                const SizedBox(height: 20),
+                _InputField(
+                  label: 'Correo electrónico',
+                  hintText: 'ej: jose@example.com',
+                  controller: emailController,
+                  iconAsset: 'assets/images/icon_email.svg',
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [
+                    AutofillHints.username,
+                    AutofillHints.email,
+                  ],
+                  validator: _validateEmail,
+                ),
+                const SizedBox(height: 14),
+                _InputField(
+                  label: 'Contraseña',
+                  hintText: '••••••••',
+                  controller: passwordController,
+                  iconAsset: 'assets/images/icon_lock.svg',
+                  isPassword: true,
+                  obscureText: _obscurePassword,
+                  autofillHints: const [AutofillHints.password],
+                  onToggleObscure: () {
+                    setState(() => _obscurePassword = !_obscurePassword);
+                  },
+                  validator: _validatePassword,
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {},
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: Text(
+                      '¿Olvidaste tu contraseña?',
+                      style: AppTextStyles.link,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              _PrimaryButton(
-                onPressed: _isSubmitting ? null : _submit,
-                label: 'Siguiente',
-                isLoading: _isSubmitting,
-              ),
-              const SizedBox(height: 40),
-              const SocialAuthRow(),
-              const SizedBox(height: 24),
-              _buildRegisterPrompt(),
-              const SizedBox(height: 12),
-              Center(
-                child: TextButton(
-                  onPressed: _isSubmitting ? null : _continueAsGuest,
-                  child: Text('Explorar como invitado', style: AppTextStyles.link),
+                const SizedBox(height: 4),
+                _PrimaryButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  label: 'Siguiente',
+                  isLoading: _isSubmitting,
                 ),
-              ),
-            ],
+                const SizedBox(height: 40),
+                const SocialAuthRow(),
+                const SizedBox(height: 24),
+                _buildRegisterPrompt(),
+                const SizedBox(height: 12),
+                Center(
+                  child: TextButton(
+                    onPressed: _isSubmitting ? null : _continueAsGuest,
+                    child: Text(
+                      'Explorar como invitado',
+                      style: AppTextStyles.link,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -336,15 +335,15 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(width: 8),
         GestureDetector(
           onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RegisterScreen()),
-            );
+            Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
           },
           child: Text('Regístrate aquí', style: AppTextStyles.registerLink),
         ),
       ],
     );
-}
+  }
 }
 
 class _Logo extends StatelessWidget {
@@ -499,7 +498,7 @@ class _InputField extends StatelessWidget {
                     border: InputBorder.none,
                     errorMaxLines: 1,
                     errorStyle: GoogleFonts.nunito(
-                      color: const Color(0xFFD64545),
+                      color: AppColors.formError,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),

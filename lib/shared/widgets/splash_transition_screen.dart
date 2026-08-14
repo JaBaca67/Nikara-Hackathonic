@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
+import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
 /// Reusable animated transition screen (Figma node 95:2, "Precarga"), styled
 /// after the sober PedidosYa/Uber-style loading beat. Used after auth today;
@@ -26,12 +27,19 @@ class SplashTransitionScreen extends StatefulWidget {
   final Future<void> Function()? onLoadingTask;
 
   @override
-  State<SplashTransitionScreen> createState() =>
-      _SplashTransitionScreenState();
+  State<SplashTransitionScreen> createState() => _SplashTransitionScreenState();
 }
 
 class _SplashTransitionScreenState extends State<SplashTransitionScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  /// Entrance beat — fades and scales the logo in once, on cold start, the
+  /// same "arrival" language Airbnb/PedidosYa use instead of just snapping
+  /// the mark on screen. Only after this settles does the continuous pulse
+  /// below take over.
+  late final AnimationController _introController;
+  late final Animation<double> _introFade;
+  late final Animation<double> _introScale;
+
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
   bool _navigated = false;
@@ -39,13 +47,29 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
   @override
   void initState() {
     super.initState();
+    _introController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    _introFade = CurvedAnimation(
+      parent: _introController,
+      curve: Curves.easeOut,
+    );
+    _introScale = Tween<double>(begin: 0.72, end: 1.0).animate(
+      CurvedAnimation(parent: _introController, curve: Curves.easeOutBack),
+    );
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
+    );
     _pulseScale = Tween<double>(begin: 0.96, end: 1.04).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _introController.forward().whenComplete(() {
+      if (mounted) _pulseController.repeat(reverse: true);
+    });
     _run();
   }
 
@@ -72,35 +96,37 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
 
   @override
   void dispose() {
+    _introController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-
     return PopScope(
       // Blocks the back gesture/button while the transition plays out.
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.ecoGreen500,
-        body: Stack(
-          children: [
-            Positioned(
-              top: 0,
-              left: 0,
-              width: size.width,
-              height: size.height,
-              child: _SplashGradientBackground(size: size),
+        backgroundColor: AppColors.secundario6,
+        body: AuroraBackgroundWidget(
+          child: Center(
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_introController, _pulseController]),
+              builder: (context, child) {
+                final pulse = _introController.isCompleted
+                    ? _pulseScale.value
+                    : 1.0;
+                return Opacity(
+                  opacity: _introFade.value,
+                  child: Transform.scale(
+                    scale: _introScale.value * pulse,
+                    child: child,
+                  ),
+                );
+              },
+              child: const _SplashLogo(),
             ),
-            Center(
-              child: ScaleTransition(
-                scale: _pulseScale,
-                child: const _SplashLogo(),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -124,57 +150,6 @@ class _SplashLogo extends StatelessWidget {
         ),
         Text('NÍKARA', style: AppTextStyles.logoWordmark),
       ],
-    );
-  }
-}
-
-/// Vertical gradient (eco green → gold → coral) plus the top-right glow,
-/// matching the login header's decorative language (Figma node 95:6/95:8).
-class _SplashGradientBackground extends StatelessWidget {
-  const _SplashGradientBackground({required this.size});
-
-  final Size size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment(-0.62, -0.79),
-          end: Alignment(0.62, 0.79),
-          colors: [
-            AppColors.ecoGreen500,
-            AppColors.tagGold600,
-            AppColors.coral500,
-          ],
-          stops: [0.0849, 0.417, 0.9151],
-        ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            left: size.width * (262 / 390),
-            top: size.height * (-32 / 844),
-            child: Container(
-              width: size.width * (160 / 390),
-              height: size.width * (160 / 390),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    Colors.white.withValues(alpha: 0.5),
-                    Colors.white.withValues(alpha: 0.22),
-                    AppColors.tagGold600.withValues(alpha: 0.10),
-                    AppColors.tagGold600.withValues(alpha: 0),
-                  ],
-                  stops: const [0.0, 0.3, 0.65, 1.0],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
