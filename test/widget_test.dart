@@ -1,9 +1,10 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// ¡Actualizamos la ruta para que busque MyApp en app.dart!
-import 'package:nikara_app/app.dart';
+import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/theme/app_theme.dart';
 
 void main() {
   setUpAll(() async {
@@ -28,16 +29,16 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('Prueba de humo para la pantalla de Login', (WidgetTester tester) async {
-    // MyApp reads AuthService().isLoggedIn synchronously (no Supabase
-    // session persisted in the test environment), so it renders LoginScreen
-    // directly.
-    await tester.pumpWidget(const MyApp());
-    // Not pumpAndSettle: LoginScreen's AuroraBackgroundWidget runs an
-    // intentionally infinite repeating animation, which would never let
-    // pumpAndSettle finish.
+  testWidgets('Prueba de humo para la pantalla de Login', (
+    WidgetTester tester,
+  ) async {
+    // LoginScreen directly (not MyApp/SplashTransitionScreen) — this is a
+    // smoke test for the Login screen itself, not the app's boot sequence.
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.lightTheme, home: const LoginScreen()),
+    );
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 500));
 
     // Verificamos que nuestra pantalla de Login cargó correctamente
     // buscando los textos de tu diseño.

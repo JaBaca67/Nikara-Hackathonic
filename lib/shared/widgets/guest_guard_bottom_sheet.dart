@@ -9,7 +9,6 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// [GuestGuardBottomSheet].
 enum GuestFeature {
   favoritos('tus favoritos', Icons.favorite_border),
-  reservas('tus reservas', Icons.calendar_month_outlined),
   perfil('tu perfil', Icons.person_outline);
 
   const GuestFeature(this.label, this.icon);
@@ -18,8 +17,8 @@ enum GuestFeature {
   final IconData icon;
 }
 
-/// Gate for anything that requires a real account — favorites, bookings,
-/// the Perfil tab. A guest ([AuthService.isLoggedIn] false while inside the
+/// Gate for anything that requires a real account — favorites, the Perfil
+/// tab. A guest ([AuthService.isLoggedIn] false while inside the
 /// app) never gets silently blocked; [allow] always explains why via
 /// [GuestGuardBottomSheet] and points at how to unlock it.
 class GuestGuard {
@@ -43,7 +42,10 @@ class GuestGuardBottomSheet extends StatelessWidget {
 
   final GuestFeature feature;
 
-  static Future<void> show(BuildContext context, {required GuestFeature feature}) {
+  static Future<void> show(
+    BuildContext context, {
+    required GuestFeature feature,
+  }) {
     return showModalBottomSheet(
       context: context,
       // Not the default (false): a non-scroll-controlled sheet caps at
@@ -116,11 +118,16 @@ class GuestGuardBottomSheet extends StatelessWidget {
                     onTap: () {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterScreen(),
+                        ),
                       );
                     },
                     child: Center(
-                      child: Text('Crear mi cuenta', style: AppTextStyles.buttonLarge),
+                      child: Text(
+                        'Crear mi cuenta',
+                        style: AppTextStyles.buttonLarge,
+                      ),
                     ),
                   ),
                 ),
@@ -130,9 +137,9 @@ class GuestGuardBottomSheet extends StatelessWidget {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
               },
               child: Text('Ya tengo cuenta', style: AppTextStyles.link),
             ),

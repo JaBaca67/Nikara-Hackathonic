@@ -2,8 +2,7 @@ import 'package:flutter/foundation.dart';
 
 /// Lets any screen — even one pushed on top of `MainLayout` via
 /// `Navigator.push` (like `BusinessDetailScreen`), not just its 4 direct
-/// tab children — request a bottom-nav tab switch (e.g. jumping to
-/// "Reservas" right after creating a booking) without needing a
+/// tab children — request a bottom-nav tab switch without needing a
 /// `BuildContext`/callback reference back to `MainLayout`'s State.
 class MainTabController {
   factory MainTabController() => instance;

@@ -33,10 +33,8 @@ class UserStatsService {
               .length;
 
     return UserStats(
-      // There is no reservation-completion flow in the app yet (Business
-      // Detail's booking CTA opens WhatsApp, it doesn't write a booking
-      // record) — so this is genuinely zero, not a placeholder, until that
-      // exists.
+      // There is no trip/visit-completion flow in the app yet — so this is
+      // genuinely zero, not a placeholder, until that exists.
       tripsCount: 0,
       savedPlacesCount: favorites.length,
       reviewsCount: myReviewsCount,

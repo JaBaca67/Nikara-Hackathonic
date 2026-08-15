@@ -203,8 +203,8 @@ class BusinessStorageService {
 
   /// Parses a raw `businesses` row into a [BusinessModel] — public so other
   /// services can reuse it when Supabase returns a nested `businesses`
-  /// object via a foreign-table join (e.g. `select('*, businesses(*)')` in
-  /// [BookingService]) instead of duplicating this parsing logic.
+  /// object via a foreign-table join, instead of duplicating this parsing
+  /// logic.
   BusinessModel businessFromRow(Map<String, dynamic> row) => _fromRow(row);
 
   BusinessModel _fromRow(Map<String, dynamic> row) {

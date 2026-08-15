@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _email = '';
   String _phone = '';
 
-  bool _bookingAlerts = true;
+  bool _tripAlerts = true;
   bool _ecoCampaigns = true;
   bool _offers = false;
   bool _publicProfile = true;
@@ -48,11 +48,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openEditProfile() async {
     final result = await showDialog<(String, String, String)>(
       context: context,
-      builder: (_) => _EditProfileDialog(
-        name: _name,
-        email: _email,
-        phone: _phone,
-      ),
+      builder: (_) =>
+          _EditProfileDialog(name: _name, email: _email, phone: _phone),
     );
     if (result == null || !mounted) return;
     setState(() {
@@ -76,10 +73,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Cerrar sesión',
+          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
         ),
-        title: Text('Cerrar sesión', style: AppTextStyles.settingsTitle.copyWith(fontSize: 18)),
         content: Text(
           '¿Seguro que quieres cerrar tu sesión de Níkara?',
           style: AppTextStyles.body,
@@ -112,7 +110,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -161,9 +161,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SettingsToggleRow(
                     icon: Icons.notifications_none,
-                    title: 'Reservas y confirmaciones',
-                    value: _bookingAlerts,
-                    onChanged: (v) => setState(() => _bookingAlerts = v),
+                    title: 'Novedades de viaje',
+                    value: _tripAlerts,
+                    onChanged: (v) => setState(() => _tripAlerts = v),
                   ),
                   _SettingsToggleRow(
                     icon: Icons.eco_outlined,
@@ -325,7 +325,10 @@ class _SettingsSection extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(label.toUpperCase(), style: AppTextStyles.settingsSectionLabel),
+            child: Text(
+              label.toUpperCase(),
+              style: AppTextStyles.settingsSectionLabel,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
@@ -412,7 +415,9 @@ class _SettingsRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: AppTextStyles.settingsRowTitle.copyWith(color: titleColor),
+                    style: AppTextStyles.settingsRowTitle.copyWith(
+                      color: titleColor,
+                    ),
                   ),
                   if (caption != null)
                     Text(caption!, style: AppTextStyles.settingsRowCaption),
@@ -465,9 +470,7 @@ class _SettingsToggleRow extends StatelessWidget {
             child: Icon(icon, size: 16, color: AppColors.settingsAccent),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(title, style: AppTextStyles.settingsRowTitle),
-          ),
+          Expanded(child: Text(title, style: AppTextStyles.settingsRowTitle)),
           Switch(
             value: value,
             onChanged: onChanged,
@@ -527,7 +530,10 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     return AlertDialog(
       backgroundColor: AppColors.surface100,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text('Editar perfil', style: AppTextStyles.settingsTitle.copyWith(fontSize: 18)),
+      title: Text(
+        'Editar perfil',
+        style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
+      ),
       content: Form(
         key: _formKey,
         child: Column(
@@ -554,8 +560,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(labelText: 'Teléfono'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Ingresa tu teléfono' : null,
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? 'Ingresa tu teléfono'
+                  : null,
             ),
           ],
         ),
@@ -567,7 +574,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
         ),
         FilledButton(
           onPressed: _save,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.settingsAccent),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.settingsAccent,
+          ),
           child: const Text('Guardar'),
         ),
       ],
@@ -619,23 +628,26 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               controller: _currentController,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Contraseña actual'),
-              validator: (v) =>
-                  (v == null || v.isEmpty) ? 'Ingresa tu contraseña actual' : null,
+              validator: (v) => (v == null || v.isEmpty)
+                  ? 'Ingresa tu contraseña actual'
+                  : null,
             ),
             TextFormField(
               controller: _newController,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Nueva contraseña'),
-              validator: (v) => (v == null || v.length < 6)
-                  ? 'Mínimo 6 caracteres'
-                  : null,
+              validator: (v) =>
+                  (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
             ),
             TextFormField(
               controller: _confirmController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
-              validator: (v) =>
-                  v != _newController.text ? 'Las contraseñas no coinciden' : null,
+              decoration: const InputDecoration(
+                labelText: 'Confirmar contraseña',
+              ),
+              validator: (v) => v != _newController.text
+                  ? 'Las contraseñas no coinciden'
+                  : null,
             ),
           ],
         ),
@@ -647,7 +659,9 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         ),
         FilledButton(
           onPressed: _save,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.settingsAccent),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.settingsAccent,
+          ),
           child: const Text('Guardar'),
         ),
       ],

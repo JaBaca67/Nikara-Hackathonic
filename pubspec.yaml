@@ -43,6 +43,11 @@ dependencies:
   url_launcher: ^6.3.2
   supabase_flutter: ^2.8.0
   google_sign_in: ^6.2.1
+  sign_in_with_apple: ^7.0.1
+  # Already pulled in transitively (gotrue/supabase_flutter) — declared
+  # directly since AuthService imports it itself, for Apple Sign-In's nonce
+  # hashing (see AuthService.signInWithApple).
+  crypto: ^3.0.6
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
   geolocator: ^14.0.3

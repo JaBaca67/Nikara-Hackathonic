@@ -28,5 +28,60 @@ abstract class SupabaseConfig {
   ///    that Web client's ID + secret, toggle it on.
   /// 3. Replace the placeholder below with that same Web client ID.
   static const googleWebClientId =
-      'REPLACE_WITH_GOOGLE_CLOUD_WEB_CLIENT_ID.apps.googleusercontent.com';
+      '736353638754-c347fou9tj977ci3a8n96i89r85tvpls.apps.googleusercontent.com';
+
+  /// The Services ID (not the App ID) registered for "Sign in with Apple"
+  /// — the identifier Supabase's Apple provider checks the ID token's
+  /// `aud` claim against. Safe to ship in the client, same reasoning as
+  /// [googleWebClientId].
+  ///
+  /// PENDING MANUAL SETUP (outside this codebase):
+  /// 1. Apple Developer account → Certificates, Identifiers & Profiles →
+  ///    turn on "Sign in with Apple" for this app's existing App ID.
+  /// 2. Create a separate **Services ID** (e.g. `com.nikara.app.signin`) —
+  ///    this, not the App ID, is the value that goes below.
+  /// 3. Supabase dashboard → Authentication → Providers → Apple → paste
+  ///    that Services ID (+ the Team ID / Key ID / private key from a
+  ///    Sign in with Apple key, generated in the same Apple Developer
+  ///    section), toggle it on.
+  /// 4. Xcode → Runner target → Signing & Capabilities → add the
+  ///    "Sign in with Apple" capability (native iOS entitlement — the
+  ///    `sign_in_with_apple` package needs this regardless of the Services
+  ///    ID above).
+  static const appleServiceId = 'REPLACE_WITH_APPLE_SERVICES_ID';
+
+  /// Facebook has no clean native "give me an ID token" SDK path on
+  /// Android the way Google/Apple do (its Login SDK only ever returns a
+  /// plain OAuth access token there, not an OIDC-signed one Supabase can
+  /// verify client-side) — bridging that would need a server component
+  /// (an Edge Function holding the service_role key) this project doesn't
+  /// have. So [AuthService.signInWithFacebook] goes through Supabase's
+  /// browser-redirect `signInWithOAuth` instead, which needs no Facebook
+  /// SDK or App ID in this app at all — Supabase holds the Facebook App
+  /// ID/Secret itself and does the whole OAuth dance server-side. This app
+  /// only needs to open that URL and catch the redirect back, via
+  /// [oauthRedirectUrl] — see its own doc comment for the platform setup
+  /// that requires.
+  ///
+  /// PENDING MANUAL SETUP (outside this codebase):
+  /// 1. developers.facebook.com → create an app → add the "Facebook Login"
+  ///    product → Settings → Valid OAuth Redirect URIs → add this
+  ///    project's Supabase callback: `https://taxtvsqfpmrrkvezwwpb.supabase.co/auth/v1/callback`
+  ///    (Supabase's own URL, not [oauthRedirectUrl] — that one is what
+  ///    Supabase redirects BACK to, after it, once it already has a
+  ///    session).
+  /// 2. Copy that app's App ID + App Secret into: Supabase dashboard →
+  ///    Authentication → Providers → Facebook, toggle it on.
+
+  /// Where Supabase redirects back into this app after ANY browser-based
+  /// OAuth flow finishes (currently only [AuthService.signInWithFacebook]
+  /// uses this — Google/Apple use native id-token exchanges and never
+  /// leave the app). Must exactly match:
+  /// - the intent-filter `android:scheme`/`android:host` in
+  ///   `android/app/src/main/AndroidManifest.xml`,
+  /// - the `CFBundleURLSchemes` entry in `ios/Runner/Info.plist`,
+  /// - and the "Redirect URLs" allow-list in the Supabase dashboard
+  ///   (Authentication → URL Configuration).
+  /// Not a secret — it's just this app's own deep-link address.
+  static const oauthRedirectUrl = 'io.nikara.app://login-callback';
 }

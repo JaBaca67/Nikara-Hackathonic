@@ -112,13 +112,11 @@ abstract class AppColors {
   /// "Off" toggle track fill.
   static const settingsToggleOff = Color(0xFFC8BDB0);
 
-  // --- Bookings screen tokens (Figma node 170:23, "Reservas") ---
-
-  /// Variable "200" (olive collection) — "Confirmada" status + paid-total.
-  static const bookingConfirmed = Color(0xFF656B1F);
-
-  /// Variable "300" (rust collection) — "Pendiente" status.
-  static const bookingPending = Color(0xFFDB4900);
+  /// Variable "200" (olive collection) — generic "success/confirmed" status
+  /// tint (password-strength "Fuerte" label, etc.). Named for the semantic
+  /// meaning, not the screen it first appeared on — the reservations
+  /// feature that originally introduced it was removed Aug 2026.
+  static const statusSuccess = Color(0xFF656B1F);
 
   /// Raw fill — placeholder thumbnail background (also used in Perfil).
   static const placeholderTan = Color(0xFFE5DFD2);
@@ -374,4 +372,53 @@ abstract class AppColors {
   /// Verification/pin-confirm icon amber — the solid-color sibling of the
   /// `rgba(240,181,0,…)` shadow tint already inlined elsewhere in this app.
   static const wizardAmber = Color(0xFFF0B500);
+
+  // --- Auth flow redesign (Claude Design canvas "Nikara Inicio y Mapa",
+  // turns 9/10 — Login v3 + Registro en 3 pasos) ---
+
+  /// Sunset gradient, stop 1/4 — top.
+  static const sunsetStart = Color(0xFFFFD028);
+
+  /// Sunset gradient, stop 2/4.
+  static const sunsetMid1 = Color(0xFFFDB828);
+
+  /// Sunset gradient, stop 3/4.
+  static const sunsetMid2 = Color(0xFFFF8A35);
+
+  /// Sunset gradient, stop 4/4 — bottom.
+  static const sunsetEnd = Color(0xFFF97316);
+
+  /// Auth card fill — the warm off-white behind every Login/Register form,
+  /// distinct from [backgroundCream] (this is warmer/lighter).
+  static const authCardBackground = Color(0xFFFFFDF8);
+
+  /// Deep olive used for every text link in the Auth flow ("Inicia
+  /// sesión", "Regístrate aquí", the guest-CTA icon/text) — distinct from
+  /// [accent300], a lighter olive used elsewhere in the app.
+  static const authLink = Color(0xFF6E7522);
+
+  /// "Explorar como invitado" pill — gradient fill and icon-circle tint,
+  /// a muted sibling of [authLink].
+  static const authGuestPillStart = Color(0xFFEFF2DF);
+  static const authGuestPillEnd = Color(0xFFE4EAC0);
+  static const authGuestIconText = Color(0xFF4C5218);
+
+  /// Password-strength "Débil" (weak) label/bar tint.
+  static const strengthWeak = Color(0xFFD2691E);
+
+  /// Auth flow's "ink" — headings, primary-button text, primary icons
+  /// (mail/lock/arrow_back). Distinct from [textInk]: this redesign turn's
+  /// source gave an explicit, lighter warm-brown value, not the app's
+  /// older near-black ink.
+  static const authInk = Color(0xFF3D2110);
+
+  /// Auth field labels ("CORREO ELECTRÓNICO"), muted trailing icons
+  /// (`visibility_off`), and — at 35% alpha — every field's inset border.
+  static const authMuted = Color(0xFF9A8A82);
+
+  /// Auth subtitle/body copy under a heading ("Empecemos con lo básico").
+  static const authBodyMuted = Color(0xFF6B5B45);
+
+  /// Auth field placeholder text.
+  static const authPlaceholder = Color(0xFFB7A9A0);
 }

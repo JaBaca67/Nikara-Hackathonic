@@ -445,73 +445,104 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  // --- Bookings screen styles (Figma node 170:23) ---
+  // --- Form feedback (typography audit, Aug 2026) ---
+  // Was duplicated ad hoc via three separate raw `GoogleFonts.nunito(...)`
+  // calls in Login/Register before this token existed — see `errorStyle`/
+  // `helperText` call sites across the Auth screens.
 
-  /// Figma names this text node's style "H5" — Nunito Bold, not the
-  /// League Spartan used by most other screen headings; matches the
-  /// literal spec returned for node 170:23, not a generic-font oversight.
-  static TextStyle get bookingHeaderTitle => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 20,
-    height: 28 / 20,
+  /// Inline field validation-error text — Nunito SemiBold 11,
+  /// [AppColors.formError].
+  static TextStyle get errorText => GoogleFonts.nunito(
+    color: AppColors.formError,
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+  );
+
+  /// Inline field helper/hint text (below a field, not an error) — Nunito
+  /// Regular 11, [AppColors.neutral600].
+  static TextStyle get helperText => GoogleFonts.nunito(
+    color: AppColors.neutral600,
+    fontSize: 11,
+    fontWeight: FontWeight.w400,
+  );
+
+  // --- Text links (typography audit, Aug 2026) ---
+  // Consolidates what used to be 6 near-duplicate one-off link styles
+  // (`link`, `registerLink`, `homeSeeMore`, `seeMore`, `detailInlineLink`,
+  // the wizard footer pair) spread across screens into one named scale.
+  // `link`/`registerLink` themselves stay put — kept for now to avoid a
+  // sweeping cross-screen rename outside this pass's scope — but any new
+  // link should reach for one of these three first.
+
+  /// League Spartan Bold 12 — smallest text link.
+  static TextStyle get linkSm => GoogleFonts.leagueSpartan(
+    color: AppColors.accent300,
+    fontSize: 12,
+    height: 16 / 12,
     fontWeight: FontWeight.w700,
   );
 
-  /// Figma names this text node's style "H6" — Nunito Bold, same note as
-  /// [bookingHeaderTitle].
-  static TextStyle get bookingCardTitle => GoogleFonts.nunito(
-    color: Colors.white,
-    fontSize: 16,
-    height: 24 / 16,
+  /// League Spartan Bold 14 — default text link.
+  static TextStyle get linkMd => GoogleFonts.leagueSpartan(
+    color: AppColors.accent300,
+    fontSize: 14,
+    height: 20 / 14,
     fontWeight: FontWeight.w700,
   );
 
-  static TextStyle get bookingMeta => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
+  /// League Spartan Bold 15 — largest/most prominent text link.
+  static TextStyle get linkLg => GoogleFonts.leagueSpartan(
+    color: AppColors.accent300,
+    fontSize: 15,
+    height: 20 / 15,
+    fontWeight: FontWeight.w700,
+  );
+
+  // --- Auth flow redesign (Claude Design canvas "Nikara Inicio y Mapa",
+  // turns 9/10 — Login v3 + Registro en 3 pasos) ---
+
+  /// Uppercase field label ("CORREO ELECTRÓNICO"): League Spartan Bold 10.
+  static TextStyle get authFieldLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.authMuted,
+    fontSize: 10,
+    height: 15 / 10,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.6,
+  );
+
+  /// Step-progress caption ("Paso 1 de 3 · Identidad"): Nunito SemiBold 12.
+  static TextStyle get authStepCaption => GoogleFonts.nunito(
+    color: AppColors.settingsTextMuted,
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w600,
   );
 
-  static TextStyle get bookingLabel => GoogleFonts.nunito(
-    color: AppColors.neutral800,
-    fontSize: 10,
-    height: 15 / 10,
+  /// Primary-button label ("Siguiente", "Crear mi cuenta"): League Spartan
+  /// Bold 15, [AppColors.authInk] — the button text family/color this
+  /// redesign turn moved off Nunito onto, replacing [buttonLarge] for the
+  /// Auth flow specifically.
+  static TextStyle get authButtonLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.authInk,
+    fontSize: 15,
+    height: 22 / 15,
+    fontWeight: FontWeight.w700,
+  );
+
+  /// "o continúa con" divider label: Nunito SemiBold 12.
+  static TextStyle get authDividerLabel => GoogleFonts.nunito(
+    color: AppColors.authMuted,
+    fontSize: 12,
+    height: 16 / 12,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.5,
   );
 
-  static TextStyle get bookingCode => GoogleFonts.robotoMono(
-    color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get bookingTotal => GoogleFonts.nunito(
-    color: AppColors.bookingConfirmed,
-    fontSize: 16,
-    height: 24 / 16,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get bookingStatusChip => GoogleFonts.nunito(
-    fontSize: 11,
-    height: 16.5 / 11,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get bookingPillCount => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 11,
-    height: 16.5 / 11,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get bookingActionLabel => GoogleFonts.nunito(
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w700,
+  /// "Explorar como invitado" pill label: League Spartan ExtraBold 13.5.
+  static TextStyle get authGuestPillLabel => GoogleFonts.leagueSpartan(
+    color: AppColors.authGuestIconText,
+    fontSize: 13.5,
+    height: 18 / 13.5,
+    fontWeight: FontWeight.w800,
   );
 
   // --- Register screen styles (Figma nodes 157:96, 113:95) ---
@@ -546,27 +577,11 @@ abstract class AppTextStyles {
   // screen, so these getters intentionally leave color unset — callers
   // apply one of the app's own neutral tokens instead. Sizes/weights were
   // cross-validated: "Boton Lg" here matches [buttonLarge] byte-for-byte.
-
-  /// Text style "H1": Nunito Bold 64/80.
-  static TextStyle get h1 => GoogleFonts.nunito(
-    fontSize: 64,
-    height: 80 / 64,
-    fontWeight: FontWeight.w700,
-  );
-
-  /// Text style "H2": Nunito Bold 48/64.
-  static TextStyle get h2 => GoogleFonts.nunito(
-    fontSize: 48,
-    height: 64 / 48,
-    fontWeight: FontWeight.w700,
-  );
-
-  /// Text style "H3": Nunito Bold 32/48.
-  static TextStyle get h3 => GoogleFonts.nunito(
-    fontSize: 32,
-    height: 48 / 32,
-    fontWeight: FontWeight.w700,
-  );
+  //
+  // `h1`/`h2`/`h3`/`overline`/`bodyText1` were removed (typography audit,
+  // Aug 2026) — zero real usages anywhere in the app; keeping them exported
+  // dead tokens would have shipped phantom entries into the Figma-facing
+  // style guide.
 
   /// Text style "H4": Nunito Bold 24/36.
   static TextStyle get h4 => GoogleFonts.nunito(
@@ -622,14 +637,6 @@ abstract class AppTextStyles {
     fontSize: 12,
     height: 18 / 12,
     fontWeight: FontWeight.w400,
-  );
-
-  /// Text style "Overline": Nunito Bold 12/18, uppercase, tracked.
-  static TextStyle get overline => GoogleFonts.nunito(
-    fontSize: 12,
-    height: 18 / 12,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 1.2,
   );
 
   /// Text style "Boton Lg" — identical to [buttonLarge] (Nunito Bold 15/26).
@@ -1085,17 +1092,23 @@ abstract class AppTextStyles {
 /// `linear-gradient(141.77deg, secundario6 8.49%, tagGold600 23.26%,
 /// coral500 91.51%)` — the begin/end [Alignment] pair below is that same
 /// 141.77° direction converted into Flutter's alignment space.
+/// Shared background gradient for the Auth flow (Splash → Login →
+/// Register), from the Claude Design canvas "Nikara Inicio y Mapa" (turns
+/// 9/10, "Login v3" + "Registro en 3 pasos") — `linear-gradient(180deg,
+/// #FFD028 0%, #FDB828 32%, #FF8A35 68%, #F97316 100%)`. Supersedes the
+/// earlier Figma-node-636:912 diagonal 3-stop version.
 abstract class AppGradients {
-  static const authBackgroundBegin = Alignment(-0.62, -0.79);
-  static const authBackgroundEnd = Alignment(0.62, 0.79);
+  static const authBackgroundBegin = Alignment.topCenter;
+  static const authBackgroundEnd = Alignment.bottomCenter;
 
   static const List<Color> authBackgroundColors = [
-    AppColors.secundario6,
-    AppColors.tagGold600,
-    AppColors.coral500,
+    AppColors.sunsetStart,
+    AppColors.sunsetMid1,
+    AppColors.sunsetMid2,
+    AppColors.sunsetEnd,
   ];
 
-  static const List<double> authBackgroundStops = [0.0849, 0.2326, 0.9151];
+  static const List<double> authBackgroundStops = [0.0, 0.32, 0.68, 1.0];
 }
 
 abstract class AppTheme {

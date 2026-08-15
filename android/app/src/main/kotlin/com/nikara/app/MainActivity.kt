@@ -1,4 +1,4 @@
-package com.example.nikara_app
+package com.nikara.app
 
 import io.flutter.embedding.android.FlutterActivity
 

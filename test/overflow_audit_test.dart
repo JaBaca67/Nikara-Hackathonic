@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
-import 'package:nikara_app/features/bookings/presentation/screens/bookings_screen.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
@@ -119,9 +118,7 @@ void main() {
     }
   }
 
-  testWidgets('LoginScreen no desborda en pantallas pequeñas', (
-    tester,
-  ) async {
+  testWidgets('LoginScreen no desborda en pantallas pequeñas', (tester) async {
     await expectNoOverflow(tester, const LoginScreen(), 'LoginScreen');
   });
 
@@ -131,31 +128,22 @@ void main() {
     await expectNoOverflow(tester, const RegisterScreen(), 'RegisterScreen');
   });
 
-  testWidgets(
-    'BusinessDetailScreen con contenido extremo no desborda',
-    (tester) async {
-      await expectNoOverflow(
-        tester,
-        BusinessDetailScreen(business: _stressBusiness),
-        'BusinessDetailScreen',
-      );
-    },
-  );
-
-  testWidgets('HomeScreen no desborda en pantallas pequeñas', (
+  testWidgets('BusinessDetailScreen con contenido extremo no desborda', (
     tester,
   ) async {
+    await expectNoOverflow(
+      tester,
+      BusinessDetailScreen(business: _stressBusiness),
+      'BusinessDetailScreen',
+    );
+  });
+
+  testWidgets('HomeScreen no desborda en pantallas pequeñas', (tester) async {
     await expectNoOverflow(tester, const HomeScreen(), 'HomeScreen');
   });
 
   testWidgets('MapScreen no desborda en pantallas pequeñas', (tester) async {
     await expectNoOverflow(tester, const MapScreen(), 'MapScreen');
-  });
-
-  testWidgets('BookingsScreen no desborda en pantallas pequeñas', (
-    tester,
-  ) async {
-    await expectNoOverflow(tester, const BookingsScreen(), 'BookingsScreen');
   });
 
   testWidgets('ProfileScreen no desborda en pantallas pequeñas', (
@@ -170,14 +158,13 @@ void main() {
     await expectNoOverflow(tester, const SettingsScreen(), 'SettingsScreen');
   });
 
-  testWidgets(
-    'RegisterBusinessWizard no desborda en pantallas pequeñas',
-    (tester) async {
-      await expectNoOverflow(
-        tester,
-        const RegisterBusinessWizard(),
-        'RegisterBusinessWizard',
-      );
-    },
-  );
+  testWidgets('RegisterBusinessWizard no desborda en pantallas pequeñas', (
+    tester,
+  ) async {
+    await expectNoOverflow(
+      tester,
+      const RegisterBusinessWizard(),
+      'RegisterBusinessWizard',
+    );
+  });
 }

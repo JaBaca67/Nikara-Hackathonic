@@ -32,7 +32,7 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 16),
+    duration: const Duration(seconds: 7),
   )..repeat();
 
   @override
@@ -83,63 +83,67 @@ class _AuroraPainter extends CustomPainter {
 
   final double progress;
 
-  /// How many seconds [progress] takes to complete one full 0→1 loop —
-  /// must match the driving [AnimationController]'s duration so the
-  /// breathing math below (which re-derives a *shorter* sub-cycle from
-  /// this same ticker instead of needing a second [AnimationController])
-  /// lands on an exact number of cycles per loop.
-  static const double _loopSeconds = 16;
-
   @override
   void paint(Canvas canvas, Size size) {
     final t = progress * 2 * math.pi;
 
+    // Every oscillator below uses an INTEGER multiple of `t` (1, 2, or 3).
+    // That's not a style choice — it's what makes the loop seamless.
+    // `progress` wraps 1→0 every cycle, so `t` wraps 2π→0; sin/cos of an
+    // integer multiple of `t` land on the exact same value at both ends
+    // (sin(2π·k) == sin(0) for integer k), so nothing jumps. A non-integer
+    // multiplier (the previous 0.85/1.3/1.6/breathe-ratio-2.8) does NOT
+    // return to its starting phase at the wrap, which is exactly what
+    // produced the visible "cut" each loop.
     _blob(
       canvas,
       color: AppColors.accent300,
-      alpha: 0.28,
+      alpha: 0.55,
       center: Offset(
-        size.width * (0.18 + 0.10 * math.sin(t)),
-        size.height * (0.20 + 0.06 * math.cos(t)),
+        size.width * (0.18 + 0.3 * math.sin(t)),
+        size.height * (0.20 + 0.18 * math.cos(t)),
       ),
-      radius: size.width * 0.55,
+      radius: size.width * 0.65,
     );
     _blob(
       canvas,
       color: Colors.white,
-      alpha: 0.18,
+      alpha: 0.38,
       center: Offset(
-        size.width * (0.85 + 0.07 * math.cos(t * 0.8)),
-        size.height * (0.10 + 0.05 * math.sin(t * 0.8)),
+        size.width * (0.82 + 0.22 * math.cos(t * 2 + 1.1)),
+        size.height * (0.12 + 0.16 * math.sin(t * 2 + 1.1)),
       ),
-      radius: size.width * 0.42,
+      radius: size.width * 0.5,
     );
     _blob(
       canvas,
       color: AppColors.coral500,
-      alpha: 0.22,
+      alpha: 0.46,
       center: Offset(
-        size.width * (0.5 + 0.12 * math.sin(t * 1.3 + 1)),
-        size.height * (0.88 + 0.05 * math.cos(t * 1.3)),
+        size.width * (0.5 + 0.34 * math.sin(t * 2 + 3.4)),
+        size.height * (0.86 + 0.16 * math.cos(t * 2 + 3.4)),
       ),
-      radius: size.width * 0.6,
+      radius: size.width * 0.7,
+    );
+    _blob(
+      canvas,
+      color: AppColors.sunsetMid1,
+      alpha: 0.42,
+      center: Offset(
+        size.width * (0.35 + 0.28 * math.cos(t * 3 - 1.4)),
+        size.height * (0.55 + 0.22 * math.sin(t * 3 - 1.4)),
+      ),
+      radius: size.width * 0.55,
     );
 
-    // Discreet ambient "breathing" glow, top-right — same soft-white/gold
-    // language as the old splash-only decorative glow, now shared by every
-    // screen on this background. Its opacity pulses on its own ~4s cadence
-    // (a sine derived from this same 16s-loop [progress], not a second
-    // controller) — subtle enough not to distract, per the design brief.
-    const breathePeriodSeconds = 4.0;
-    final breatheT =
-        2 * math.pi * (progress * _loopSeconds / breathePeriodSeconds);
-    final breathe = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(breatheT));
+    // Ambient "breathing" glow, top-right — 3 pulses per loop.
+    final breathe = 0.5 + 0.5 * (0.5 + 0.5 * math.sin(t * 3));
     _blob(
       canvas,
       color: Colors.white,
-      alpha: 0.22 * breathe,
+      alpha: 0.42 * breathe,
       center: Offset(size.width * 0.82, size.height * 0.06),
-      radius: size.width * 0.32,
+      radius: size.width * 0.36,
     );
   }
 

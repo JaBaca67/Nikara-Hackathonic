@@ -1860,10 +1860,9 @@ class _ReviewCard extends StatelessWidget {
 
 /// Fixed bottom bar — exactly two actions, per Pantalla 3a: a compact
 /// "Cómo llegar" pill and a full-width gold "Escribir por WhatsApp" CTA.
-/// No price, no "Reservar ahora" — this screen's real reservation entry
-/// point was intentionally removed to match the design's discovery-first
-/// bottom bar (see [BookingRequestSheet], still wired to Supabase's
-/// `bookings` table, just no longer reachable from here).
+/// No price, no "Reservar ahora" — the app's reservation flow was removed
+/// entirely (Aug 2026); WhatsApp/directions are this bottom bar's only
+/// actions until a map-based routes/booking system replaces it.
 class _ContactBar extends StatelessWidget {
   const _ContactBar({required this.business, required this.onDirections});
 

@@ -100,26 +100,31 @@ class _OtpInputRowState extends State<OtpInputRow> {
                 maxLength: 1,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 style: AppTextStyles.inputText.copyWith(
+                  color: AppColors.authInk,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                 ),
                 decoration: InputDecoration(
                   counterText: '',
                   filled: true,
-                  fillColor: AppColors.surface100,
+                  fillColor: AppColors.settingsBackground,
                   contentPadding: EdgeInsets.zero,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.cardBorder),
+                    borderSide: BorderSide(
+                      color: AppColors.authMuted.withValues(alpha: 0.35),
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide(color: AppColors.cardBorder),
+                    borderSide: BorderSide(
+                      color: AppColors.authMuted.withValues(alpha: 0.35),
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: const BorderSide(
-                      color: AppColors.wizardFocus,
+                      color: AppColors.authInk,
                       width: 2,
                     ),
                   ),

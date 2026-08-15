@@ -1509,13 +1509,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                       color: const Color(0x801A1510),
                                       borderRadius: BorderRadius.circular(999),
                                     ),
-                                    child: const Text(
+                                    child: Text(
                                       'Portada',
-                                      style: TextStyle(
-                                        fontSize: 8,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                      style: AppTextStyles.homeMiniBadge
+                                          .copyWith(
+                                            color: AppColors.surface100,
+                                          ),
                                     ),
                                   ),
                                 ),
