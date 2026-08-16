@@ -145,6 +145,11 @@ class DirectionsService {
         'origin': '${origin.latitude},${origin.longitude}',
         'destination': '${destination.latitude},${destination.longitude}',
         'mode': mode.apiValue,
+        // Without this the API defaults to English — every
+        // `html_instructions` string (and the maneuver banner/TTS text
+        // built from it) needs to come back in Spanish already, not get
+        // translated client-side.
+        'language': 'es',
         'key': key,
       },
     );

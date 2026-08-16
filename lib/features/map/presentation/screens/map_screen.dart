@@ -1742,28 +1742,33 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           // Fase 1 — route preview: a close button to back out
           // ([_cancelTripPreview]) plus the Automóvil/A pie mode selector
           // ([_changeTripMode]), replacing the search chrome while a route
-          // is being planned but not yet started.
+          // is being planned but not yet started. Explicitly `Positioned`
+          // (not just a bare top-of-Stack child) — the enclosing Stack uses
+          // `fit: StackFit.expand`, which stretches any *non*-positioned
+          // child to fill the whole screen; a plain `Row` then centers its
+          // children in the middle of that forced height instead of
+          // hugging the top, which is what made this float dead-center
+          // over the map instead of sitting under the status bar.
           if (_isPreviewingTrip)
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: Row(
-                  children: [
-                    _CircleIconButton(
-                      icon: Icons.close_rounded,
-                      onTap: _cancelTripPreview,
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 20,
+              right: 20,
+              child: Row(
+                children: [
+                  _CircleIconButton(
+                    icon: Icons.close_rounded,
+                    onTap: _cancelTripPreview,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _TripModeSelector(
+                      mode: _tripMode,
+                      isLoading: _isChangingTripMode,
+                      onChanged: _changeTripMode,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _TripModeSelector(
-                        mode: _tripMode,
-                        isLoading: _isChangingTripMode,
-                        onChanged: _changeTripMode,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           // Persistent "Recomendaciones destacadas" carousel (Pantalla 2a) —
@@ -1859,20 +1864,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           // Fase 2 — live navigation's top maneuver banner: next turn
           // instruction + distance countdown, with an icon derived from
-          // Directions' `maneuver` keyword (see [_maneuverIcon]).
+          // Directions' `maneuver` keyword (see [_maneuverIcon]). A
+          // compact floating card, explicitly `Positioned` rather than a
+          // bare Stack child — the enclosing Stack's `fit: StackFit.expand`
+          // stretches any non-positioned child to fill the whole screen,
+          // which is what turned this into a giant white rectangle with
+          // the instruction centered in the middle of it instead of a
+          // small Waze/Google-Maps-style banner under the status bar, with
+          // the 3D map fully visible everywhere else.
           if (_isNavigating &&
               _navigationRoute != null &&
               _currentStepIndex < _navigationRoute!.steps.length)
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                child: _ManeuverBanner(
-                  instruction:
-                      _navigationRoute!.steps[_currentStepIndex].instruction,
-                  maneuver: _navigationRoute!.steps[_currentStepIndex].maneuver,
-                  distanceLabel: _maneuverDistanceLabel,
-                ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 20,
+              right: 20,
+              child: _ManeuverBanner(
+                instruction:
+                    _navigationRoute!.steps[_currentStepIndex].instruction,
+                maneuver: _navigationRoute!.steps[_currentStepIndex].maneuver,
+                distanceLabel: _maneuverDistanceLabel,
               ),
             ),
           // Estado 19c — floating bottom panel: ETA badge, remaining
@@ -2278,12 +2289,16 @@ class _ManeuverBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nikara gold, matching the rest of the live-nav chrome (the ETA badge
+    // and "Iniciar viaje" already use this exact fill) rather than a new
+    // dark-green tone reserved for the business-detail screen — a compact
+    // card that hugs its own content (MainAxisSize.min below), never a
+    // full-bleed background, so the 3D map stays visible everywhere else.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.surface100,
+        color: AppColors.primary500,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
             color: AppColors.mapCardShadow,
@@ -2293,13 +2308,14 @@ class _ManeuverBanner extends StatelessWidget {
         ],
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 42,
             height: 42,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: AppColors.primary500,
+              color: AppColors.surface100,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -2315,7 +2331,12 @@ class _ManeuverBanner extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (distanceLabel.isNotEmpty)
-                  Text(distanceLabel, style: AppTextStyles.mapRowCaption),
+                  Text(
+                    distanceLabel,
+                    style: AppTextStyles.mapRowCaption.copyWith(
+                      color: AppColors.settingsTextDark,
+                    ),
+                  ),
                 const SizedBox(height: 2),
                 Text(
                   instruction,
