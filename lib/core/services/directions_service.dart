@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
@@ -47,7 +48,8 @@ class DirectionsRoute {
 /// Calls the Google Directions API directly from the client using
 /// [MapsConfig.directionsApiKey] — see that class's doc comment for the
 /// setup this needs (a Cloud Console key with Directions API enabled,
-/// passed in via `--dart-define`, separate from the Maps SDK key).
+/// passed in via `--dart-define-from-file`, separate from the Maps SDK
+/// key).
 class DirectionsService {
   factory DirectionsService() => instance;
 
@@ -65,11 +67,21 @@ class DirectionsService {
   /// non-OK API status, or a response missing its `overview_polyline`.
   /// [MapScreen] is expected to notify the user and stay on the
   /// exploration map rather than drawing anything fabricated.
+  ///
+  /// Every branch — success or failure — logs a `[DirectionsService]` line
+  /// via [debugPrint] (never the raw key itself) so a failure while testing
+  /// on a real device shows up in `flutter run`'s attached console instead
+  /// of just looking like the button "does nothing".
   Future<DirectionsRoute> getRoute({
     required LatLng origin,
     required LatLng destination,
   }) async {
-    if (MapsConfig.directionsApiKey.isEmpty) {
+    final key = MapsConfig.directionsApiKey;
+    debugPrint(
+      '[DirectionsService] key configured: ${key.isNotEmpty} '
+      '(length=${key.length})',
+    );
+    if (key.isEmpty) {
       throw const DirectionsServiceException(
         'La ruta en la app no está configurada todavía.',
       );
@@ -79,18 +91,20 @@ class DirectionsService {
         'origin': '${origin.latitude},${origin.longitude}',
         'destination': '${destination.latitude},${destination.longitude}',
         'mode': 'driving',
-        'key': MapsConfig.directionsApiKey,
+        'key': key,
       },
     );
 
     final http.Response response;
     try {
       response = await http.get(uri).timeout(const Duration(seconds: 12));
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[DirectionsService] HTTP request failed: $e');
       throw const DirectionsServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
+    debugPrint('[DirectionsService] HTTP ${response.statusCode}');
 
     if (response.statusCode != 200) {
       throw const DirectionsServiceException(
@@ -98,45 +112,79 @@ class DirectionsService {
       );
     }
 
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final status = body['status'] as String?;
-    if (status != 'OK') {
-      throw DirectionsServiceException(
-        status == 'ZERO_RESULTS'
-            ? 'No se encontró una ruta en carretera hasta este lugar.'
-            : 'No se pudo calcular la ruta en este momento.',
-      );
-    }
+    // Anything from here on parses a response we don't control the shape
+    // of — wrapped as a whole so a malformed/unexpected body (a captive
+    // portal's HTML login page instead of JSON, a field Google renamed)
+    // turns into the same friendly Spanish message instead of an unhandled
+    // exception that would make the button silently do nothing.
+    try {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final status = body['status'] as String?;
+      if (status != 'OK') {
+        // error_message carries the actual reason (e.g. "This API key is
+        // not authorized to use this service or API" for REQUEST_DENIED,
+        // the #1 real-device gotcha: a key that's fine for the Maps SDK
+        // but restricted against plain HTTP calls like this one) — log it
+        // even though the user-facing message stays generic/friendly.
+        final errorMessage = body['error_message'] as String?;
+        debugPrint(
+          '[DirectionsService] API status=$status'
+          '${errorMessage != null ? ' error_message="$errorMessage"' : ''}',
+        );
+        throw DirectionsServiceException(switch (status) {
+          'ZERO_RESULTS' =>
+            'No se encontró una ruta en carretera hasta este lugar.',
+          'REQUEST_DENIED' =>
+            'La app no tiene permiso para calcular rutas todavía (revisa la configuración de la API key).',
+          'OVER_QUERY_LIMIT' =>
+            'Se alcanzó el límite de solicitudes de rutas. Intenta de nuevo más tarde.',
+          _ => 'No se pudo calcular la ruta en este momento.',
+        });
+      }
 
-    final routes = body['routes'] as List<dynamic>? ?? const [];
-    if (routes.isEmpty) {
-      throw const DirectionsServiceException(
-        'No se encontró una ruta en carretera hasta este lugar.',
+      final routes = body['routes'] as List<dynamic>? ?? const [];
+      if (routes.isEmpty) {
+        throw const DirectionsServiceException(
+          'No se encontró una ruta en carretera hasta este lugar.',
+        );
+      }
+      final route = routes.first as Map<String, dynamic>;
+      final overviewPolyline =
+          route['overview_polyline'] as Map<String, dynamic>?;
+      final encoded = overviewPolyline?['points'] as String?;
+      if (encoded == null) {
+        throw const DirectionsServiceException(
+          'No se pudo calcular la ruta en este momento.',
+        );
+      }
+
+      final legs = route['legs'] as List<dynamic>? ?? const [];
+      var distanceMeters = 0;
+      var durationSeconds = 0;
+      for (final leg in legs.cast<Map<String, dynamic>>()) {
+        distanceMeters += (leg['distance']?['value'] as num?)?.toInt() ?? 0;
+        durationSeconds += (leg['duration']?['value'] as num?)?.toInt() ?? 0;
+      }
+
+      final points = _decodePolyline(encoded);
+      debugPrint(
+        '[DirectionsService] OK: ${points.length} points, '
+        '${(distanceMeters / 1000).toStringAsFixed(1)} km, '
+        '${durationSeconds}s',
       );
-    }
-    final route = routes.first as Map<String, dynamic>;
-    final overviewPolyline =
-        route['overview_polyline'] as Map<String, dynamic>?;
-    final encoded = overviewPolyline?['points'] as String?;
-    if (encoded == null) {
+      return DirectionsRoute(
+        points: points,
+        distanceMeters: distanceMeters,
+        durationSeconds: durationSeconds,
+      );
+    } on DirectionsServiceException {
+      rethrow;
+    } catch (e) {
+      debugPrint('[DirectionsService] Unexpected response shape: $e');
       throw const DirectionsServiceException(
         'No se pudo calcular la ruta en este momento.',
       );
     }
-
-    final legs = route['legs'] as List<dynamic>? ?? const [];
-    var distanceMeters = 0;
-    var durationSeconds = 0;
-    for (final leg in legs.cast<Map<String, dynamic>>()) {
-      distanceMeters += (leg['distance']?['value'] as num?)?.toInt() ?? 0;
-      durationSeconds += (leg['duration']?['value'] as num?)?.toInt() ?? 0;
-    }
-
-    return DirectionsRoute(
-      points: _decodePolyline(encoded),
-      distanceMeters: distanceMeters,
-      durationSeconds: durationSeconds,
-    );
   }
 
   /// Standard Google encoded-polyline algorithm decoder — see

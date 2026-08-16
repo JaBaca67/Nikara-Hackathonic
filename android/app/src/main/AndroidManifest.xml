@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug/profile builds already get this from
+         android/app/src/{debug,profile}/AndroidManifest.xml (Flutter's own
+         hot-reload tooling needs it there), which is why every network call
+         — Supabase, Directions — already works in a `flutter run` build
+         without this line. A release build has no such overlay, so without
+         it here `flutter build apk --release` would silently lose ALL
+         networking, not just "Cómo llegar". -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application

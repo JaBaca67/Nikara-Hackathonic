@@ -94,13 +94,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final _searchFocusNode = FocusNode();
   final _carouselController = PageController(viewportFraction: 0.88);
 
-  /// Set right before a marker/search-selection tap programmatically pages
-  /// the carousel, cleared right after — so the [PageView.onPageChanged]
-  /// callback that fires from that programmatic page change doesn't turn
-  /// around and fly the camera to the same business a second time (the
-  /// camera fly already happened as part of handling the tap itself).
-  bool _syncingCarouselProgrammatically = false;
-
   bool _locatingUser = false;
   bool _isLoading = true;
   bool _myLocationEnabled = false;
@@ -737,12 +730,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Selects [business] — highlights its pin, flies the camera to it, and
-  /// (unless the call came from the carousel's own onPageChanged, guarded
-  /// by [_syncingCarouselProgrammatically]) pages the carousel to its
-  /// "Recomendaciones destacadas" card, which doubles as this business's
-  /// floating info card (Estado 19b). The single entry point for every
-  /// "focus this business" trigger: a marker tap (via [_onMarkerTapped]), a
-  /// carousel swipe, or submitting a search.
+  /// pages the carousel to its "Recomendaciones destacadas" card, which
+  /// expands into this business's floating info card (Estado 19b). The
+  /// single entry point for every "focus this business" trigger: a marker
+  /// tap (via [_onMarkerTapped]), a direct carousel card tap (via
+  /// [_onCarouselCardTapped]), or submitting a search. Deliberately NOT
+  /// triggered by just scrolling the carousel — swiping through cards
+  /// browses them without moving the map, only tapping one commits to it.
   Future<void> _selectBusiness(BusinessModel business) async {
     setState(() => _selectedBusinessId = business.id);
     unawaited(
@@ -764,24 +758,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       });
       return;
     }
-    _syncingCarouselProgrammatically = true;
     await _carouselController.animateToPage(
       index,
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeInOut,
     );
-    _syncingCarouselProgrammatically = false;
   }
 
-  /// Direct pin tap (as opposed to a carousel swipe or search): syncs the
-  /// selection like any other trigger, AND additionally opens a
+  /// Direct pin tap (as opposed to a carousel card tap or search): syncs
+  /// the selection like any other trigger, AND additionally opens a
   /// Google-Maps-style bottom sheet with that business's full details —
-  /// the behavior split Estado 19b asks for: swiping the carousel just
-  /// moves the camera and shows its own floating card, but tapping a pin
-  /// on the map opens a dedicated detail panel. Tapping the pin that's
-  /// *already* selected instead toggles it back off — same deselect this
-  /// mirrors in [_onCarouselCardTapped] — rather than reopening the sheet
-  /// on top of itself.
+  /// the behavior split Estado 19b asks for: tapping a card just moves the
+  /// camera and expands its own floating card, but tapping a pin on the
+  /// map opens a dedicated detail panel. Tapping the pin that's *already*
+  /// selected instead toggles it back off — same deselect this mirrors in
+  /// [_onCarouselCardTapped] — rather than reopening the sheet on top of
+  /// itself.
   Future<void> _onMarkerTapped(BusinessModel business) async {
     if (business.id == _selectedBusinessId) {
       setState(() => _selectedBusinessId = null);
@@ -840,35 +832,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Pages the carousel without letting the resulting
-  /// [PageView.onPageChanged] re-fly the camera — the camera move that
-  /// belongs with this sync is always issued by the caller. The flag clears
-  /// a frame later because `jumpToPage`'s notification doesn't necessarily
-  /// arrive within this call.
+  /// Pages the carousel to [index] without moving the camera — used to
+  /// reset scroll position (e.g. [_onCategorySelected]) or to catch up to
+  /// a selection made before the carousel existed (see [_selectBusiness]).
   void _jumpCarouselTo(int index) {
     if (!_carouselController.hasClients) return;
-    _syncingCarouselProgrammatically = true;
     _carouselController.jumpToPage(index);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncingCarouselProgrammatically = false;
-    });
-  }
-
-  /// Carousel swipe -> map: the mirror direction of [_selectBusiness]'s
-  /// marker/search tap -> carousel sync. Skipped while
-  /// [_syncingCarouselProgrammatically] is true so a page change caused BY
-  /// [_selectBusiness] itself doesn't turn around and re-fly the camera to
-  /// a target it's already flying to.
-  void _onCarouselPageChanged(int index) {
-    if (_syncingCarouselProgrammatically) return;
-    final businesses = _filteredBusinesses;
-    if (index < 0 || index >= businesses.length) return;
-    final business = businesses[index];
-    // Already the selected one (a programmatic page change whose flag had
-    // already cleared) — nothing to move.
-    if (business.id == _selectedBusinessId) return;
-    setState(() => _selectedBusinessId = business.id);
-    _animateCameraTo(LatLng(business.latitude!, business.longitude!));
   }
 
   void _onSearchSubmitted(String value) {
@@ -994,9 +963,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// stays on the exploration map instead of ever drawing a fabricated
   /// route.
   Future<void> _startNavigation(BusinessModel business) async {
+    debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
     final lat = business.latitude;
     final lng = business.longitude;
-    if (lat == null || lng == null) return;
+    if (lat == null || lng == null) {
+      debugPrint('[MapScreen] aborted: business has no coordinates');
+      return;
+    }
     final destination = LatLng(lat, lng);
 
     final position = await LocationService().getCurrentPosition(
@@ -1004,6 +977,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
     if (!mounted) return;
     if (position == null) {
+      debugPrint(
+        '[MapScreen] aborted: could not get current position '
+        '(location permission/services?)',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No se pudo obtener tu ubicación actual.'),
@@ -1020,6 +997,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         destination: destination,
       );
     } on DirectionsServiceException catch (e) {
+      debugPrint('[MapScreen] route failed: ${e.message}');
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -1481,10 +1459,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           // Persistent "Recomendaciones destacadas" carousel (Pantalla 2a) —
           // replaces the old tap-to-open modal preview: every filtered
-          // business gets a card, swiping flies the camera to it and shows
-          // that card as the business's floating info card, and a direct
-          // pin tap pages the carousel to it too (see _selectBusiness /
-          // _onCarouselPageChanged / _onMarkerTapped).
+          // business gets a card. Scrolling through them is browse-only —
+          // it neither selects nor moves the camera; only tapping a card
+          // (or its pin) commits to it (see _selectBusiness /
+          // _onCarouselCardTapped / _onMarkerTapped).
           if (!_isNavigating && filtered.isNotEmpty)
             Positioned(
               left: 0,
@@ -1508,7 +1486,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         height: _carouselHeight,
                         child: PageView.builder(
                           controller: _carouselController,
-                          onPageChanged: _onCarouselPageChanged,
                           padEnds: false,
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
