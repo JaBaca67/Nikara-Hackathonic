@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -271,8 +270,8 @@ String _departmentForCity(String city) {
 const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
 
 final LatLngBounds _kMapBounds = LatLngBounds(
-  const LatLng(7.0, -92.0),
-  const LatLng(18.5, -77.0),
+  southwest: const LatLng(7.0, -92.0),
+  northeast: const LatLng(18.5, -77.0),
 );
 
 /// One row of the Horarios card — either one of the two structured
@@ -439,7 +438,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   late String _department = _kDepartments.first;
   late String _city = _kMunicipalitiesByDepartment[_department]!.first;
   final _addressController = TextEditingController();
-  final _mapController = MapController();
+  GoogleMapController? _mapController;
   LatLng _mapCenter = _kDefaultMapCenter;
   LatLng? _confirmedLocation;
   bool _locatingUser = false;
@@ -520,6 +519,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _facebookController.dispose();
     _addressController.dispose();
     _customActivityController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -544,11 +544,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       if (!mounted) return;
       final here = LatLng(position.latitude, position.longitude);
       setState(() => _mapCenter = here);
-      try {
-        _mapController.move(here, 15);
-      } catch (_) {
-        // Map may not be attached yet — _mapCenter above already covers it.
-      }
+      await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(here, 15));
     } catch (_) {
       // Silent fallback — stays on the Managua default, same as MapScreen.
     } finally {
@@ -557,7 +553,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   void _confirmLocation() {
-    setState(() => _confirmedLocation = _mapController.camera.center);
+    setState(() => _confirmedLocation = _mapCenter);
+  }
+
+  void _zoomMap(double delta) {
+    _mapController?.animateCamera(
+      delta > 0 ? CameraUpdate.zoomIn() : CameraUpdate.zoomOut(),
+    );
   }
 
   void _goToStep(int step) {
@@ -1231,8 +1233,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     ),
                     const SizedBox(height: 12),
                     _MapLocationPicker(
-                      mapController: _mapController,
                       initialCenter: _mapCenter,
+                      onMapCreated: (controller) => _mapController = controller,
+                      onCameraMove: (center) => _mapCenter = center,
+                      onZoomIn: () => _zoomMap(1),
+                      onZoomOut: () => _zoomMap(-1),
                     ),
                     const SizedBox(height: 10),
                     Row(
@@ -2792,20 +2797,23 @@ class _WizardFooter extends StatelessWidget {
 /// A live map with a pin fixed at the exact center of its viewport — the
 /// user pans the map underneath it — plus +/- zoom buttons, per Pantalla
 /// 4b. "Confirmar esta ubicación" (owned by the parent step, not this
-/// widget) reads [MapController.camera.center] when pressed.
+/// widget) reads the parent's `_mapCenter`, kept in sync via
+/// [onCameraMove] since `google_maps_flutter`'s controller has no
+/// synchronous "current center" getter like `flutter_map`'s did.
 class _MapLocationPicker extends StatelessWidget {
   const _MapLocationPicker({
-    required this.mapController,
     required this.initialCenter,
+    required this.onMapCreated,
+    required this.onCameraMove,
+    required this.onZoomIn,
+    required this.onZoomOut,
   });
 
-  final MapController mapController;
   final LatLng initialCenter;
-
-  void _zoom(double delta) {
-    final camera = mapController.camera;
-    mapController.move(camera.center, (camera.zoom + delta).clamp(6, 18));
-  }
+  final ValueChanged<GoogleMapController> onMapCreated;
+  final ValueChanged<LatLng> onCameraMove;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
 
   @override
   Widget build(BuildContext context) {
@@ -2816,33 +2824,19 @@ class _MapLocationPicker extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            FlutterMap(
-              mapController: mapController,
-              options: MapOptions(
-                initialCenter: initialCenter,
-                initialZoom: 15,
-                minZoom: 6,
-                maxZoom: 18,
-                cameraConstraint: CameraConstraint.contain(bounds: _kMapBounds),
-                interactionOptions: const InteractionOptions(
-                  flags:
-                      InteractiveFlag.drag |
-                      InteractiveFlag.pinchZoom |
-                      InteractiveFlag.doubleTapZoom |
-                      InteractiveFlag.flingAnimation,
-                ),
+            GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: initialCenter,
+                zoom: 15,
               ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                  subdomains: const ['a', 'b', 'c', 'd'],
-                  userAgentPackageName: 'com.example.nikara_app',
-                  retinaMode: RetinaMode.isHighDensity(context),
-                  minZoom: 6,
-                  maxZoom: 19,
-                ),
-              ],
+              onMapCreated: onMapCreated,
+              onCameraMove: (position) => onCameraMove(position.target),
+              minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
+              cameraTargetBounds: CameraTargetBounds(_kMapBounds),
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              myLocationButtonEnabled: false,
+              compassEnabled: false,
             ),
             IgnorePointer(
               child: Center(
@@ -2896,9 +2890,9 @@ class _MapLocationPicker extends StatelessWidget {
               bottom: 10,
               child: Column(
                 children: [
-                  _mapButton(Icons.add, () => _zoom(1)),
+                  _mapButton(Icons.add, onZoomIn),
                   const SizedBox(height: 6),
-                  _mapButton(Icons.remove, () => _zoom(-1)),
+                  _mapButton(Icons.remove, onZoomOut),
                 ],
               ),
             ),

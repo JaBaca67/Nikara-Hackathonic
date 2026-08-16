@@ -317,6 +317,12 @@ class AuthService {
       final launched = await _client.auth.signInWithOAuth(
         OAuthProvider.facebook,
         redirectTo: '${SupabaseConfig.oauthRedirectUrl}/',
+        // Facebook otherwise remembers a previously denied/errored
+        // permission grant and silently re-shows the same error instead
+        // of the consent dialog on the next attempt — 'rerequest' forces
+        // Meta to prompt again so a user who backed out or hit a
+        // permissions error can actually retry.
+        queryParams: const {'auth_type': 'rerequest'},
       );
       if (!launched) {
         return const AuthResult.failure(
@@ -364,6 +370,29 @@ class AuthService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
+  }
+
+  /// Permanently deletes the signed-in user's account via the
+  /// `delete_own_user` RPC (see `supabase/sql/002_delete_own_user.sql`) —
+  /// that function deletes `public.profiles` and the `auth.users` row
+  /// server-side (`security definer`, since removing a row from
+  /// `auth.users` needs privileges no client role has). Signs out locally
+  /// afterward so no access/refresh token for the now-deleted account
+  /// survives in local storage — [GoTrueClient.signOut] clears that local
+  /// state before it even attempts the server-side `/logout` call, and
+  /// silently ignores that call failing with 401/403/404 (expected here,
+  /// since the user it would look up no longer exists).
+  Future<void> deleteAccount() async {
+    try {
+      await _client.rpc('delete_own_user');
+    } on PostgrestException catch (e) {
+      throw AuthServiceException('No se pudo eliminar tu cuenta: ${e.message}');
+    } catch (_) {
+      throw const AuthServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+    await _client.auth.signOut();
   }
 
   String _friendlyAuthError(AuthException e) {

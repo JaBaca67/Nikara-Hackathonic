@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
@@ -37,6 +38,10 @@ class _SocialLoginRowState extends State<SocialLoginRow>
   SocialAuthKind? _loadingKind;
   StreamSubscription<AuthState>? _authSub;
 
+  /// Grace period started on app-resume before assuming the Facebook
+  /// browser flow was abandoned — see [didChangeAppLifecycleState].
+  Timer? _facebookResumeGiveUpTimer;
+
   @override
   void initState() {
     super.initState();
@@ -48,25 +53,60 @@ class _SocialLoginRowState extends State<SocialLoginRow>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
+    _facebookResumeGiveUpTimer?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Covers backing out of the Facebook browser tab without completing
-    // sign-in: the app resumes, no signedIn event ever fires, and without
-    // this the button would be stuck showing its spinner forever with no
-    // way to retry.
-    if (state == AppLifecycleState.resumed &&
-        _loadingKind == SocialAuthKind.facebook) {
-      setState(() => _loadingKind = null);
+    if (!mounted) return;
+    if (state != AppLifecycleState.resumed ||
+        _loadingKind != SocialAuthKind.facebook) {
+      return;
     }
+    // The app resumes as soon as the OS hands control back after the
+    // Facebook browser tab closes — but GoTrue's own deep-link listener
+    // (which exchanges the redirect's `?code=` for a session and fires
+    // _handleAuthStateChange) runs asynchronously and can still be a beat
+    // behind at this exact instant, especially when linking onto an
+    // existing account. Resetting the spinner immediately on resume used
+    // to win that race and wipe `_loadingKind` right before the real
+    // signedIn/tokenRefreshed event arrived, so a *successful* login
+    // looked identical to backing out and bounced back to this screen.
+    // Give the listener a short grace window to finish first; only give
+    // up and let the user retry if nothing arrived by then.
+    _facebookResumeGiveUpTimer?.cancel();
+    _facebookResumeGiveUpTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || _loadingKind != SocialAuthKind.facebook) return;
+      setState(() => _loadingKind = null);
+    });
   }
 
   void _handleAuthStateChange(AuthState state) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(
+        '[SocialLoginRow] onAuthStateChange event=${state.event} '
+        'hasSession=${state.session != null}',
+      );
+    }
     if (_loadingKind != SocialAuthKind.facebook) return;
-    if (state.event != AuthChangeEvent.signedIn) return;
-    unawaited(_completeSignIn());
+    // A Facebook redirect whose email already matches an existing account
+    // (e.g. the same person previously signed up with Google) links the
+    // Facebook identity onto that existing `auth.users` row instead of
+    // minting a brand new one — GoTrue then emits `tokenRefreshed` or
+    // `userUpdated` for that, not `signedIn`. Reacting only to `signedIn`
+    // left linked accounts stuck on this screen despite already having a
+    // live session, so check the session itself instead of one specific
+    // event name.
+    if (const {
+          AuthChangeEvent.signedIn,
+          AuthChangeEvent.tokenRefreshed,
+          AuthChangeEvent.userUpdated,
+        }.contains(state.event) &&
+        _authService.currentAuthUser != null) {
+      unawaited(_completeSignIn());
+    }
   }
 
   Future<void> _handleTap(SocialAuthProvider provider) async {
@@ -85,11 +125,30 @@ class _SocialLoginRowState extends State<SocialLoginRow>
     }
 
     setState(() => _loadingKind = provider.kind);
-    final result = switch (provider.kind) {
-      SocialAuthKind.google => await _authService.signInWithGoogle(),
-      SocialAuthKind.apple => await _authService.signInWithApple(),
-      SocialAuthKind.facebook => await _authService.signInWithFacebook(),
-    };
+    final AuthResult result;
+    try {
+      result = switch (provider.kind) {
+        SocialAuthKind.google => await _authService.signInWithGoogle(),
+        SocialAuthKind.apple => await _authService.signInWithApple(),
+        SocialAuthKind.facebook => await _authService.signInWithFacebook(),
+      };
+    } catch (_) {
+      // AuthService already translates Supabase/network failures into a
+      // failure AuthResult internally — this only guards against
+      // something escaping that (e.g. a platform exception launching the
+      // OAuth URL itself), so a failure there can't leave the button
+      // stuck showing its spinner with no way to retry.
+      if (!mounted) return;
+      setState(() => _loadingKind = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+          ),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
 
     if (!result.success) {
@@ -112,6 +171,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
   }
 
   Future<void> _completeSignIn() async {
+    _facebookResumeGiveUpTimer?.cancel();
     setState(() => _loadingKind = null);
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;

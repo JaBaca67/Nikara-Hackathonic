@@ -1,7 +1,8 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nikara_app/core/services/favorites_service.dart';
@@ -20,21 +21,26 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// map picker.
 const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
 
-/// Keeps the camera from zooming/panning out into empty, tile-less ocean —
-/// a generous box around Nicaragua and its Central American neighbors.
+/// Keeps the camera from panning out into the ocean beyond Nicaragua and its
+/// Central American neighbors.
 final LatLngBounds _kMapBounds = LatLngBounds(
-  const LatLng(7.0, -92.0),
-  const LatLng(18.5, -77.0),
+  southwest: const LatLng(7.0, -92.0),
+  northeast: const LatLng(18.5, -77.0),
 );
 
 const String _kAllCategories = 'Todos';
 
-/// Mapa de exploración principal — real, live map (flutter_map + CartoDB
-/// Voyager tiles) showing only real businesses persisted in Supabase's
-/// `businesses` table, no mock destinations. Visual chrome (floating
-/// search bar, category chips, active/inactive pins, no-price preview
-/// card) ports the Claude Design project "Rediseño de Níkara Home y Mapa",
-/// Pantalla 2b — exact colors, radii and shadows, not the older Figma pass.
+/// Mapa de exploración principal — real, live map (`google_maps_flutter`)
+/// showing only real businesses persisted in Supabase's `businesses` table,
+/// no mock destinations. Visual chrome (floating search bar, category
+/// chips, active/inactive pins, no-price preview card) ports the Claude
+/// Design project "Rediseño de Níkara Home y Mapa", Pantalla 2b — exact
+/// colors, radii and shadows, not the older Figma pass.
+///
+/// Routing (`_polylines`) is scaffolded but empty for now — drawing a real
+/// route needs a directions backend (e.g. the Google Directions API via a
+/// server-side call, since the API key here is client-only); wiring that up
+/// is a follow-up, not part of this MVP map migration.
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -42,21 +48,18 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen>
-    with SingleTickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen> {
   final _businessStorageService = BusinessStorageService();
-  final _mapController = MapController();
-  late final AnimationController _cameraAnimController;
+  GoogleMapController? _mapController;
 
-  LatLng _animFrom = _kDefaultMapCenter;
-  LatLng _animTo = _kDefaultMapCenter;
-  double _animFromZoom = 13;
-  double _animToZoom = 13;
+  BitmapDescriptor? _pinIcon;
+  BitmapDescriptor? _pinIconSelected;
 
   final _searchController = TextEditingController();
 
   bool _locatingUser = false;
   bool _isLoading = true;
+  bool _myLocationEnabled = false;
   String _searchQuery = '';
   String _selectedCategory = _kAllCategories;
   String? _loadError;
@@ -64,24 +67,26 @@ class _MapScreenState extends State<MapScreen>
   Position? _userPosition;
   List<BusinessModel> _businesses = const [];
 
+  /// Reserved for future route drawing (e.g. "cómo llegar" turn-by-turn) —
+  /// wired into [GoogleMap.polylines] already so a future distance/route
+  /// feature only needs to populate this set, not touch the map widget.
+  final Set<Polyline> _polylines = {};
+
   @override
   void initState() {
     super.initState();
-    _cameraAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..addListener(_onCameraTick);
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim());
     });
+    _loadMarkerIcons();
     _locateUser();
     _loadBusinesses();
   }
 
   @override
   void dispose() {
-    _cameraAnimController.dispose();
     _searchController.dispose();
+    _mapController?.dispose();
     super.dispose();
   }
 
@@ -107,36 +112,107 @@ class _MapScreenState extends State<MapScreen>
         .toList(growable: false);
   }
 
-  void _onCameraTick() {
-    final t = Curves.easeInOutCubic.transform(_cameraAnimController.value);
-    final lat =
-        _animFrom.latitude + (_animTo.latitude - _animFrom.latitude) * t;
-    final lng =
-        _animFrom.longitude + (_animTo.longitude - _animFrom.longitude) * t;
-    final zoom = _animFromZoom + (_animToZoom - _animFromZoom) * t;
-    _mapController.move(LatLng(lat, lng), zoom);
+  /// Renders the two pin states (selected/unselected) once as bitmaps —
+  /// `google_maps_flutter` markers can't embed a live Flutter widget like
+  /// `flutter_map`'s `Marker.child` could, so the badge from Pantalla 2b is
+  /// drawn to a canvas instead, matching the same colors/sizes.
+  Future<void> _loadMarkerIcons() async {
+    final dpr =
+        WidgetsBinding
+            .instance
+            .platformDispatcher
+            .implicitView
+            ?.devicePixelRatio ??
+        2.0;
+    final results = await Future.wait([
+      _buildPinBitmap(selected: false, devicePixelRatio: dpr),
+      _buildPinBitmap(selected: true, devicePixelRatio: dpr),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _pinIcon = results[0];
+      _pinIconSelected = results[1];
+    });
   }
 
-  /// Smoothly flies the camera to [target] — used when the user taps a pin,
-  /// so the map glides there instead of snapping.
-  void _animateCameraTo(LatLng target, {double zoom = 16}) {
-    final camera = _mapController.camera;
-    _animFrom = camera.center;
-    _animFromZoom = camera.zoom;
-    _animTo = target;
-    _animToZoom = zoom;
-    _cameraAnimController
-      ..reset()
-      ..forward();
+  static Future<BitmapDescriptor> _buildPinBitmap({
+    required bool selected,
+    required double devicePixelRatio,
+  }) async {
+    const double logicalSize = 34;
+    final size = (logicalSize * devicePixelRatio).round();
+    final scale = size / logicalSize;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+    );
+    canvas.scale(scale);
+    final center = const Offset(logicalSize / 2, logicalSize / 2);
+    final radius = logicalSize / 2 - 2.5;
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = selected
+            ? AppColors.mapPinShadowActive
+            : AppColors.mapPinShadowInactive
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = selected ? AppColors.primary500 : AppColors.surface100,
+    );
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = selected ? AppColors.surface100 : AppColors.profileDivider
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    final iconPainter = TextPainter(textDirection: TextDirection.ltr)
+      ..text = TextSpan(
+        text: String.fromCharCode(Icons.storefront.codePoint),
+        style: TextStyle(
+          fontSize: 16,
+          fontFamily: Icons.storefront.fontFamily,
+          package: Icons.storefront.fontPackage,
+          color: selected
+              ? AppColors.settingsTextDark
+              : AppColors.settingsTextMuted,
+        ),
+      )
+      ..layout();
+    iconPainter.paint(
+      canvas,
+      center - Offset(iconPainter.width / 2, iconPainter.height / 2),
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size, size);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
+  /// Smoothly flies the camera to [target].
+  Future<void> _animateCameraTo(LatLng target, {double zoom = 16}) async {
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(target, zoom),
+    );
   }
 
   /// Best-effort: centers the map on the device's current position and
   /// records it for the "a X km" distance shown in [_BusinessPreviewSheet].
   /// Any failure along the way (location services off, permission denied,
   /// timeout) is swallowed silently — the map just stays on the Managua
-  /// fallback, exactly like the business registration wizard's map picker.
-  /// Goes through [LocationService] so Home and Map share one cached
-  /// position instead of each prompting for permission separately.
+  /// fallback, exactly like before. Goes through [LocationService] so Home
+  /// and Map share one cached position instead of each prompting for
+  /// permission separately.
   Future<void> _locateUser({bool animate = false}) async {
     setState(() => _locatingUser = true);
     try {
@@ -144,17 +220,15 @@ class _MapScreenState extends State<MapScreen>
         forceRefresh: animate,
       );
       if (!mounted || position == null) return;
-      setState(() => _userPosition = position);
+      setState(() {
+        _userPosition = position;
+        _myLocationEnabled = true;
+      });
       final here = LatLng(position.latitude, position.longitude);
-      try {
-        if (animate) {
-          _animateCameraTo(here, zoom: 14);
-        } else {
-          _mapController.move(here, 14);
-        }
-      } catch (_) {
-        // The map may not have attached yet if this resolves unusually
-        // fast — harmless, it just stays on the default center.
+      if (animate) {
+        await _animateCameraTo(here, zoom: 14);
+      } else {
+        await _mapController?.moveCamera(CameraUpdate.newLatLngZoom(here, 14));
       }
     } finally {
       if (mounted) setState(() => _locatingUser = false);
@@ -206,6 +280,22 @@ class _MapScreenState extends State<MapScreen>
     });
   }
 
+  Set<Marker> _buildMarkers(List<BusinessModel> businesses) {
+    final unselected = _pinIcon;
+    final selectedIcon = _pinIconSelected;
+    if (unselected == null || selectedIcon == null) return const {};
+    return {
+      for (final business in businesses)
+        Marker(
+          markerId: MarkerId(business.id),
+          position: LatLng(business.latitude!, business.longitude!),
+          icon: business.id == _selectedBusinessId ? selectedIcon : unselected,
+          anchor: const Offset(0.5, 0.5),
+          onTap: () => _onBusinessTap(business),
+        ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredBusinesses;
@@ -220,52 +310,24 @@ class _MapScreenState extends State<MapScreen>
           // Edge-to-edge real map: fills the entire screen, including
           // behind the status bar. Only the floating UI below respects
           // SafeArea, per Pantalla 2b's "map first" layout.
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _kDefaultMapCenter,
-              initialZoom: 13,
-              // Hard zoom limits + a bounds constraint are what actually
-              // fix the "Unsupported operation: Infinity or NaN toInt"
-              // crash: without them, pinch-zooming out (or a fling past
-              // the edge) can drive the camera's zoom to a value tile
-              // math can't convert to a valid tile index.
-              minZoom: 6,
-              maxZoom: 18,
-              cameraConstraint: CameraConstraint.contain(bounds: _kMapBounds),
-              interactionOptions: const InteractionOptions(
-                flags:
-                    InteractiveFlag.drag |
-                    InteractiveFlag.pinchZoom |
-                    InteractiveFlag.doubleTapZoom |
-                    InteractiveFlag.flingAnimation,
-              ),
+          GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: _kDefaultMapCenter,
+              zoom: 13,
             ),
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
-                userAgentPackageName: 'com.example.nikara_app',
-                retinaMode: RetinaMode.isHighDensity(context),
-                minZoom: 6,
-                maxZoom: 19,
-              ),
-              MarkerLayer(
-                markers: [
-                  for (final business in filtered)
-                    Marker(
-                      point: LatLng(business.latitude!, business.longitude!),
-                      width: 34,
-                      height: 34,
-                      child: _BusinessMarkerPin(
-                        selected: business.id == _selectedBusinessId,
-                        onTap: () => _onBusinessTap(business),
-                      ),
-                    ),
-                ],
-              ),
-            ],
+            onMapCreated: (controller) => _mapController = controller,
+            // Hard zoom limits + a bounds constraint are what keep the
+            // camera from panning/zooming out into empty ocean.
+            minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
+            cameraTargetBounds: CameraTargetBounds(_kMapBounds),
+            myLocationEnabled: _myLocationEnabled,
+            // Custom recenter button below replaces the default one.
+            myLocationButtonEnabled: false,
+            zoomControlsEnabled: false,
+            mapToolbarEnabled: false,
+            compassEnabled: false,
+            markers: _buildMarkers(filtered),
+            polylines: _polylines,
           ),
           if (_isLoading)
             const Positioned.fill(
@@ -358,53 +420,6 @@ class _MapScreenState extends State<MapScreen>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// A real Material pin (never an emoji): a Material icon in a rounded
-/// badge with a soft shadow for depth — matches Pantalla 2b's two pin
-/// states exactly: gold ([AppColors.primary500]) with a thick white ring
-/// while [selected] (the pin whose preview sheet is currently open), cream
-/// with a thin [AppColors.profileDivider] ring otherwise — sits directly
-/// on top of the [Marker]'s geographic point.
-class _BusinessMarkerPin extends StatelessWidget {
-  const _BusinessMarkerPin({required this.selected, required this.onTap});
-
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary500 : AppColors.surface100,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? AppColors.surface100 : AppColors.profileDivider,
-            width: 2.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: selected
-                  ? AppColors.mapPinShadowActive
-                  : AppColors.mapPinShadowInactive,
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Icon(
-          Icons.storefront,
-          size: 16,
-          color: selected
-              ? AppColors.settingsTextDark
-              : AppColors.settingsTextMuted,
-        ),
       ),
     );
   }

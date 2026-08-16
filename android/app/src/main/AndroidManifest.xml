@@ -5,6 +5,17 @@
         android:label="Níkara"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Google Maps SDK for Android — reads the key from
+             android/local.properties (gradle injects it via manifest
+             placeholder below) so the real key never lands in source
+             control. Add `MAPS_API_KEY=your_key_here` to local.properties
+             (gitignored) and wire it in android/app/build.gradle.kts, e.g.:
+               val mapsApiKey = project.findProperty("MAPS_API_KEY") as String? ?: ""
+               android { defaultConfig { manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey } }
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

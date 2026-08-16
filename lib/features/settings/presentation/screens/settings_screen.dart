@@ -109,6 +109,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _confirmDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface100,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Eliminar cuenta',
+          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
+        ),
+        content: Text(
+          'Esta acción es permanente: se borrará tu perfil y toda tu '
+          'información de Níkara, y no podrás recuperarla. ¿Seguro que '
+          'quieres eliminar tu cuenta?',
+          style: AppTextStyles.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Eliminar cuenta',
+              style: AppTextStyles.settingsRowTitle.copyWith(
+                color: AppColors.settingsDanger,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _authService.deleteAccount();
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message);
+      return;
+    }
+    await GuestSessionService().exitGuestMode();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   void _showSnack(String message) {
     ScaffoldMessenger.of(
       context,
@@ -244,6 +294,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     titleColor: AppColors.settingsDanger,
                     title: 'Cerrar sesión',
                     onTap: _confirmLogout,
+                  ),
+                ],
+              ),
+              _SettingsSection(
+                label: 'Zona de peligro',
+                children: [
+                  _SettingsRow(
+                    icon: Icons.delete_forever_outlined,
+                    iconTint: AppColors.settingsDanger,
+                    titleColor: AppColors.settingsDanger,
+                    title: 'Eliminar cuenta',
+                    caption: 'Borra tu perfil y datos de forma permanente',
+                    onTap: _confirmDeleteAccount,
                   ),
                 ],
               ),
