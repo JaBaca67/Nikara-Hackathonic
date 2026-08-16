@@ -6,6 +6,7 @@ import 'package:nikara_app/features/home/presentation/widgets/main_navigation_ba
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/shared/services/main_tab_controller.dart';
+import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -82,9 +83,14 @@ class _MainLayoutState extends State<MainLayout> {
       // instead of the screen's own content/background.
       extendBody: true,
       body: IndexedStack(index: _currentIndex, children: _tabs),
-      bottomNavigationBar: MainNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onNavTap,
+      // Hidden while the map is following a route (Estado 19c) so its
+      // floating navigation panel owns the bottom of the screen — the map
+      // flips that flag itself via [MapFocusController].
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: MapFocusController().navigationActive,
+        builder: (context, navigating, child) =>
+            navigating ? const SizedBox.shrink() : child!,
+        child: MainNavigationBar(currentIndex: _currentIndex, onTap: _onNavTap),
       ),
     );
   }

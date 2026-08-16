@@ -4,7 +4,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
@@ -18,6 +17,7 @@ import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -160,22 +160,35 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  /// Opens Google Maps with real directions to this business's exact
-  /// coordinates — same external-maps approach as MapScreen's preview
-  /// card, replacing the old in-app "open MapScreen" placeholder.
-  Future<void> _openDirections() async {
+  /// Sends the user to Níkara's own map, focused on this business (pin
+  /// selected + its carousel card centered), instead of handing off to the
+  /// external Google Maps app: the in-app map now draws a real route and
+  /// tracks the trip itself (MapScreen's "Cómo llegar" / Estado 19c), so
+  /// leaving the app here would drop the user out of that flow.
+  ///
+  /// [MapFocusController] carries the business (id, name, lat/lng) and
+  /// switches to the Mapa tab; popping back to `MainLayout` is what makes
+  /// that tab visible from this pushed screen.
+  void _openDirections() {
     final lat = _business.latitude;
     final lng = _business.longitude;
-    if (lat == null || lng == null) return;
-    final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng',
-    );
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
+    if (lat == null || lng == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir el mapa de rutas')),
+        const SnackBar(
+          content: Text('Este negocio todavía no tiene ubicación en el mapa.'),
+        ),
       );
+      return;
     }
+    MapFocusController().focusOnBusiness(
+      MapFocusRequest(
+        businessId: _business.id,
+        name: _business.name,
+        latitude: lat,
+        longitude: lng,
+      ),
+    );
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -1361,7 +1374,7 @@ class _HostRow extends StatelessWidget {
 /// Cómo llegar — a decorative mini-map illustration (the same warm,
 /// non-interactive "road + green area + pin" flourish from Pantalla 3a,
 /// not a real embedded map) plus the real exact address and an "Abrir
-/// mapa" pill that opens real Google Maps directions.
+/// mapa" pill that jumps to the in-app map focused on this business.
 class _DirectionsSection extends StatelessWidget {
   const _DirectionsSection({required this.business, required this.onTap});
 
@@ -1406,7 +1419,7 @@ class _DirectionsSection extends StatelessWidget {
                             ),
                             const SizedBox(height: 3),
                             Text(
-                              'Se abrirá en Google Maps',
+                              'Se abrirá en el mapa de Níkara',
                               style: AppTextStyles.profileCaption10.copyWith(
                                 fontSize: 10.5,
                               ),

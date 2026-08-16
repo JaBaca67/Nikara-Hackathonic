@@ -783,6 +783,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       isVerified: existing?.isVerified ?? false,
     );
 
+    debugPrint(
+      '[RegisterBusinessWizard] _finish(): about to save "${business.name}" '
+      '(${_isEditing ? 'update' : 'create'}) with confirmedLocation='
+      '(lat=${location.latitude}, lng=${location.longitude}), '
+      'mapCenter=(lat=${_mapCenter.latitude}, lng=${_mapCenter.longitude})',
+    );
+
     try {
       if (existing != null) {
         await _storageService.updateBusiness(business);
@@ -1236,6 +1243,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       initialCenter: _mapCenter,
                       onMapCreated: (controller) => _mapController = controller,
                       onCameraMove: (center) => _mapCenter = center,
+                      onTap: (point) => _mapController?.animateCamera(
+                        CameraUpdate.newLatLng(point),
+                      ),
                       onZoomIn: () => _zoomMap(1),
                       onZoomOut: () => _zoomMap(-1),
                     ),
@@ -1251,7 +1261,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         const SizedBox(width: 7),
                         Expanded(
                           child: Text(
-                            'Arrastra el mapa hasta que el pin quede sobre la entrada de tu negocio.',
+                            'Arrastra el mapa o toca un punto para que el pin quede sobre la entrada de tu negocio.',
                             style: AppTextStyles.wizardCaption,
                           ),
                         ),
@@ -2795,16 +2805,20 @@ class _WizardFooter extends StatelessWidget {
 }
 
 /// A live map with a pin fixed at the exact center of its viewport — the
-/// user pans the map underneath it — plus +/- zoom buttons, per Pantalla
-/// 4b. "Confirmar esta ubicación" (owned by the parent step, not this
-/// widget) reads the parent's `_mapCenter`, kept in sync via
-/// [onCameraMove] since `google_maps_flutter`'s controller has no
-/// synchronous "current center" getter like `flutter_map`'s did.
+/// user pans the map underneath it, or taps a point to jump straight there
+/// — plus +/- zoom buttons, per Pantalla 4b. "Confirmar esta ubicación"
+/// (owned by the parent step, not this widget) reads the parent's
+/// `_mapCenter`, kept in sync via [onCameraMove] since
+/// `google_maps_flutter`'s controller has no synchronous "current center"
+/// getter like `flutter_map`'s did — that covers both a drag AND the
+/// camera animation [onTap] kicks off, so either gesture ends up updating
+/// the same state the same way.
 class _MapLocationPicker extends StatelessWidget {
   const _MapLocationPicker({
     required this.initialCenter,
     required this.onMapCreated,
     required this.onCameraMove,
+    required this.onTap,
     required this.onZoomIn,
     required this.onZoomOut,
   });
@@ -2812,6 +2826,7 @@ class _MapLocationPicker extends StatelessWidget {
   final LatLng initialCenter;
   final ValueChanged<GoogleMapController> onMapCreated;
   final ValueChanged<LatLng> onCameraMove;
+  final ValueChanged<LatLng> onTap;
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
 
@@ -2831,6 +2846,7 @@ class _MapLocationPicker extends StatelessWidget {
               ),
               onMapCreated: onMapCreated,
               onCameraMove: (position) => onCameraMove(position.target),
+              onTap: onTap,
               minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
               cameraTargetBounds: CameraTargetBounds(_kMapBounds),
               zoomControlsEnabled: false,

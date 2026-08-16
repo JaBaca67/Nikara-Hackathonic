@@ -318,6 +318,37 @@ abstract class AppColors {
   /// [primary400]/[coral500], called out by exact hex in the Map redesign.
   static const favoriteActive = Color(0xFFE8798F);
 
+  /// Water fill for the custom Google Maps JSON style (`mapStyleJson` in
+  /// `map_screen.dart`) — not a Figma-bound variable (Maps styling takes
+  /// literal hex, no equivalent design token existed), a soft blue picked
+  /// to sit next to [backgroundCream]/[profileDivider] the way the "Mapa —
+  /// evolución" prototype's water circles do.
+  static const mapStyleWater = Color(0xFFCFE3EA);
+
+  /// Road fill for the same custom map style — a shade between
+  /// [profileDivider] and [backgroundCream] so roads stay legible without
+  /// competing with the cream/sand landscape base.
+  static const mapStyleRoad = Color(0xFFF5E9D6);
+
+  /// Pale-pink circle background behind the favorite heart on the map's
+  /// business carousel card (Pantalla 2a) — [favoriteActive] blended ~15%
+  /// over white, not a Figma-bound variable (same pragmatic-literal
+  /// reasoning as the other `map*` tokens above).
+  static const mapFavoriteBackground = Color(0xFFFCEBEE);
+
+  /// Pin ring/icon tint for water/nature categories (lagunas, playas, ríos)
+  /// in the per-category marker set — see [mapPinCategoryFor] in
+  /// `business_icons.dart`. The one genuinely new hue in this otherwise
+  /// warm gold/brown palette: every other category bucket reuses an
+  /// existing token ([coral500] for comida, [ecoGreen500] for eco,
+  /// [accent300] for tours, [complementario8] for artesanías/cultura,
+  /// [primario7] for hospedaje, [neutral800] for transporte), but nothing
+  /// blue already existed to stand in for water. Not a Figma-bound
+  /// variable, same pragmatic-literal reasoning as [mapStyleWater] above —
+  /// just saturated enough to read as a small marker glyph instead of a
+  /// soft map-fill tint.
+  static const mapPinWater = Color(0xFF3E8FB0);
+
   // --- Business detail redesign (Claude Design turn 3, "Perfil del
   // negocio / lugar — unificación prototipo + Figma", Pantalla 3a) ---
 

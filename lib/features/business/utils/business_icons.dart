@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_colors.dart';
+
 /// One [IconData] per known amenity string — falls back to a generic
 /// checkmark for anything outside the wizard's fixed amenity list. Shared
 /// between the wizard's chip picker and BusinessDetailScreen's display so
@@ -126,6 +128,120 @@ IconData activityIcon(String raw) {
   }
   if (key.contains('ave')) return Icons.flutter_dash;
   return Icons.explore_outlined;
+}
+
+/// A fixed, bounded set of "marker looks" driving [MapScreen]'s
+/// per-category pins (Estado 19a/19b) — bounded rather than one bitmap per
+/// free-text `businesses.category` value, since an owner-typed category
+/// string is unbounded but a map only ever needs to precompute a handful
+/// of bitmaps regardless of how many distinct strings exist in the table.
+enum MapPinCategory {
+  food,
+  water,
+  tour,
+  eco,
+  craft,
+  lodging,
+  transport,
+  general,
+}
+
+/// Icon glyph for [category]'s pin — shared between the map's marker
+/// bitmaps and the pin-detail bottom sheet's category badge so both always
+/// agree on the same glyph.
+IconData mapPinIcon(MapPinCategory category) {
+  switch (category) {
+    case MapPinCategory.food:
+      return Icons.restaurant_rounded;
+    case MapPinCategory.water:
+      return Icons.water_rounded;
+    case MapPinCategory.tour:
+      return Icons.tour_rounded;
+    case MapPinCategory.eco:
+      return Icons.eco_rounded;
+    case MapPinCategory.craft:
+      return Icons.palette_rounded;
+    case MapPinCategory.lodging:
+      return Icons.hotel_rounded;
+    case MapPinCategory.transport:
+      return Icons.directions_car_filled_rounded;
+    case MapPinCategory.general:
+      return Icons.storefront_rounded;
+  }
+}
+
+/// Accent color for [category]'s pin (unselected ring/icon tint) — reuses
+/// an existing [AppColors] token for every bucket except [mapPinWater]
+/// (see that token's own doc comment for why water needed a genuinely new
+/// hue).
+Color mapPinColor(MapPinCategory category) {
+  switch (category) {
+    case MapPinCategory.food:
+      return AppColors.coral500;
+    case MapPinCategory.water:
+      return AppColors.mapPinWater;
+    case MapPinCategory.tour:
+      return AppColors.accent300;
+    case MapPinCategory.eco:
+      return AppColors.ecoGreen500;
+    case MapPinCategory.craft:
+      return AppColors.complementario8;
+    case MapPinCategory.lodging:
+      return AppColors.primario7;
+    case MapPinCategory.transport:
+      return AppColors.neutral800;
+    case MapPinCategory.general:
+      return AppColors.settingsTextMuted;
+  }
+}
+
+/// Classifies a free-text `businesses.category` value into one of the
+/// bounded [MapPinCategory] buckets via keyword matching — the same
+/// approach [activityIcon] already uses for activities. Covers both the
+/// "Registra tu negocio" wizard's current fixed chip presets
+/// ('Eco-destino', 'Restaurante', 'Hospedaje', 'Tour', 'Cultura',
+/// 'Transporte') and older/legacy category strings that predate that list
+/// (e.g. the prototype seed data's 'Lagunas'/'Tours'/'Eco'). Falls back to
+/// [MapPinCategory.general] — the original single storefront glyph — for
+/// anything unrecognized rather than guessing.
+MapPinCategory mapPinCategoryFor(String category) {
+  final key = category.toLowerCase();
+  if (key.contains('restaurant') ||
+      key.contains('comida') ||
+      key.contains('gastro')) {
+    return MapPinCategory.food;
+  }
+  if (key.contains('laguna') ||
+      key.contains('lago') ||
+      key.contains('playa') ||
+      key.contains('río') ||
+      key.contains('rio') ||
+      key.contains('agua')) {
+    return MapPinCategory.water;
+  }
+  if (key.contains('tour')) return MapPinCategory.tour;
+  if (key.contains('eco') ||
+      key.contains('sender') ||
+      key.contains('bosque') ||
+      key.contains('natural')) {
+    return MapPinCategory.eco;
+  }
+  if (key.contains('artesan') || key.contains('cultura')) {
+    return MapPinCategory.craft;
+  }
+  if (key.contains('hospedaje') ||
+      key.contains('hotel') ||
+      key.contains('hostal') ||
+      key.contains('cabañ') ||
+      key.contains('caban')) {
+    return MapPinCategory.lodging;
+  }
+  if (key.contains('transporte') ||
+      key.contains('taxi') ||
+      key.contains('shuttle')) {
+    return MapPinCategory.transport;
+  }
+  return MapPinCategory.general;
 }
 
 /// Whether an on-device media path (from `image_picker`'s

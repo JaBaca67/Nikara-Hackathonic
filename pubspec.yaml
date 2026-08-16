@@ -50,6 +50,10 @@ dependencies:
   crypto: ^3.0.6
   google_maps_flutter: ^2.10.1
   geolocator: ^14.0.3
+  # Already pulled in transitively (supabase_flutter -> gotrue/postgrest use
+  # it internally) — declared directly since DirectionsService imports it
+  # itself, to call the Google Directions API for "Cómo llegar" routing.
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
