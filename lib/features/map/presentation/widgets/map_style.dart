@@ -23,13 +23,19 @@ final String nikaraMapStyle = jsonEncode([
       {'color': _hex(AppColors.backgroundCream)},
     ],
   },
-  // Explicit overrides for landscape/land-use/building polygons — the
-  // top-level 'geometry' rule above already colors everything cream, but
-  // Google's default style still bakes in its own gray fill + stroke for
-  // building footprints ("hyper-manzanas") that becomes visible once the
-  // camera zooms in close (navigation's tilted view especially), so these
-  // need their own explicit rules rather than relying on the generic one
-  // cascading down.
+  // Explicit override for landscape polygons — the top-level 'geometry'
+  // rule above already colors everything cream, but Google's default
+  // style still bakes in its own gray fill for building
+  // footprints/hyper-manzanas that becomes visible once the camera zooms
+  // in close (navigation's tilted view especially). 'landscape.man_made'
+  // is the real (schema-valid) feature type that covers those — NOT
+  // 'building' or 'landuse', neither of which exists in Google's Maps
+  // JSON styling feature-type enum (https://developers.google.com/maps/
+  // documentation/javascript/style-reference#style-features): an earlier
+  // version of this file used those two invalid values, which appears to
+  // have made the native SDK reject the whole style and silently fall
+  // back to Google's stock look — the exact bug this comment is here to
+  // stop from happening again.
   {
     'featureType': 'landscape',
     'elementType': 'geometry',
@@ -42,27 +48,6 @@ final String nikaraMapStyle = jsonEncode([
     'elementType': 'geometry',
     'stylers': [
       {'color': _hex(AppColors.backgroundCream)},
-    ],
-  },
-  {
-    'featureType': 'landuse',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
-    ],
-  },
-  {
-    'featureType': 'building',
-    'elementType': 'geometry.fill',
-    'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
-    ],
-  },
-  {
-    'featureType': 'building',
-    'elementType': 'geometry.stroke',
-    'stylers': [
-      {'visibility': 'off'},
     ],
   },
   {
@@ -89,8 +74,11 @@ final String nikaraMapStyle = jsonEncode([
       {'visibility': 'off'},
     ],
   },
+  // Hides every stock Google POI (shops, banks, generic restaurant pins,
+  // ...) so only Níkara's own business markers ever show on the map.
   {
     'featureType': 'poi',
+    'elementType': 'all',
     'stylers': [
       {'visibility': 'off'},
     ],
