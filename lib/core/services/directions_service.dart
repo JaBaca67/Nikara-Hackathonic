@@ -1,10 +1,18 @@
 import 'dart:convert';
 
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:nikara_app/core/config/maps_config.dart';
+
+class DirectionsServiceException implements Exception {
+  const DirectionsServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// A driving route between two points, decoded from the Google Directions
 /// API's `overview_polyline` — enough for [MapScreen]'s "Cómo llegar" to
@@ -50,17 +58,21 @@ class DirectionsService {
   static const _endpoint =
       'https://maps.googleapis.com/maps/api/directions/json';
 
-  /// Always resolves — falls back to [_straightLineRoute] instead of
-  /// throwing whenever a real driving route can't be fetched (no Directions
-  /// API key configured, no network, or the API itself failing), so "Cómo
-  /// llegar" always has a route to draw and never has to bounce the user
-  /// out to an error message.
+  /// Fetches a *real* driving route following the street network — never a
+  /// straight line. Throws [DirectionsServiceException] (message already in
+  /// Spanish, ready for a snackbar) whenever the Directions API can't
+  /// return real road waypoints: no API key configured, no network, a
+  /// non-OK API status, or a response missing its `overview_polyline`.
+  /// [MapScreen] is expected to notify the user and stay on the
+  /// exploration map rather than drawing anything fabricated.
   Future<DirectionsRoute> getRoute({
     required LatLng origin,
     required LatLng destination,
   }) async {
     if (MapsConfig.directionsApiKey.isEmpty) {
-      return _straightLineRoute(origin, destination);
+      throw const DirectionsServiceException(
+        'La ruta en la app no está configurada todavía.',
+      );
     }
     final uri = Uri.parse(_endpoint).replace(
       queryParameters: {
@@ -75,29 +87,41 @@ class DirectionsService {
     try {
       response = await http.get(uri).timeout(const Duration(seconds: 12));
     } catch (_) {
-      return _straightLineRoute(origin, destination);
+      throw const DirectionsServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
     }
 
     if (response.statusCode != 200) {
-      return _straightLineRoute(origin, destination);
+      throw const DirectionsServiceException(
+        'No se pudo calcular la ruta en este momento.',
+      );
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final status = body['status'] as String?;
     if (status != 'OK') {
-      return _straightLineRoute(origin, destination);
+      throw DirectionsServiceException(
+        status == 'ZERO_RESULTS'
+            ? 'No se encontró una ruta en carretera hasta este lugar.'
+            : 'No se pudo calcular la ruta en este momento.',
+      );
     }
 
     final routes = body['routes'] as List<dynamic>? ?? const [];
     if (routes.isEmpty) {
-      return _straightLineRoute(origin, destination);
+      throw const DirectionsServiceException(
+        'No se encontró una ruta en carretera hasta este lugar.',
+      );
     }
     final route = routes.first as Map<String, dynamic>;
     final overviewPolyline =
         route['overview_polyline'] as Map<String, dynamic>?;
     final encoded = overviewPolyline?['points'] as String?;
     if (encoded == null) {
-      return _straightLineRoute(origin, destination);
+      throw const DirectionsServiceException(
+        'No se pudo calcular la ruta en este momento.',
+      );
     }
 
     final legs = route['legs'] as List<dynamic>? ?? const [];
@@ -112,25 +136,6 @@ class DirectionsService {
       points: _decodePolyline(encoded),
       distanceMeters: distanceMeters,
       durationSeconds: durationSeconds,
-    );
-  }
-
-  /// Direct-line route between [origin] and [destination] — the fallback
-  /// [getRoute] returns whenever a real driving route isn't available.
-  /// Duration is estimated from a conservative in-town average speed since
-  /// there's no real road geometry to time.
-  static DirectionsRoute _straightLineRoute(LatLng origin, LatLng destination) {
-    final meters = Geolocator.distanceBetween(
-      origin.latitude,
-      origin.longitude,
-      destination.latitude,
-      destination.longitude,
-    );
-    const averageSpeedMetersPerSecond = 30 * 1000 / 3600; // 30 km/h
-    return DirectionsRoute(
-      points: [origin, destination],
-      distanceMeters: meters.round(),
-      durationSeconds: (meters / averageSpeedMetersPerSecond).round(),
     );
   }
 

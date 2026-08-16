@@ -282,6 +282,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return null;
   }
 
+  /// The carousel's current target height — expanded (Estado 19b) while a
+  /// card is selected, compact (Estado 19a) otherwise. Drives both the
+  /// carousel's own [AnimatedContainer] and the recenter button's
+  /// [AnimatedPositioned] offset in build(), so neither snaps when a
+  /// selection toggles on or off.
+  double get _carouselHeight => _selectedBusinessId == null
+      ? _kCarouselCompactHeight
+      : _kCarouselExpandedHeight;
+
   List<BusinessModel> get _filteredBusinesses {
     return _businesses
         .where((b) {
@@ -769,11 +778,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// Google-Maps-style bottom sheet with that business's full details —
   /// the behavior split Estado 19b asks for: swiping the carousel just
   /// moves the camera and shows its own floating card, but tapping a pin
-  /// on the map opens a dedicated detail panel.
+  /// on the map opens a dedicated detail panel. Tapping the pin that's
+  /// *already* selected instead toggles it back off — same deselect this
+  /// mirrors in [_onCarouselCardTapped] — rather than reopening the sheet
+  /// on top of itself.
   Future<void> _onMarkerTapped(BusinessModel business) async {
+    if (business.id == _selectedBusinessId) {
+      setState(() => _selectedBusinessId = null);
+      return;
+    }
     await _selectBusiness(business);
     if (!mounted) return;
     await _showBusinessSheet(business);
+  }
+
+  /// Tapping the carousel's expanded (already-selected) card, or any
+  /// compact one, toggles that business's selection — the mirror of
+  /// [_onMarkerTapped]'s pin-tap toggle. Selecting flies the camera and
+  /// expands the card (Estado 19b); re-tapping the same card deselects it,
+  /// collapsing every card in the carousel back to Estado 19a without
+  /// moving the camera or the current scroll position.
+  void _onCarouselCardTapped(BusinessModel business) {
+    if (business.id == _selectedBusinessId) {
+      setState(() => _selectedBusinessId = null);
+      return;
+    }
+    unawaited(_selectBusiness(business));
   }
 
   /// The sheet itself reuses [_BusinessCarouselCard] unchanged — it already
@@ -954,15 +984,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// "Cómo llegar" — fetches a driving route from the device's current
+  /// "Cómo llegar" — fetches a real driving route (following the actual
+  /// street network, never a straight line) from the device's current
   /// position to [business] via [DirectionsService], draws it, and switches
   /// the screen into live GPS navigation (see [_onPositionUpdate]) —
   /// entirely in-app, never handing off to the external Google Maps app.
-  /// [DirectionsService.getRoute] always resolves (falling back to a
-  /// straight-line route when a real one can't be fetched), so once the
-  /// device's position is known this never bounces the user back out with
-  /// an error — the golden [Polyline] and the live trip panel always come
-  /// up.
+  /// If a real route can't be fetched (no Directions key configured, no
+  /// network, no result), this shows the specific reason in a snackbar and
+  /// stays on the exploration map instead of ever drawing a fabricated
+  /// route.
   Future<void> _startNavigation(BusinessModel business) async {
     final lat = business.latitude;
     final lng = business.longitude;
@@ -983,10 +1013,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     final origin = LatLng(position.latitude, position.longitude);
 
-    final route = await DirectionsService().getRoute(
-      origin: origin,
-      destination: destination,
-    );
+    final DirectionsRoute route;
+    try {
+      route = await DirectionsService().getRoute(
+        origin: origin,
+        destination: destination,
+      );
+    } on DirectionsServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
     if (!mounted) return;
 
     setState(() {
@@ -1341,6 +1380,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             // camera from panning/zooming out into empty ocean.
             minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
             cameraTargetBounds: CameraTargetBounds(_kMapBounds),
+            // Google's native 3D building extrusions render in their own
+            // flat industrial gray regardless of `style` (that JSON only
+            // covers 2D feature coloring) — most visible once navigation's
+            // tilted camera (see _onPositionUpdate) zooms in close, clashing
+            // with Níkara's cream palette. Disabling them keeps the custom
+            // style consistent at every zoom level, tilted or not.
+            buildingsEnabled: false,
             myLocationEnabled: _myLocationEnabled,
             // Custom recenter button below replaces the default one.
             myLocationButtonEnabled: false,
@@ -1397,7 +1443,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 42,
+                      height: 36,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         clipBehavior: Clip.none,
@@ -1456,8 +1502,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         padding: EdgeInsets.only(left: 12, bottom: 8),
                         child: _CarouselHeaderLabel(),
                       ),
-                      SizedBox(
-                        height: _kCarouselHeight,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        height: _carouselHeight,
                         child: PageView.builder(
                           controller: _carouselController,
                           onPageChanged: _onCarouselPageChanged,
@@ -1469,24 +1517,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
                               ),
-                              child: _BusinessCarouselCard(
-                                business: business,
-                                isActive: business.id == _selectedBusinessId,
-                                distanceKm: LocationService.distanceKm(
-                                  _userPosition,
-                                  business.latitude,
-                                  business.longitude,
-                                ),
-                                onNavigate: () => _startNavigation(business),
-                                onViewProfile: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => BusinessDetailScreen(
-                                        business: business,
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: _BusinessCarouselCard(
+                                  business: business,
+                                  expanded: business.id == _selectedBusinessId,
+                                  distanceKm: LocationService.distanceKm(
+                                    _userPosition,
+                                    business.latitude,
+                                    business.longitude,
+                                  ),
+                                  onTap: () => _onCarouselCardTapped(business),
+                                  onNavigate: () => _startNavigation(business),
+                                  onViewProfile: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => BusinessDetailScreen(
+                                          business: business,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                ),
                               ),
                             );
                           },
@@ -1521,14 +1573,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          Positioned(
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
             right: 16,
             // Sits just above whatever occupies the bottom of the screen:
-            // the navigation panel (19c), the carousel (Pantalla 2a), or
-            // nothing at all (Pantalla 2b's bottom-right corner).
+            // the navigation panel (19c), the carousel (Pantalla 2a,
+            // whose own height animates between its compact and expanded
+            // states — see [_carouselHeight]), or nothing at all (Pantalla
+            // 2b's bottom-right corner).
             bottom: _isNavigating
                 ? _kNavigationPanelHeight + 16
-                : (filtered.isEmpty ? 16 : _kCarouselHeight + 16),
+                : (filtered.isEmpty ? 16 : _carouselHeight + 16),
             child: SafeArea(
               top: false,
               bottom: false,
@@ -1557,8 +1613,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 }
 
-/// Carousel card height, Pantalla 2a.
-const double _kCarouselHeight = 168;
+/// Carousel height while no card is selected (Estado 19a) — just tall
+/// enough for [_BusinessCarouselCard]'s compact layout (thumbnail, name,
+/// location, one badge — no action buttons).
+const double _kCarouselCompactHeight = 92;
+
+/// Carousel height once a card is selected and expands to its full layout
+/// with "Cómo llegar" / "Ver perfil" (Estado 19b), Pantalla 2a.
+const double _kCarouselExpandedHeight = 168;
 
 /// Vertical space [_NavigationPanel] takes at the bottom of the screen —
 /// what the recenter button clears while navigating.
@@ -1943,7 +2005,7 @@ class _CategoryChip extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.surface100,
@@ -1968,6 +2030,9 @@ class _CategoryChip extends StatelessWidget {
             color: selected
                 ? AppColors.settingsTextDark
                 : AppColors.settingsTextMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
             height: 1,
           ),
         ),
@@ -2115,17 +2180,20 @@ class _PinDetailSheetChrome extends StatelessWidget {
 /// Photo, name, category tags, real GPS distance and exactly two actions
 /// ("Cómo llegar" / "Ver perfil"), per Pantalla 2b: no price, no
 /// reservation button. Both the persistent business carousel's cards
-/// (Pantalla 2a, inside a fixed-height horizontal [PageView]) and
+/// (Pantalla 2a, inside a [PageView] whose height animates between
+/// [_kCarouselCompactHeight]/[_kCarouselExpandedHeight]) and
 /// [MapScreen._showBusinessSheet]'s Google-Maps-style pin detail sheet (no
-/// fixed height — sizes to its own content) render this same card, so a
-/// business always looks identical whichever way it got selected.
+/// fixed height — sizes to its own content, always [expanded]) render this
+/// same card, so a business always looks identical whichever way it got
+/// selected.
 class _BusinessCarouselCard extends StatelessWidget {
   const _BusinessCarouselCard({
     required this.business,
     required this.onNavigate,
     required this.onViewProfile,
     this.distanceKm,
-    this.isActive = false,
+    this.expanded = true,
+    this.onTap,
   });
 
   final BusinessModel business;
@@ -2140,14 +2208,21 @@ class _BusinessCarouselCard extends StatelessWidget {
   final VoidCallback onNavigate;
   final VoidCallback onViewProfile;
 
-  /// Whether this is the carousel's current/focused card — the one synced
-  /// with the map's selected pin (see [_MapScreenState._selectedBusinessId]
-  /// and [_MapScreenState._onCarouselPageChanged]). Drives the scale/border/
-  /// shadow animation that makes the focused card stand out from the rest
-  /// of the "Recomendaciones destacadas" carousel. The pin detail sheet
-  /// (`MapScreen._showBusinessSheet`) always shows a single card and leaves
-  /// this at its default `false` — no active-card affordance to draw there.
-  final bool isActive;
+  /// Whether this renders the full layout (photo + tags + "Cómo llegar" /
+  /// "Ver perfil", Estado 19b, gold-bordered) or the compact one (small
+  /// thumbnail + name + location, Estado 19a) — the carousel expands only
+  /// its currently-selected card (see
+  /// [_MapScreenState._selectedBusinessId]) and keeps every other one
+  /// compact. Always `true` in the pin detail sheet
+  /// (`MapScreen._showBusinessSheet`), which only ever shows one card in
+  /// full.
+  final bool expanded;
+
+  /// Toggles this business's selection — tapping a compact card expands
+  /// it, tapping the expanded one's header collapses it back (see
+  /// [_MapScreenState._onCarouselCardTapped]). Left null in the pin detail
+  /// sheet, which has no compact state to toggle back to.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -2172,185 +2247,217 @@ class _BusinessCarouselCard extends StatelessWidget {
           (a) => activityLabel(a).toLowerCase().contains('eco'),
         );
 
-    return AnimatedScale(
-      scale: isActive ? 1.0 : 0.94,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(22),
-          // Always a 2px border so the active/inactive swap only changes
-          // color, never the card's outer size.
-          border: Border.all(
-            color: isActive ? AppColors.primary500 : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.mapCardShadow,
-              offset: Offset(0, isActive ? 10 : 6),
-              blurRadius: isActive ? 30 : 18,
+    final header = GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(expanded ? 16 : 12),
+            child: SizedBox(
+              width: expanded ? 78 : 52,
+              height: expanded ? 78 : 52,
+              child: LocalImage(
+                path: imagePath,
+                fallbackIcon: Icons.storefront_outlined,
+                fallbackIconSize: expanded ? 24 : 18,
+              ),
             ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Right padding reserves room for the floating favorite
+                // circle positioned over the expanded card's top-right
+                // corner — the compact layout has no favorite toggle.
+                Padding(
+                  padding: EdgeInsets.only(right: expanded ? 32 : 0),
+                  child: Text(
+                    business.name,
+                    style: AppTextStyles.sectionTitle.copyWith(
+                      color: AppColors.settingsTextDark,
+                      fontSize: expanded ? 16 : 14,
+                      height: 1.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 3),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        width: 78,
-                        height: 78,
-                        child: LocalImage(
-                          path: imagePath,
-                          fallbackIcon: Icons.storefront_outlined,
-                          fallbackIconSize: 24,
+                    Icon(
+                      Icons.near_me,
+                      size: expanded ? 12 : 11,
+                      color: AppColors.settingsTextMuted,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        locationLabel,
+                        style: AppTextStyles.settingsSubtitle.copyWith(
+                          fontSize: 11,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                  ],
+                ),
+                const SizedBox(height: 6),
+                if (expanded)
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      if (firstActivity != null)
+                        _MapTag(
+                          label: firstActivity,
+                          background: AppColors.settingsBackground,
+                          textColor: AppColors.settingsTextMuted,
+                          bordered: true,
+                        ),
+                      if (isEco)
+                        _MapTag(
+                          label: 'ECO',
+                          background: AppColors.ecoGreen500,
+                          textColor: AppColors.surface100,
+                        ),
+                      if (rating > 0)
+                        _MapTag(
+                          label: '★ ${rating.toStringAsFixed(1)}',
+                          background: AppColors.settingsBackground,
+                          textColor: AppColors.settingsTextDark,
+                          bordered: true,
+                        ),
+                    ],
+                  )
+                // Compact layout shows at most one badge, ECO first —
+                // keeping the collapsed card's footprint genuinely small
+                // instead of just a scaled-down copy of the expanded one.
+                else if (isEco)
+                  _MapTag(
+                    label: 'ECO',
+                    background: AppColors.ecoGreen500,
+                    textColor: AppColors.surface100,
+                  )
+                else if (rating > 0)
+                  _MapTag(
+                    label: '★ ${rating.toStringAsFixed(1)}',
+                    background: AppColors.settingsBackground,
+                    textColor: AppColors.settingsTextDark,
+                    bordered: true,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(22),
+        // Always a 2px border so the compact/expanded swap only changes
+        // color, never the card's outer size.
+        border: Border.all(
+          color: expanded ? AppColors.primary500 : Colors.transparent,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.mapCardShadow,
+            offset: Offset(0, expanded ? 10 : 6),
+            blurRadius: expanded ? 30 : 16,
+          ),
+        ],
+      ),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.topCenter,
+        child: expanded
+            ? Stack(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      header,
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          // Right padding reserves room for the floating
-                          // favorite circle positioned over this card's
-                          // top-right corner, below.
-                          Padding(
-                            padding: const EdgeInsets.only(right: 32),
-                            child: Text(
-                              business.name,
-                              style: AppTextStyles.sectionTitle.copyWith(
-                                color: AppColors.settingsTextDark,
-                                fontSize: 16,
-                                height: 1.2,
+                          Expanded(
+                            child: SizedBox(
+                              height: 38,
+                              child: ElevatedButton.icon(
+                                onPressed: onNavigate,
+                                icon: const Icon(
+                                  Icons.directions_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text('Cómo llegar'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.profileDivider,
+                                  foregroundColor: AppColors.settingsTextDark,
+                                  elevation: 0,
+                                  padding: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  textStyle: AppTextStyles.mapRowTitle.copyWith(
+                                    fontSize: 12,
+                                  ),
+                                ),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.near_me,
-                                size: 12,
-                                color: AppColors.settingsTextMuted,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  locationLabel,
-                                  style: AppTextStyles.settingsSubtitle
-                                      .copyWith(fontSize: 11),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SizedBox(
+                              height: 38,
+                              child: ElevatedButton.icon(
+                                onPressed: onViewProfile,
+                                icon: const Icon(
+                                  Icons.storefront_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text('Ver perfil'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary500,
+                                  foregroundColor: AppColors.settingsTextDark,
+                                  elevation: 0,
+                                  padding: EdgeInsets.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  textStyle: AppTextStyles.mapRowTitle.copyWith(
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              if (firstActivity != null)
-                                _MapTag(
-                                  label: firstActivity,
-                                  background: AppColors.settingsBackground,
-                                  textColor: AppColors.settingsTextMuted,
-                                  bordered: true,
-                                ),
-                              if (isEco)
-                                _MapTag(
-                                  label: 'ECO',
-                                  background: AppColors.ecoGreen500,
-                                  textColor: AppColors.surface100,
-                                ),
-                              if (rating > 0)
-                                _MapTag(
-                                  label: '★ ${rating.toStringAsFixed(1)}',
-                                  background: AppColors.settingsBackground,
-                                  textColor: AppColors.settingsTextDark,
-                                  bordered: true,
-                                ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 38,
-                        child: ElevatedButton.icon(
-                          onPressed: onNavigate,
-                          icon: const Icon(Icons.directions_outlined, size: 16),
-                          label: const Text('Cómo llegar'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.profileDivider,
-                            foregroundColor: AppColors.settingsTextDark,
-                            elevation: 0,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            textStyle: AppTextStyles.mapRowTitle.copyWith(
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: SizedBox(
-                        height: 38,
-                        child: ElevatedButton.icon(
-                          onPressed: onViewProfile,
-                          icon: const Icon(Icons.storefront_outlined, size: 16),
-                          label: const Text('Ver perfil'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary500,
-                            foregroundColor: AppColors.settingsTextDark,
-                            elevation: 0,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            textStyle: AppTextStyles.mapRowTitle.copyWith(
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            Positioned(
-              top: 0,
-              right: 0,
-              child: _FavoriteToggle(businessId: business.id),
-            ),
-          ],
-        ),
+                    ],
+                  ),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: _FavoriteToggle(businessId: business.id),
+                  ),
+                ],
+              )
+            : header,
       ),
     );
   }
