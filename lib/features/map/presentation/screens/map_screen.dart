@@ -1613,14 +1613,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 }
 
-/// Carousel height while no card is selected (Estado 19a) — just tall
-/// enough for [_BusinessCarouselCard]'s compact layout (thumbnail, name,
-/// location, one badge — no action buttons).
-const double _kCarouselCompactHeight = 92;
+/// Carousel height while no card is selected (Estado 19a) — tall enough
+/// for [_BusinessCarouselCard]'s compact layout (thumbnail, name,
+/// location, one fixed-height badge slot — no action buttons) with a
+/// little slack for font-metric rounding, so it never triggers a
+/// `RenderFlex` overflow.
+const double _kCarouselCompactHeight = 108;
 
 /// Carousel height once a card is selected and expands to its full layout
 /// with "Cómo llegar" / "Ver perfil" (Estado 19b), Pantalla 2a.
 const double _kCarouselExpandedHeight = 168;
+
+/// Fixed height of the compact card's badge line (see
+/// [_BusinessCarouselCard]) — reserved whether or not a badge actually
+/// renders there, so every compact card measures exactly the same total
+/// height no matter which business is in it.
+const double _kCompactBadgeSlotHeight = 26;
 
 /// Vertical space [_NavigationPanel] takes at the bottom of the screen —
 /// what the recenter button clears while navigating.
@@ -2336,21 +2344,34 @@ class _BusinessCarouselCard extends StatelessWidget {
                         ),
                     ],
                   )
-                // Compact layout shows at most one badge, ECO first —
-                // keeping the collapsed card's footprint genuinely small
-                // instead of just a scaled-down copy of the expanded one.
-                else if (isEco)
-                  _MapTag(
-                    label: 'ECO',
-                    background: AppColors.ecoGreen500,
-                    textColor: AppColors.surface100,
-                  )
-                else if (rating > 0)
-                  _MapTag(
-                    label: '★ ${rating.toStringAsFixed(1)}',
-                    background: AppColors.settingsBackground,
-                    textColor: AppColors.settingsTextDark,
-                    bordered: true,
+                // Compact layout shows at most one badge, ECO first — and
+                // always in a fixed-height slot (empty when neither badge
+                // applies) so every compact card has the exact same total
+                // height regardless of which business is in it. Letting
+                // this line's presence be optional was what made cards
+                // overflow/misalign in the first place: a business with a
+                // badge needed more room than one without, inside a
+                // carousel whose height only budgeted for one fixed case.
+                else
+                  SizedBox(
+                    height: _kCompactBadgeSlotHeight,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: isEco
+                          ? _MapTag(
+                              label: 'ECO',
+                              background: AppColors.ecoGreen500,
+                              textColor: AppColors.surface100,
+                            )
+                          : rating > 0
+                          ? _MapTag(
+                              label: '★ ${rating.toStringAsFixed(1)}',
+                              background: AppColors.settingsBackground,
+                              textColor: AppColors.settingsTextDark,
+                              bordered: true,
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                   ),
               ],
             ),

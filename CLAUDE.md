@@ -7,7 +7,7 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 - **Flutter** 3.44.5 / **Dart** ^3.12.2 (ver `flutter --version`).
 - **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`, `auditor`). Credenciales en `lib/core/supabase/supabase_config.dart`.
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
-- **Mapas**: `flutter_map` + `latlong2` + `geolocator`.
+- **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).
 - **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Fuente custom `Leelawadee`.
 
@@ -29,7 +29,7 @@ No todas las features tienen los tres subniveles (`data/domain/presentation`); a
 
 ```bash
 flutter pub get                    # instalar dependencias
-flutter run                        # levantar la app (elige dispositivo)
+flutter run --dart-define-from-file=dart_defines.json  # levantar con la Directions API key (copia dart_defines.json.example)
 flutter run -d chrome              # levantar en web
 flutter run -d windows             # levantar en Windows desktop
 flutter analyze                    # linting estático (flutter_lints)
