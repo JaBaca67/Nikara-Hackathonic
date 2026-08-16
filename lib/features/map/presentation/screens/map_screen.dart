@@ -185,6 +185,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// converted to km/h — [_SpeedometerBadge]'s readout.
   double? _currentSpeedKmh;
 
+  /// Waze/Google-Maps-style camera follow — true keeps the vehicle pinned
+  /// to the screen center on every GPS fix (see [_onPositionUpdate]).
+  /// Dragging/pinching the map mid-trip (detected via
+  /// [GoogleMap.onCameraMoveStarted] in build(), see
+  /// [_programmaticCameraMoves]) sets this false so the user's manual pan
+  /// sticks instead of snapping back on the next fix; the floating
+  /// "Recentrar" button ([_recenterNavigationCamera]) sets it true again.
+  bool _isCameraLocked = true;
+
+  /// Depth counter of in-flight camera animations *we* issued during live
+  /// navigation (see [_animateNavigationCamera]) — while positive,
+  /// [GoogleMap.onCameraMoveStarted] knows the movement it's seeing is our
+  /// own follow-camera update, not the user's gesture, and leaves
+  /// [_isCameraLocked] alone. A counter rather than a bool so two
+  /// overlapping animations (a GPS fix landing mid-animation) can't have
+  /// the first one's completion clear a flag the second one still needs.
+  int _programmaticCameraMoves = 0;
+
   /// Meters left along the route from the vehicle's current position,
   /// recomputed on every GPS fix (see [remainingRouteMeters]) — the
   /// "3,4 km restantes" readout in [_NavigationPanel]. Null until the first
@@ -1170,6 +1188,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     setState(() {
       _isPreviewingTrip = false;
       _isNavigating = true;
+      _isCameraLocked = true;
       _remainingMeters = route.distanceMeters.toDouble();
       _remainingRoutePoints = route.points;
       _routeTrimIndex = 0;
@@ -1186,14 +1205,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     // Immediate 3D driving transition — _onPositionUpdate takes over
     // framing the camera from the first real GPS fix onward.
-    await _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: origin,
-          zoom: 16.5,
-          tilt: 55,
-          bearing: initialBearing,
-        ),
+    await _animateNavigationCamera(
+      CameraPosition(
+        target: origin,
+        zoom: _kNavCameraZoom,
+        tilt: _kNavCameraTilt,
+        bearing: initialBearing,
       ),
     );
 
@@ -1239,6 +1256,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final target = _navigationTarget;
     setState(() {
       _isNavigating = false;
+      _isCameraLocked = true;
       _navigationTarget = null;
       _navigationRoute = null;
       _remainingMeters = null;
@@ -1254,6 +1272,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _myLocationEnabled = _userPosition != null;
     });
     if (target != null) await _selectBusiness(target);
+  }
+
+  /// Camera zoom/tilt for live navigation's Waze/Google-Maps-style driving
+  /// view — the initial transition in [_confirmStartTrip], every
+  /// GPS-follow update in [_onPositionUpdate], and [_recenterNavigationCamera]
+  /// all frame the vehicle the exact same way.
+  static const double _kNavCameraZoom = 17.5;
+  static const double _kNavCameraTilt = 50;
+
+  /// Wraps every camera animation issued *during live navigation* so
+  /// [GoogleMap.onCameraMoveStarted] (see build()) can tell our own
+  /// periodic GPS-follow updates apart from the user actually dragging the
+  /// map — only the latter should flip [_isCameraLocked] off.
+  Future<void> _animateNavigationCamera(CameraPosition position) async {
+    _programmaticCameraMoves++;
+    try {
+      await _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(position),
+      );
+    } finally {
+      _programmaticCameraMoves--;
+    }
+  }
+
+  /// The live-nav "Recentrar" button — re-locks the camera to the vehicle
+  /// and glides it back into the standard driving frame, mirroring
+  /// whatever bearing the puck is already facing.
+  Future<void> _recenterNavigationCamera() async {
+    setState(() => _isCameraLocked = true);
+    final position = _vehicleDisplayPosition;
+    if (position == null) return;
+    await _animateNavigationCamera(
+      CameraPosition(
+        target: position,
+        zoom: _kNavCameraZoom,
+        tilt: _kNavCameraTilt,
+        bearing: _vehicleDisplayBearing,
+      ),
+    );
   }
 
   static LatLngBounds _boundsForPoints(List<LatLng> points) {
@@ -1375,19 +1432,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     // Follows the vehicle with the map turned in the direction of travel
     // and tilted, the way a turn-by-turn view reads — not the flat
-    // north-up frame the exploration states use.
-    unawaited(
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
+    // north-up frame the exploration states use. Skipped once the user has
+    // dragged the map away (see [_isCameraLocked]/`onCameraMoveStarted` in
+    // build()): the next fix would otherwise instantly snap their manual
+    // pan back to the vehicle.
+    if (_isCameraLocked) {
+      unawaited(
+        _animateNavigationCamera(
           CameraPosition(
             target: newPos,
-            zoom: 16.5,
-            tilt: 55,
+            zoom: _kNavCameraZoom,
+            tilt: _kNavCameraTilt,
             bearing: targetBearing,
           ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   /// ETA for what's *left* of the trip: the route's total duration scaled
@@ -1627,6 +1687,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             // onCameraIdle below (which does setState) uses an up-to-date
             // value once the gesture actually settles.
             onCameraMove: (position) => _currentZoom = position.zoom,
+            // Waze/Google-Maps-style camera lock (see _isCameraLocked):
+            // this fires for BOTH the user dragging/pinching the map AND
+            // our own periodic GPS-follow `animateCamera` calls, so
+            // `_programmaticCameraMoves` (incremented for the duration of
+            // every call we issue — see _animateNavigationCamera) is what
+            // tells them apart. Only an actual user gesture mid-trip
+            // unlocks the camera.
+            onCameraMoveStarted: () {
+              if (_isNavigating &&
+                  _isCameraLocked &&
+                  _programmaticCameraMoves == 0) {
+                setState(() => _isCameraLocked = false);
+              }
+            },
             // Skipped while navigating: the camera moves on every GPS fix
             // there, and each of those settling into a viewport re-fetch
             // would be a request per fix for pins that are hidden anyway.
@@ -1923,29 +1997,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: _SpeedometerBadge(speedKmh: _currentSpeedKmh!),
               ),
             ),
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            right: 16,
-            // Sits just above whatever occupies the bottom of the screen:
-            // the navigation panel (19c), the trip preview panel (Fase 1),
-            // the carousel (Pantalla 2a, whose own height animates between
-            // its compact and expanded states — see [_carouselHeight]), or
-            // nothing at all (Pantalla 2b's bottom-right corner).
-            bottom: _isNavigating
-                ? _kNavigationPanelHeight + 16
-                : _isPreviewingTrip
-                ? _kTripPreviewPanelHeight + 16
-                : (filtered.isEmpty ? 16 : _carouselHeight + 16),
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: _RecenterButton(
-                isLoading: _locatingUser,
-                onPressed: () => _locateUser(animate: true),
+          // Hidden entirely while navigating with the camera already
+          // locked onto the vehicle — nothing to recenter. Once the user
+          // drags the map (see `onCameraMoveStarted` above), this becomes
+          // the crosshair "Recentrar" button instead of the exploration/
+          // preview "center on me" one.
+          if (!_isNavigating || !_isCameraLocked)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              right: 16,
+              // Sits just above whatever occupies the bottom of the
+              // screen: the navigation panel (19c), the trip preview panel
+              // (Fase 1), the carousel (Pantalla 2a, whose own height
+              // animates between its compact and expanded states — see
+              // [_carouselHeight]), or nothing at all (Pantalla 2b's
+              // bottom-right corner).
+              bottom: _isNavigating
+                  ? _kNavigationPanelHeight + 16
+                  : _isPreviewingTrip
+                  ? _kTripPreviewPanelHeight + 16
+                  : (filtered.isEmpty ? 16 : _carouselHeight + 16),
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                child: _isNavigating
+                    ? _RecenterButton(
+                        isLoading: false,
+                        icon: Icons.center_focus_strong_rounded,
+                        onPressed: _recenterNavigationCamera,
+                      )
+                    : _RecenterButton(
+                        isLoading: _locatingUser,
+                        onPressed: () => _locateUser(animate: true),
+                      ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -2568,10 +2655,21 @@ class _NavigationPanel extends StatelessWidget {
 /// Floating recenter/"my location" button — 46px circle, hairline border
 /// and soft ink shadow, per Pantalla 2b.
 class _RecenterButton extends StatelessWidget {
-  const _RecenterButton({required this.isLoading, required this.onPressed});
+  const _RecenterButton({
+    required this.isLoading,
+    required this.onPressed,
+    this.icon = Icons.my_location,
+  });
 
   final bool isLoading;
   final VoidCallback onPressed;
+
+  /// [Icons.my_location] for the exploration/preview "center on me" use —
+  /// [_MapScreenState] passes a crosshair instead for live navigation's
+  /// "Recentrar" (see [_MapScreenState._recenterNavigationCamera]), so the
+  /// same 46px circle chrome serves both without a second near-identical
+  /// widget.
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -2602,11 +2700,7 @@ class _RecenterButton extends StatelessWidget {
                   color: AppColors.primary500,
                 ),
               )
-            : const Icon(
-                Icons.my_location,
-                size: 19,
-                color: AppColors.settingsTextDark,
-              ),
+            : Icon(icon, size: 19, color: AppColors.settingsTextDark),
       ),
     );
   }

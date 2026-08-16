@@ -23,6 +23,48 @@ final String nikaraMapStyle = jsonEncode([
       {'color': _hex(AppColors.backgroundCream)},
     ],
   },
+  // Explicit overrides for landscape/land-use/building polygons — the
+  // top-level 'geometry' rule above already colors everything cream, but
+  // Google's default style still bakes in its own gray fill + stroke for
+  // building footprints ("hyper-manzanas") that becomes visible once the
+  // camera zooms in close (navigation's tilted view especially), so these
+  // need their own explicit rules rather than relying on the generic one
+  // cascading down.
+  {
+    'featureType': 'landscape',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': _hex(AppColors.backgroundCream)},
+    ],
+  },
+  {
+    'featureType': 'landscape.man_made',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': _hex(AppColors.backgroundCream)},
+    ],
+  },
+  {
+    'featureType': 'landuse',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': _hex(AppColors.backgroundCream)},
+    ],
+  },
+  {
+    'featureType': 'building',
+    'elementType': 'geometry.fill',
+    'stylers': [
+      {'color': _hex(AppColors.backgroundCream)},
+    ],
+  },
+  {
+    'featureType': 'building',
+    'elementType': 'geometry.stroke',
+    'stylers': [
+      {'visibility': 'off'},
+    ],
+  },
   {
     'elementType': 'labels.icon',
     'stylers': [
