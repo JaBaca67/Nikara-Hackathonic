@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nikara_app/core/services/directions_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/services/tts_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
@@ -47,11 +48,19 @@ const double _kViewportPadding = 0.3;
 /// Design project "Rediseño de Níkara Home y Mapa", Pantalla 2b — exact
 /// colors, radii and shadows, not the older Figma pass.
 ///
-/// "Cómo llegar" fetches a real driving route via [DirectionsService] and
-/// switches this screen into a live GPS navigation mode (route polyline,
-/// rotating vehicle puck tracking [Geolocator.getPositionStream]) —
-/// entirely in-app, never handing off to the external Google Maps app —
-/// see [_MapScreenState._startNavigation].
+/// "Cómo llegar" fetches a real route via [DirectionsService] and switches
+/// this screen through two phases — entirely in-app, never handing off to
+/// the external Google Maps app:
+///  - **Fase 1 (preview)**: the camera frames origin + destination + the
+///    full route, a top selector switches between Automóvil/A pie (see
+///    [_MapScreenState._changeTripMode]), and a bottom panel shows
+///    distance/ETA/hora de llegada — see
+///    [_MapScreenState._startTripPreview].
+///  - **Fase 2 (live)**: "Iniciar viaje" tilts the camera into a driving
+///    view, tracks [Geolocator.getPositionStream], trims the golden
+///    `Polyline` down to what's left ahead of the vehicle, and narrates
+///    upcoming maneuvers via [TtsService] — see
+///    [_MapScreenState._confirmStartTrip].
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, this.initialFocus});
 
@@ -129,10 +138,52 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// [GoogleMap.onCameraIdle] re-clusters once the gesture settles.
   double _currentZoom = 13;
 
-  // --- Live navigation mode (see _startNavigation) ---
+  // --- Trip preview mode, Fase 1 (see _startTripPreview) ---
+  bool _isPreviewingTrip = false;
+  TravelMode _tripMode = TravelMode.driving;
+
+  /// Fixed at the moment "Cómo llegar" is tapped and reused for every mode
+  /// switch during preview — re-reading live GPS on every tap would be
+  /// pointless before the trip has actually started.
+  LatLng? _tripOrigin;
+
+  /// True while [_changeTripMode] is re-fetching a route for the newly
+  /// tapped mode — disables the mode selector so a second tap can't fire
+  /// a second request mid-flight.
+  bool _isChangingTripMode = false;
+
+  // --- Live navigation mode, Fase 2 (see _confirmStartTrip) ---
   bool _isNavigating = false;
   BusinessModel? _navigationTarget;
   DirectionsRoute? _navigationRoute;
+
+  /// Route polyline trimmed down to what's still ahead of the vehicle —
+  /// recomputed on every GPS fix (see [_onPositionUpdate] and
+  /// [nearestRouteIndex]). Falls back to the full route until the first
+  /// fix arrives.
+  List<LatLng>? _remainingRoutePoints;
+
+  /// Furthest route vertex index already confirmed passed — monotonic, so
+  /// a moment of GPS jitter can never make an already-driven stretch of
+  /// the polyline reappear.
+  int _routeTrimIndex = 0;
+
+  /// Index into `_navigationRoute!.steps` of the upcoming maneuver shown
+  /// in [_ManeuverBanner].
+  int _currentStepIndex = 0;
+
+  /// Distance in meters to the current step's maneuver point, recomputed
+  /// on every GPS fix — the "En 80 m" countdown in [_ManeuverBanner].
+  double? _distanceToStepMeters;
+
+  /// Guards the TTS announcement for the *current* step so it fires
+  /// exactly once per maneuver instead of on every GPS fix inside the
+  /// announce radius.
+  bool _announcedCurrentStep = false;
+
+  /// Live speed read straight from the GPS fix (`position.speed`, m/s)
+  /// converted to km/h — [_SpeedometerBadge]'s readout.
+  double? _currentSpeedKmh;
 
   /// Meters left along the route from the vehicle's current position,
   /// recomputed on every GPS fix (see [remainingRouteMeters]) — the
@@ -140,10 +191,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// fix arrives, when the route's own total distance stands in.
   double? _remainingMeters;
 
-  /// Voice guidance toggle in [_NavigationPanel]. Spoken turn-by-turn
-  /// prompts need a TTS engine this app doesn't ship yet, so today this
-  /// only records (and shows) the preference — the button is not faked as
-  /// working.
+  /// Voice guidance toggle in [_NavigationPanel] — mutes/unmutes
+  /// [TtsService] announcements without stopping navigation itself.
   bool _voiceGuidanceEnabled = false;
   StreamSubscription<Position>? _positionSub;
   late final AnimationController _vehicleLerpController;
@@ -154,13 +203,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   LatLng? _vehicleDisplayPosition;
   double _vehicleDisplayBearing = 0;
 
+  /// Full route while previewing (Fase 1), trimmed down to what's still
+  /// ahead of the vehicle once live navigation starts (Fase 2, see
+  /// [_onPositionUpdate]) — empty outside both modes.
   Set<Polyline> get _polylines {
     final route = _navigationRoute;
-    if (!_isNavigating || route == null) return const {};
+    if (route == null || (!_isNavigating && !_isPreviewingTrip)) {
+      return const {};
+    }
+    final points = _isNavigating
+        ? (_remainingRoutePoints ?? route.points)
+        : route.points;
+    if (points.length < 2) return const {};
     return {
       Polyline(
         polylineId: const PolylineId('__route__'),
-        points: route.points,
+        points: points,
         color: AppColors.primary500,
         width: 5,
       ),
@@ -210,16 +268,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _positionSub?.cancel();
     _vehicleLerpController.dispose();
     _mapController?.dispose();
+    unawaited(TtsService().stop());
     super.dispose();
   }
 
   /// A business was added/edited/deleted from this device — reload the full
   /// set and refit the camera so the change is visible right away. Skipped
-  /// mid-navigation: yanking the camera away from a route the user is
-  /// actively following would be worse than showing a stale pin, and
-  /// [_stopNavigation] reloads on the way out anyway.
+  /// mid-trip (preview or live): yanking the camera away from a route the
+  /// user is planning or actively following would be worse than showing a
+  /// stale pin, and [_stopNavigation]/[_cancelTripPreview] reload on the
+  /// way out anyway.
   void _onBusinessesChanged() {
-    if (_isNavigating) return;
+    if (_isNavigating || _isPreviewingTrip) return;
     unawaited(_loadAllBusinessesAndFitCamera());
   }
 
@@ -434,7 +494,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// A small gold navigation "puck" — circle + upward chevron — drawn
   /// pointing north by default so [Marker.rotation] (bearing, clockwise
   /// degrees from north) rotates it to match the phone's real heading of
-  /// travel during [_startNavigation]'s live tracking.
+  /// travel during [_confirmStartTrip]'s live tracking.
   static Future<BitmapDescriptor> _buildVehicleBitmap({
     required double devicePixelRatio,
   }) async {
@@ -817,7 +877,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
           onNavigate: () {
             Navigator.of(sheetContext).pop();
-            _startNavigation(business);
+            _startTripPreview(business);
           },
           onViewProfile: () {
             Navigator.of(sheetContext).pop();
@@ -953,16 +1013,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// "Cómo llegar" — fetches a real driving route (following the actual
-  /// street network, never a straight line) from the device's current
-  /// position to [business] via [DirectionsService], draws it, and switches
-  /// the screen into live GPS navigation (see [_onPositionUpdate]) —
-  /// entirely in-app, never handing off to the external Google Maps app.
-  /// If a real route can't be fetched (no Directions key configured, no
-  /// network, no result), this shows the specific reason in a snackbar and
-  /// stays on the exploration map instead of ever drawing a fabricated
-  /// route.
-  Future<void> _startNavigation(BusinessModel business) async {
+  /// "Cómo llegar" — Fase 1: fetches the device's current position and a
+  /// real driving route (following the actual street network, never a
+  /// straight line) to [business] via [DirectionsService], then enters
+  /// route-preview mode instead of starting the trip immediately: the
+  /// camera frames origin + destination + the full route
+  /// ([_fitTripPreviewCamera]), a top selector lets the user switch modes
+  /// ([_changeTripMode]), and a bottom panel shows distance/ETA/hora de
+  /// llegada with the "Iniciar viaje" button that hands off to live
+  /// navigation (see [_confirmStartTrip]). If a real route can't be
+  /// fetched (no Directions key configured, no network, no result), this
+  /// shows the specific reason in a snackbar and stays on the exploration
+  /// map instead of ever drawing a fabricated route.
+  Future<void> _startTripPreview(BusinessModel business) async {
     debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
     final lat = business.latitude;
     final lng = business.longitude;
@@ -990,42 +1053,153 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     final origin = LatLng(position.latitude, position.longitude);
 
-    final DirectionsRoute route;
+    final route = await _fetchTripRoute(
+      origin: origin,
+      destination: destination,
+      mode: TravelMode.driving,
+    );
+    if (route == null || !mounted) return;
+
+    setState(() {
+      _isPreviewingTrip = true;
+      _tripMode = TravelMode.driving;
+      _tripOrigin = origin;
+      _navigationTarget = business;
+      _navigationRoute = route;
+      _selectedBusinessId = business.id;
+    });
+    // Hides MainLayout's bottom navigation bar for both trip phases — the
+    // carousel and the top search chrome hide themselves off
+    // `_isPreviewingTrip`/`_isNavigating` in build(), so the preview/live
+    // floating chrome is the only thing left.
+    MapFocusController().navigationActive.value = true;
+    await _fitTripPreviewCamera();
+  }
+
+  /// Shared by [_startTripPreview] and [_changeTripMode] — wraps
+  /// [DirectionsService.getRoute] with the friendly-snackbar-on-failure
+  /// behavior both need, returning `null` (instead of throwing) so callers
+  /// just check for that instead of duplicating a try/catch each.
+  Future<DirectionsRoute?> _fetchTripRoute({
+    required LatLng origin,
+    required LatLng destination,
+    required TravelMode mode,
+  }) async {
     try {
-      route = await DirectionsService().getRoute(
+      return await DirectionsService().getRoute(
         origin: origin,
         destination: destination,
+        mode: mode,
       );
     } on DirectionsServiceException catch (e) {
       debugPrint('[MapScreen] route failed: ${e.message}');
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
+      return null;
+    }
+  }
+
+  /// Fits the camera to origin + destination + the full route polyline via
+  /// [CameraUpdate.newLatLngBounds] (Fase 1's explicit spec) rather than
+  /// just the route's own points, so the user's current position and the
+  /// destination pin both stay inside the frame even if Directions'
+  /// `overview_polyline` starts/ends a few meters short of either.
+  Future<void> _fitTripPreviewCamera() async {
+    final origin = _tripOrigin;
+    final target = _navigationTarget;
+    final route = _navigationRoute;
+    if (origin == null || target == null || route == null) return;
+    final destination = LatLng(target.latitude!, target.longitude!);
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        _boundsForPoints([origin, destination, ...route.points]),
+        72,
+      ),
+    );
+  }
+
+  /// Mode-selector tap during preview — re-fetches the route for [mode]
+  /// from the same [_tripOrigin] and re-fits the camera without leaving
+  /// preview. A failed re-fetch leaves the previously-loaded route/mode on
+  /// screen rather than clearing it, so a flaky request doesn't strand the
+  /// preview with nothing drawn.
+  Future<void> _changeTripMode(TravelMode mode) async {
+    if (mode == _tripMode || _isChangingTripMode) return;
+    final origin = _tripOrigin;
+    final target = _navigationTarget;
+    if (origin == null || target == null || target.latitude == null) return;
+    setState(() => _isChangingTripMode = true);
+    final route = await _fetchTripRoute(
+      origin: origin,
+      destination: LatLng(target.latitude!, target.longitude!),
+      mode: mode,
+    );
+    if (!mounted) return;
+    if (route == null) {
+      setState(() => _isChangingTripMode = false);
       return;
     }
-    if (!mounted) return;
+    setState(() {
+      _tripMode = mode;
+      _navigationRoute = route;
+      _isChangingTripMode = false;
+    });
+    await _fitTripPreviewCamera();
+  }
+
+  /// "Iniciar viaje" — Fase 1 -> Fase 2: leaves preview and starts live GPS
+  /// navigation along the route already loaded for whichever [_tripMode]
+  /// the user landed on, tilting the camera into a driving view and
+  /// opening the position stream that drives [_onPositionUpdate].
+  Future<void> _confirmStartTrip() async {
+    final origin = _tripOrigin;
+    final route = _navigationRoute;
+    if (origin == null || route == null) return;
+
+    final initialBearing = route.points.length > 1
+        ? Geolocator.bearingBetween(
+            origin.latitude,
+            origin.longitude,
+            route.points[1].latitude,
+            route.points[1].longitude,
+          )
+        : 0.0;
 
     setState(() {
+      _isPreviewingTrip = false;
       _isNavigating = true;
-      _navigationTarget = business;
-      _navigationRoute = route;
       _remainingMeters = route.distanceMeters.toDouble();
+      _remainingRoutePoints = route.points;
+      _routeTrimIndex = 0;
+      _currentStepIndex = 0;
+      _distanceToStepMeters = null;
+      _announcedCurrentStep = false;
+      _currentSpeedKmh = null;
       _vehicleDisplayPosition = origin;
-      _vehicleDisplayBearing = 0;
+      _vehicleDisplayBearing = initialBearing;
       // The custom vehicle puck below replaces Google's own blue dot —
       // both on at once would show two overlapping user markers.
       _myLocationEnabled = false;
-      _selectedBusinessId = business.id;
     });
-    // Hides MainLayout's bottom navigation bar (Estado 19c) — the carousel
-    // and the top search chrome hide themselves off `_isNavigating` in
-    // build(), so the floating panel is the only chrome left.
-    MapFocusController().navigationActive.value = true;
 
+    // Immediate 3D driving transition — _onPositionUpdate takes over
+    // framing the camera from the first real GPS fix onward.
     await _mapController?.animateCamera(
-      CameraUpdate.newLatLngBounds(_boundsForPoints(route.points), 64),
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: origin,
+          zoom: 16.5,
+          tilt: 55,
+          bearing: initialBearing,
+        ),
+      ),
     );
+
+    if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
+      unawaited(TtsService().speak(route.steps.first.instruction));
+    }
 
     await _positionSub?.cancel();
     _positionSub = Geolocator.getPositionStream(
@@ -1036,6 +1210,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ).listen(_onPositionUpdate);
   }
 
+  /// Backs out of route preview (Fase 1) without ever starting a live
+  /// trip — the preview-phase mirror of [_stopNavigation], dropping back
+  /// to free exploration with the destination still selected.
+  Future<void> _cancelTripPreview() async {
+    MapFocusController().navigationActive.value = false;
+    final target = _navigationTarget;
+    setState(() {
+      _isPreviewingTrip = false;
+      _tripMode = TravelMode.driving;
+      _tripOrigin = null;
+      _navigationTarget = null;
+      _navigationRoute = null;
+    });
+    if (target != null) await _selectBusiness(target);
+  }
+
   /// "Cancelar viaje" — clears the route and drops back to Estado 19a/19b
   /// with the destination still selected, so the user lands back on that
   /// business's card instead of on a blank map.
@@ -1043,6 +1233,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _positionSub?.cancel();
     _positionSub = null;
     _vehicleLerpController.stop();
+    unawaited(TtsService().stop());
     MapFocusController().navigationActive.value = false;
     if (!mounted) return;
     final target = _navigationTarget;
@@ -1051,6 +1242,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _navigationTarget = null;
       _navigationRoute = null;
       _remainingMeters = null;
+      _remainingRoutePoints = null;
+      _routeTrimIndex = 0;
+      _currentStepIndex = 0;
+      _distanceToStepMeters = null;
+      _announcedCurrentStep = false;
+      _currentSpeedKmh = null;
+      _tripOrigin = null;
+      _tripMode = TravelMode.driving;
       _vehicleDisplayPosition = null;
       _myLocationEnabled = _userPosition != null;
     });
@@ -1074,13 +1273,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Distance to a step's maneuver point below which its TTS instruction
+  /// is announced (see [_onPositionUpdate]).
+  static const double _kManeuverAnnounceMeters = 80;
+
+  /// Distance to a step's maneuver point below which it's considered
+  /// reached — [_onPositionUpdate] advances the banner to the next step.
+  static const double _kManeuverAdvanceMeters = 25;
+
   /// Fires on every raw GPS fix while navigating — computes the real
   /// movement bearing (not the phone's compass heading, which drifts and
   /// jumps a lot more) from the last displayed position, then animates
   /// [_vehicleDisplayPosition]/[_vehicleDisplayBearing] toward the new fix
   /// over [_vehicleLerpController]'s duration instead of snapping straight
   /// to it, so the puck glides smoothly between updates like a real
-  /// turn-by-turn app instead of jittering.
+  /// turn-by-turn app instead of jittering. Also trims the drawn route
+  /// down to what's ahead of the vehicle, advances/announces the upcoming
+  /// maneuver, and updates the speedometer.
   void _onPositionUpdate(Position position) {
     final newPos = LatLng(position.latitude, position.longitude);
     final previous = _vehicleDisplayPosition;
@@ -1119,11 +1328,48 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final route = _navigationRoute;
     if (route != null && mounted) {
+      _routeTrimIndex = nearestRouteIndex(
+        routePoints: route.points,
+        current: newPos,
+        minIndex: _routeTrimIndex,
+      );
+      final trimmedPoints = [newPos, ...route.points.sublist(_routeTrimIndex)];
+
+      var stepIndex = _currentStepIndex;
+      var distanceToStep = _distanceToStepMeters;
+      var announced = _announcedCurrentStep;
+      if (stepIndex < route.steps.length) {
+        final step = route.steps[stepIndex];
+        distanceToStep = Geolocator.distanceBetween(
+          newPos.latitude,
+          newPos.longitude,
+          step.startLocation.latitude,
+          step.startLocation.longitude,
+        );
+        if (!announced &&
+            distanceToStep <= _kManeuverAnnounceMeters &&
+            _voiceGuidanceEnabled) {
+          announced = true;
+          unawaited(TtsService().speak(step.instruction));
+        }
+        if (distanceToStep <= _kManeuverAdvanceMeters &&
+            stepIndex < route.steps.length - 1) {
+          stepIndex++;
+          announced = false;
+          distanceToStep = null;
+        }
+      }
+
       setState(() {
         _remainingMeters = remainingRouteMeters(
-          routePoints: route.points,
+          routePoints: trimmedPoints,
           current: newPos,
         );
+        _remainingRoutePoints = trimmedPoints;
+        _currentStepIndex = stepIndex;
+        _distanceToStepMeters = distanceToStep;
+        _announcedCurrentStep = announced;
+        _currentSpeedKmh = (position.speed * 3.6).clamp(0, 300);
       });
     }
 
@@ -1136,7 +1382,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           CameraPosition(
             target: newPos,
             zoom: 16.5,
-            tilt: 45,
+            tilt: 55,
             bearing: targetBearing,
           ),
         ),
@@ -1169,6 +1415,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return km < 1
         ? '${(km * 1000).round()} m restantes'
         : '${km.toStringAsFixed(1)} km restantes';
+  }
+
+  /// Trip preview's (Fase 1) total distance readout, e.g. "4.3 km"/"850 m".
+  String get _tripPreviewDistanceLabel {
+    final route = _navigationRoute;
+    if (route == null) return '';
+    return route.distanceKm < 1
+        ? '${route.distanceMeters} m'
+        : '${route.distanceKm.toStringAsFixed(1)} km';
+  }
+
+  /// Trip preview's (Fase 1) estimated clock-time arrival, e.g. "14:32" —
+  /// `DateTime.now()` plus the route's total duration. Recomputed on every
+  /// build (not cached), same as [_remainingEtaLabel]/[_tripPreviewDistanceLabel].
+  String get _tripPreviewArrivalLabel {
+    final route = _navigationRoute;
+    if (route == null) return '';
+    final arrival = DateTime.now().add(
+      Duration(seconds: route.durationSeconds),
+    );
+    return '${arrival.hour.toString().padLeft(2, '0')}:'
+        '${arrival.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Live navigation's (Fase 2) maneuver banner countdown, e.g. "En 350 m".
+  String get _maneuverDistanceLabel {
+    final meters = _distanceToStepMeters;
+    if (meters == null) return '';
+    return meters < 1000
+        ? 'En ${meters.round()} m'
+        : 'En ${(meters / 1000).toStringAsFixed(1)} km';
   }
 
   void _onVehicleLerpTick() {
@@ -1207,11 +1484,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final markers = <Marker>{};
 
-    // Decluttered while navigating — only the destination pin (plus the
-    // vehicle puck below) stays on screen, matching a real turn-by-turn
-    // view. No clustering needed either: it's always exactly one pin.
+    // Decluttered during both trip phases — only the destination pin (plus
+    // the vehicle puck below, once live) stays on screen, so the preview's
+    // bounds-fit camera and the live turn-by-turn view aren't cluttered
+    // with unrelated pins. No clustering needed either: it's always
+    // exactly one pin.
     final target = _navigationTarget;
-    if (_isNavigating && target != null) {
+    if ((_isNavigating || _isPreviewingTrip) && target != null) {
       final icon = _pinBitmapFor(
         mapPinCategoryFor(target.category),
         selected: true,
@@ -1303,8 +1582,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Tapping a cluster badge zooms/pans to fit exactly its members'
-  /// bounds — reuses [_boundsForPoints], the same helper [_startNavigation]
-  /// uses to fit a route — rather than a blind fixed zoom-in step, so a
+  /// bounds — reuses [_boundsForPoints], the same helper
+  /// [_fitTripPreviewCamera] uses to fit a route — rather than a blind
+  /// fixed zoom-in step, so a
   /// cluster of 2 close-together pins and one of 9 scattered pins each
   /// resolve in one tap instead of sometimes needing a second.
   Future<void> _onClusterTap(MapCluster cluster) async {
@@ -1350,8 +1630,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             // Skipped while navigating: the camera moves on every GPS fix
             // there, and each of those settling into a viewport re-fetch
             // would be a request per fix for pins that are hidden anyway.
+            // Also skipped mid-preview, whose bounds-fit camera moves
+            // (initial fit, mode switches) aren't the user panning around.
             onCameraIdle: () {
-              if (_isNavigating) return;
+              if (_isNavigating || _isPreviewingTrip) return;
               unawaited(_loadBusinessesInViewport());
             },
             // Hard zoom limits + a bounds constraint are what keep the
@@ -1392,10 +1674,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           // Floating chrome — search bar, filter button, category chips —
           // each with its own hairline border/shadow directly over the
-          // map, per Pantalla 2b (no enclosing glass panel). Estado 19c
-          // hides all of it: while following a route the only chrome left
-          // is the floating navigation panel at the bottom.
-          if (!_isNavigating)
+          // map, per Pantalla 2b (no enclosing glass panel). Hidden during
+          // both trip phases: Fase 1's mode selector and Fase 2's maneuver
+          // banner take over the top of the screen instead.
+          if (!_isNavigating && !_isPreviewingTrip)
             SafeArea(
               bottom: false,
               child: Padding(
@@ -1457,13 +1739,40 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
+          // Fase 1 — route preview: a close button to back out
+          // ([_cancelTripPreview]) plus the Automóvil/A pie mode selector
+          // ([_changeTripMode]), replacing the search chrome while a route
+          // is being planned but not yet started.
+          if (_isPreviewingTrip)
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Row(
+                  children: [
+                    _CircleIconButton(
+                      icon: Icons.close_rounded,
+                      onTap: _cancelTripPreview,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _TripModeSelector(
+                        mode: _tripMode,
+                        isLoading: _isChangingTripMode,
+                        onChanged: _changeTripMode,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Persistent "Recomendaciones destacadas" carousel (Pantalla 2a) —
           // replaces the old tap-to-open modal preview: every filtered
           // business gets a card. Scrolling through them is browse-only —
           // it neither selects nor moves the camera; only tapping a card
           // (or its pin) commits to it (see _selectBusiness /
           // _onCarouselCardTapped / _onMarkerTapped).
-          if (!_isNavigating && filtered.isNotEmpty)
+          if (!_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty)
             Positioned(
               left: 0,
               right: 0,
@@ -1505,7 +1814,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     business.longitude,
                                   ),
                                   onTap: () => _onCarouselCardTapped(business),
-                                  onNavigate: () => _startNavigation(business),
+                                  onNavigate: () => _startTripPreview(business),
                                   onViewProfile: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
@@ -1526,10 +1835,50 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
+          // Fase 1 — route preview's bottom panel: total distance, ETA,
+          // hora estimada de llegada, and the gold "Iniciar viaje" button
+          // that hands off to live navigation (see [_confirmStartTrip]).
+          if (_isPreviewingTrip && _navigationTarget != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: _TripPreviewPanel(
+                    destinationName: _navigationTarget!.name,
+                    distanceLabel: _tripPreviewDistanceLabel,
+                    etaLabel: _remainingEtaLabel,
+                    arrivalLabel: _tripPreviewArrivalLabel,
+                    onStart: _confirmStartTrip,
+                  ),
+                ),
+              ),
+            ),
+          // Fase 2 — live navigation's top maneuver banner: next turn
+          // instruction + distance countdown, with an icon derived from
+          // Directions' `maneuver` keyword (see [_maneuverIcon]).
+          if (_isNavigating &&
+              _navigationRoute != null &&
+              _currentStepIndex < _navigationRoute!.steps.length)
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: _ManeuverBanner(
+                  instruction:
+                      _navigationRoute!.steps[_currentStepIndex].instruction,
+                  maneuver: _navigationRoute!.steps[_currentStepIndex].maneuver,
+                  distanceLabel: _maneuverDistanceLabel,
+                ),
+              ),
+            ),
           // Estado 19c — floating bottom panel: ETA badge, remaining
           // distance + destination, and the Voz / Cancelar viaje actions.
           // MainLayout's bottom nav is hidden while this shows (see
-          // _startNavigation), so it sits directly on the bottom edge.
+          // _confirmStartTrip), so it sits directly on the bottom edge.
           if (_isNavigating && _navigationTarget != null)
             Positioned(
               left: 0,
@@ -1550,17 +1899,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
+          // Fase 2 — speedometer: current GPS speed (position.speed, m/s,
+          // converted to km/h in [_onPositionUpdate]), bottom-left so it
+          // never overlaps the recenter button or the bottom panel.
+          if (_isNavigating && _currentSpeedKmh != null)
+            Positioned(
+              left: 16,
+              bottom: _kNavigationPanelHeight + 16,
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                child: _SpeedometerBadge(speedKmh: _currentSpeedKmh!),
+              ),
+            ),
           AnimatedPositioned(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
             right: 16,
             // Sits just above whatever occupies the bottom of the screen:
-            // the navigation panel (19c), the carousel (Pantalla 2a,
-            // whose own height animates between its compact and expanded
-            // states — see [_carouselHeight]), or nothing at all (Pantalla
-            // 2b's bottom-right corner).
+            // the navigation panel (19c), the trip preview panel (Fase 1),
+            // the carousel (Pantalla 2a, whose own height animates between
+            // its compact and expanded states — see [_carouselHeight]), or
+            // nothing at all (Pantalla 2b's bottom-right corner).
             bottom: _isNavigating
                 ? _kNavigationPanelHeight + 16
+                : _isPreviewingTrip
+                ? _kTripPreviewPanelHeight + 16
                 : (filtered.isEmpty ? 16 : _carouselHeight + 16),
             child: SafeArea(
               top: false,
@@ -1576,17 +1940,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Mutes/unmutes [TtsService] announcements for the rest of the trip —
+  /// disabling mid-utterance stops it immediately rather than letting it
+  /// finish. Toggling back on doesn't replay anything; it just lets the
+  /// *next* maneuver (see [_onPositionUpdate]) speak.
   void _toggleVoiceGuidance() {
     setState(() => _voiceGuidanceEnabled = !_voiceGuidanceEnabled);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _voiceGuidanceEnabled
-              ? 'Guía por voz activada. Las indicaciones habladas llegan pronto.'
-              : 'Guía por voz desactivada.',
-        ),
-      ),
-    );
+    if (!_voiceGuidanceEnabled) unawaited(TtsService().stop());
   }
 }
 
@@ -1610,6 +1970,418 @@ const double _kCompactBadgeSlotHeight = 26;
 /// Vertical space [_NavigationPanel] takes at the bottom of the screen —
 /// what the recenter button clears while navigating.
 const double _kNavigationPanelHeight = 132;
+
+/// Vertical space [_TripPreviewPanel] takes at the bottom of the screen —
+/// what the recenter button clears during route preview (Fase 1).
+const double _kTripPreviewPanelHeight = 170;
+
+/// Maps a Directions API `maneuver` keyword to the icon
+/// [_ManeuverBanner]/[_TripModeButton]-style chrome draws it with. `null`
+/// (a step with no special maneuver, typically the route's first "head on
+/// X street" step) falls back to a plain forward arrow.
+IconData _maneuverIcon(String? maneuver) {
+  return switch (maneuver) {
+    'turn-left' => Icons.turn_left_rounded,
+    'turn-right' => Icons.turn_right_rounded,
+    'turn-slight-left' => Icons.turn_slight_left_rounded,
+    'turn-slight-right' => Icons.turn_slight_right_rounded,
+    'turn-sharp-left' => Icons.turn_sharp_left_rounded,
+    'turn-sharp-right' => Icons.turn_sharp_right_rounded,
+    'uturn-left' => Icons.u_turn_left_rounded,
+    'uturn-right' => Icons.u_turn_right_rounded,
+    'roundabout-left' => Icons.roundabout_left_rounded,
+    'roundabout-right' => Icons.roundabout_right_rounded,
+    'merge' => Icons.merge_rounded,
+    'fork-left' || 'ramp-left' || 'keep-left' => Icons.fork_left_rounded,
+    'fork-right' || 'ramp-right' || 'keep-right' => Icons.fork_right_rounded,
+    _ => Icons.straight_rounded,
+  };
+}
+
+/// Icon for each [TravelMode] in [_TripModeSelector] — kept in the
+/// presentation layer rather than on the enum itself (a plain
+/// service-layer data type in `directions_service.dart`).
+IconData _travelModeIcon(TravelMode mode) => switch (mode) {
+  TravelMode.driving => Icons.directions_car_rounded,
+  TravelMode.walking => Icons.directions_walk_rounded,
+};
+
+/// Small circular icon button — the preview's "close" affordance next to
+/// [_TripModeSelector], same hairline-surface chrome as [_RecenterButton]
+/// but sized for a top corner instead of floating over the map.
+class _CircleIconButton extends StatelessWidget {
+  const _CircleIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.mapControlBorder),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.mapControlShadowStrong,
+              offset: Offset(0, 4),
+              blurRadius: 14,
+            ),
+          ],
+        ),
+        child: Icon(icon, size: 18, color: AppColors.settingsTextDark),
+      ),
+    );
+  }
+}
+
+/// Fase 1's top mode selector — a pill holding one [_TripModeButton] per
+/// [TravelMode], plus a small spinner while [isLoading] (a mode switch is
+/// re-fetching its route — see [_MapScreenState._changeTripMode]).
+class _TripModeSelector extends StatelessWidget {
+  const _TripModeSelector({
+    required this.mode,
+    required this.isLoading,
+    required this.onChanged,
+  });
+
+  final TravelMode mode;
+  final bool isLoading;
+  final ValueChanged<TravelMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.mapControlBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.mapControlShadow,
+            offset: Offset(0, 4),
+            blurRadius: 16,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final travelMode in TravelMode.values)
+            _TripModeButton(
+              travelMode: travelMode,
+              selected: travelMode == mode,
+              onTap: isLoading ? null : () => onChanged(travelMode),
+            ),
+          if (isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primary500,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TripModeButton extends StatelessWidget {
+  const _TripModeButton({
+    required this.travelMode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TravelMode travelMode;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary500 : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _travelModeIcon(travelMode),
+              size: 16,
+              color: selected
+                  ? AppColors.settingsTextDark
+                  : AppColors.settingsTextMuted,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              travelMode.label,
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 12,
+                color: selected
+                    ? AppColors.settingsTextDark
+                    : AppColors.settingsTextMuted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fase 1's bottom panel — total distance/ETA/hora de llegada plus the
+/// gold "Iniciar viaje" CTA that hands off to live navigation.
+class _TripPreviewPanel extends StatelessWidget {
+  const _TripPreviewPanel({
+    required this.destinationName,
+    required this.distanceLabel,
+    required this.etaLabel,
+    required this.arrivalLabel,
+    required this.onStart,
+  });
+
+  final String destinationName;
+  final String distanceLabel;
+  final String etaLabel;
+  final String arrivalLabel;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.mapControlBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.mapCardShadow,
+            offset: Offset(0, 8),
+            blurRadius: 26,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            destinationName,
+            style: AppTextStyles.sectionTitle.copyWith(
+              color: AppColors.settingsTextDark,
+              fontSize: 16,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _TripStat(label: 'Distancia', value: distanceLabel),
+              ),
+              Expanded(
+                child: _TripStat(label: 'Tiempo', value: etaLabel),
+              ),
+              Expanded(
+                child: _TripStat(label: 'Llegada', value: arrivalLabel),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.navigation_rounded, size: 18),
+              label: const Text('Iniciar viaje'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary500,
+                foregroundColor: AppColors.settingsTextDark,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TripStat extends StatelessWidget {
+  const _TripStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: AppTextStyles.sectionTitle.copyWith(
+            color: AppColors.settingsTextDark,
+            fontSize: 15,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: AppTextStyles.mapRowCaption,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+/// Fase 2's top maneuver banner — the upcoming turn's icon (from
+/// [_maneuverIcon]), distance countdown, and instruction text, kept in
+/// sync with [_MapScreenState._currentStepIndex].
+class _ManeuverBanner extends StatelessWidget {
+  const _ManeuverBanner({
+    required this.instruction,
+    required this.maneuver,
+    required this.distanceLabel,
+  });
+
+  final String instruction;
+  final String? maneuver;
+  final String distanceLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.mapControlBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.mapCardShadow,
+            offset: Offset(0, 8),
+            blurRadius: 24,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: AppColors.primary500,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _maneuverIcon(maneuver),
+              size: 22,
+              color: AppColors.settingsTextDark,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (distanceLabel.isNotEmpty)
+                  Text(distanceLabel, style: AppTextStyles.mapRowCaption),
+                const SizedBox(height: 2),
+                Text(
+                  instruction,
+                  style: AppTextStyles.sectionTitle.copyWith(
+                    color: AppColors.settingsTextDark,
+                    fontSize: 15,
+                    height: 1.2,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fase 2's speedometer — `position.speed * 3.6` (m/s -> km/h), refreshed
+/// on every GPS fix (see [_MapScreenState._onPositionUpdate]).
+class _SpeedometerBadge extends StatelessWidget {
+  const _SpeedometerBadge({required this.speedKmh});
+
+  final double speedKmh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 58,
+      height: 58,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.mapControlBorder, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.mapControlShadowStrong,
+            offset: Offset(0, 4),
+            blurRadius: 14,
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            speedKmh.round().toString(),
+            style: AppTextStyles.sectionTitle.copyWith(
+              color: AppColors.settingsTextDark,
+              fontSize: 18,
+              height: 1,
+            ),
+          ),
+          Text(
+            'km/h',
+            style: AppTextStyles.mapRowCaption.copyWith(fontSize: 8),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Estado 19c — the only chrome left while a route is being followed:
 /// a white Níkara card floating over the bottom of the map with the live
@@ -2188,8 +2960,8 @@ class _BusinessCarouselCard extends StatelessWidget {
   /// city shows.
   final double? distanceKm;
 
-  /// Switches [MapScreen] into live in-app navigation — see
-  /// [_MapScreenState._startNavigation].
+  /// Starts the in-app trip preview (Fase 1) — see
+  /// [_MapScreenState._startTripPreview].
   final VoidCallback onNavigate;
   final VoidCallback onViewProfile;
 

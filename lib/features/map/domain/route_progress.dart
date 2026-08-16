@@ -47,3 +47,36 @@ double remainingRouteMeters({
   }
   return meters;
 }
+
+/// Index of the route vertex nearest to [current], never earlier than
+/// [minIndex] — the monotonic building block behind [MapScreen]'s dynamic
+/// route trimming (drawing the golden `Polyline` only for the stretch
+/// still ahead of the vehicle). Passing the previous call's result back in
+/// as [minIndex] keeps the search forward-only, so a moment of GPS jitter
+/// can never snap the trim point back to an already-driven vertex and make
+/// a passed stretch of the line reappear.
+///
+/// Returns `0` for an empty [routePoints].
+int nearestRouteIndex({
+  required List<LatLng> routePoints,
+  required LatLng current,
+  int minIndex = 0,
+}) {
+  if (routePoints.isEmpty) return 0;
+  final start = minIndex.clamp(0, routePoints.length - 1);
+  var nearestIndex = start;
+  var nearestDistance = double.infinity;
+  for (var i = start; i < routePoints.length; i++) {
+    final distance = Geolocator.distanceBetween(
+      current.latitude,
+      current.longitude,
+      routePoints[i].latitude,
+      routePoints[i].longitude,
+    );
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = i;
+    }
+  }
+  return nearestIndex;
+}
