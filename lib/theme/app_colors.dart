@@ -452,4 +452,14 @@ abstract class AppColors {
 
   /// Auth field placeholder text.
   static const authPlaceholder = Color(0xFFB7A9A0);
+
+  // --- ECO module ("Actividades Ambientales" tab + detail/create flows) ---
+
+  /// Brand olive — the ECO tab's active nav-bar pill (replacing the gold
+  /// every other tab uses) and the "Unido"/organizer-verified accents
+  /// across the ECO feature. Distinct from [ecoGreen500] (lighter,
+  /// yellow-olive ECO *badge* fill used elsewhere) and [ecoForest] (a
+  /// separate dark green reserved for the business-detail screen) — this
+  /// exact hex is this module's own design spec.
+  static const ecoActive = Color(0xFF76882A);
 }

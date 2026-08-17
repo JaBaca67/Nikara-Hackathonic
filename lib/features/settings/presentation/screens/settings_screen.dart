@@ -4,6 +4,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Ajustes screen (Figma node 361:323). Notification/privacy toggles and
@@ -258,6 +259,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const RegisterBusinessWizard(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              _SettingsSection(
+                label: 'Comunidad ECO',
+                children: [
+                  _SettingsRow(
+                    icon: Icons.eco_outlined,
+                    iconTint: AppColors.ecoActive,
+                    title: 'Registrar actividad ECO',
+                    caption: 'Organiza una jornada ambiental',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CreateEcoActivityScreen(),
                         ),
                       );
                     },

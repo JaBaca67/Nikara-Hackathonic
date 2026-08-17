@@ -24,6 +24,27 @@ class MapFocusRequest {
   final double longitude;
 }
 
+/// A "trace a route to this point right now" request — unlike
+/// [MapFocusRequest] (which only centers/selects a pin), `MapScreen`
+/// listens for this and immediately starts Fase 1's route preview
+/// (`_MapScreenState._startTripPreview`) toward [latitude]/[longitude].
+/// [EcoDetailScreen]'s "Cómo llegar" uses this instead of
+/// [MapFocusRequest] because an eco activity isn't a `BusinessModel`.
+@immutable
+class MapRouteRequest {
+  const MapRouteRequest({
+    required this.destinationId,
+    required this.destinationName,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  final String destinationId;
+  final String destinationName;
+  final double latitude;
+  final double longitude;
+}
+
 /// Cross-screen channel for the map, in the same spirit as
 /// [MainTabController]: a screen pushed on top of `MainLayout` can ask the
 /// map (which lives alive-but-offstage inside `MainLayout`'s IndexedStack)
@@ -44,6 +65,11 @@ class MapFocusController {
   /// null means "no pending request".
   final ValueNotifier<MapFocusRequest?> pendingFocus = ValueNotifier(null);
 
+  /// `MapScreen` listens to this the same way as [pendingFocus], but
+  /// starts a route preview instead of just centering a pin — see
+  /// [MapRouteRequest].
+  final ValueNotifier<MapRouteRequest?> pendingRoute = ValueNotifier(null);
+
   /// True while the map is in live navigation (Estado 19c). `MainLayout`
   /// listens to it to hide the bottom navigation bar, so the floating
   /// navigation panel owns the bottom of the screen.
@@ -52,6 +78,13 @@ class MapFocusController {
   /// Switches to the map tab and asks it to focus [request].
   void focusOnBusiness(MapFocusRequest request) {
     pendingFocus.value = request;
+    MainTabController().switchTo(mapTabIndex);
+  }
+
+  /// Switches to the map tab and asks it to immediately start a route
+  /// preview toward [request].
+  void startRoutePreview(MapRouteRequest request) {
+    pendingRoute.value = request;
     MainTabController().switchTo(mapTabIndex);
   }
 }

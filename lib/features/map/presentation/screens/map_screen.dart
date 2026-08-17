@@ -252,6 +252,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         widget.initialFocus ?? MapFocusController().pendingFocus.value;
     MapFocusController().pendingFocus.value = null;
     MapFocusController().pendingFocus.addListener(_onFocusRequested);
+    MapFocusController().pendingRoute.addListener(_onRouteRequested);
     // Businesses created/edited/deleted on THIS device (the wizard bumps
     // this on save) — so coming back from "Registra tu negocio" shows the
     // new pin without reopening the map.
@@ -276,6 +277,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     MapFocusController().pendingFocus.removeListener(_onFocusRequested);
+    MapFocusController().pendingRoute.removeListener(_onRouteRequested);
     MapFocusController().navigationActive.value = false;
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
     _realtimeReloadDebounce?.cancel();
@@ -320,6 +322,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _pendingFocus = request;
     // Mid-load, _loadAllBusinessesAndFitCamera consumes it when it lands.
     if (!_isLoading) unawaited(_consumePendingFocus());
+  }
+
+  /// Another screen (today: "Cómo llegar" in `EcoDetailScreen`) asked the
+  /// map to start a route preview toward an arbitrary point that isn't a
+  /// registered business.
+  void _onRouteRequested() {
+    final request = MapFocusController().pendingRoute.value;
+    if (request == null) return;
+    MapFocusController().pendingRoute.value = null;
+    unawaited(_startTripPreview(_syntheticDestination(request)));
+  }
+
+  /// [_startTripPreview] takes a [BusinessModel] because every other "Cómo
+  /// llegar" trigger already has one on hand — rather than generalizing
+  /// the whole trip-preview/live-navigation state (`_navigationTarget` and
+  /// everything downstream of it: marker rendering, [_selectBusiness]'s
+  /// carousel sync, pin category icon) to a smaller shared type, a
+  /// non-eco-coupled route request is adapted into a throwaway
+  /// [BusinessModel] that's never persisted, displayed as a business card,
+  /// or looked up by id — only [BusinessModel.name]/[latitude]/[longitude]
+  /// (and [category], just so the decluttered nav pin picks the eco glyph)
+  /// actually get read during a trip.
+  BusinessModel _syntheticDestination(MapRouteRequest request) {
+    return BusinessModel(
+      id: request.destinationId,
+      name: request.destinationName,
+      category: 'Eco',
+      description: '',
+      city: '',
+      locationText: '',
+      latitude: request.latitude,
+      longitude: request.longitude,
+      contactPhone: '',
+      allowsReservations: false,
+      hostName: '',
+    );
   }
 
   /// Centers and selects [_pendingFocus]'s business — the pin turns gold

@@ -9,7 +9,8 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// [GuestGuardBottomSheet].
 enum GuestFeature {
   favoritos('tus favoritos', Icons.favorite_border),
-  perfil('tu perfil', Icons.person_outline);
+  perfil('tu perfil', Icons.person_outline),
+  eco('actividades ECO', Icons.eco_outlined);
 
   const GuestFeature(this.label, this.icon);
 

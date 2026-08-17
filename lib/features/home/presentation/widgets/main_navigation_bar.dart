@@ -3,15 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 class _NavItem {
-  const _NavItem(this.icon, this.label);
+  const _NavItem(
+    this.icon,
+    this.label, {
+    this.activeColor = AppColors.primary500,
+  });
 
   final IconData icon;
   final String label;
+
+  /// Pill fill color while this tab is selected — every tab uses the
+  /// brand gold except ECO, whose active bubble is the module's own olive
+  /// (see [AppColors.ecoActive]'s doc comment).
+  final Color activeColor;
 }
 
 const List<_NavItem> _kNavItems = [
   _NavItem(Icons.home_rounded, 'Inicio'),
   _NavItem(Icons.map_rounded, 'Mapa'),
+  _NavItem(Icons.eco_rounded, 'ECO', activeColor: AppColors.ecoActive),
   _NavItem(Icons.route_rounded, 'Rutas'),
   _NavItem(Icons.person_rounded, 'Perfil'),
 ];
@@ -20,8 +30,8 @@ const _kPillSize = Size(40, 32);
 const _kPillTopInset = 4.0;
 
 /// Floating bottom navigation bar — rounded pill card, off-white/cream
-/// background, soft shadow — with a single gold pill that slides between
-/// tabs instead of each icon owning its own static highlight box. Fully
+/// background, soft shadow — with a single pill that slides between tabs
+/// instead of each icon owning its own static highlight box. Fully
 /// controlled by the parent (typically `MainLayout` driving an
 /// `IndexedStack`) — this widget holds no selection state of its own.
 class MainNavigationBar extends StatelessWidget {
@@ -65,11 +75,12 @@ class MainNavigationBar extends StatelessWidget {
                       slotWidth * currentIndex +
                       (slotWidth - _kPillSize.width) / 2,
                   top: _kPillTopInset,
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
                     width: _kPillSize.width,
                     height: _kPillSize.height,
                     decoration: BoxDecoration(
-                      color: AppColors.primary500,
+                      color: _kNavItems[currentIndex].activeColor,
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
