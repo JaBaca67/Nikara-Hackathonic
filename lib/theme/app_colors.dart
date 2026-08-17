@@ -374,10 +374,38 @@ abstract class AppColors {
   static const detailInstagramIconBg = Color(0xFFFBECEF);
 
   /// "Cómo llegar" mini-map illustration — base fill, road stripe, green
-  /// area, in that layering order.
+  /// area, in that layering order, plus the drop shadow under its pin.
   static const detailMapBg = Color(0xFFE9E5DC);
   static const detailMapRoad = Color(0xFFDCD6C8);
   static const detailMapGreen = Color(0xFFDDE7DC);
+  static const detailMapPinShadow = Color(0x38261D0C);
+
+  /// Cover scrim gradients over the hero photo — top stop, bottom stop and
+  /// the fully-transparent end both fade into. Named here (instead of
+  /// inlined hexes) now that the cover is a component shared by the
+  /// business and ECO detail screens (`shared/widgets/detail_sections.dart`).
+  static const detailCoverScrimTop = Color(0x6B1A1510);
+  static const detailCoverScrimBottom = Color(0xCC1A1510);
+  static const detailCoverScrimClear = Color(0x001A1510);
+
+  /// "1 / N" photo-counter pill on the cover — fill and hairline border.
+  static const detailCoverCounterBg = Color(0x801A1510);
+  static const detailCoverCounterBorder = Color(0x40FDFDFD);
+
+  /// Gold glow under the selected segmented tab — [primary500] @ 28%.
+  static const detailSegmentGlow = Color(0x47F0B500);
+
+  /// Barely-there gold lift under the host/organizer card — [primary500]
+  /// @ 8%.
+  static const detailCardGlow = Color(0x14F0B500);
+
+  /// Upward shadow of the fixed bottom action bar — [settingsTextDark]
+  /// @ 8%.
+  static const detailBottomBarShadow = Color(0x14261D0C);
+
+  /// Gold halo under a primary CTA in a detail screen's bottom bar —
+  /// [primary500] @ 32%.
+  static const detailPrimaryButtonGlow = Color(0x52F0B500);
 
   // --- Wizard redesign (Claude Design turn 4, "Creación y edición de
   // negocio local — flujo en 4 pasos", Pantallas 4a-4e) ---
@@ -462,4 +490,15 @@ abstract class AppColors {
   /// separate dark green reserved for the business-detail screen) — this
   /// exact hex is this module's own design spec.
   static const ecoActive = Color(0xFF76882A);
+
+  /// Participant avatar stack ("+18") on the ECO cards and detail screen.
+  /// `eco_participants` carries no photo, so the stack is drawn with these
+  /// warm neutral fills cycled in order — enough variation to read as
+  /// several distinct people without faking identities.
+  static const ecoAvatarStack = <Color>[
+    Color(0xFFD9C9A8),
+    Color(0xFFCEC1A1),
+    Color(0xFFB6AFAE),
+    Color(0xFFE4DCCB),
+  ];
 }

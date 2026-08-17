@@ -42,6 +42,11 @@ class EcoActivityModel {
     this.organizerId,
     this.organizerName,
     this.organizerVerified = false,
+    this.organizationId,
+    this.organizationName,
+    this.organizationHandle,
+    this.organizationLogoUrl,
+    this.organizationVerified = false,
     this.requirements = const [],
     required this.createdAt,
     this.participantCount = 0,
@@ -67,6 +72,20 @@ class EcoActivityModel {
   final String? organizerId;
   final String? organizerName;
   final bool organizerVerified;
+
+  /// `eco_activities.organization_id` — nulo cuando la jornada la publicó
+  /// una persona a título personal; con valor, la publicó esa fundación en
+  /// su nombre. Los cuatro campos que siguen vienen del embed
+  /// `organizations(...)` de [EcoService], no de columnas propias de la
+  /// fila, y quedan nulos si la migración 010 todavía no corrió.
+  final String? organizationId;
+  final String? organizationName;
+  final String? organizationHandle;
+  final String? organizationLogoUrl;
+  final bool organizationVerified;
+
+  bool get isFromOrganization =>
+      organizationId != null && organizationId!.isNotEmpty;
 
   /// "Ropa cómoda y botas cerradas", "Botella de agua...", the detail
   /// screen's "Requisitos y qué llevar" checklist and
@@ -101,12 +120,45 @@ class EcoActivityModel {
 
   bool get isFull => spotsAvailable == 0;
 
-  /// "Fundación Nicaragua Verde" or a generic fallback for an activity
-  /// with no [organizerName] set.
-  String get organizerDisplayName =>
-      (organizerName == null || organizerName!.trim().isEmpty)
-      ? 'Organizador'
-      : organizerName!;
+  /// Quién firma la jornada: el nombre de la fundación cuando se publicó en
+  /// su nombre, si no el de la persona que la creó, y un genérico como
+  /// último recurso.
+  String get organizerDisplayName {
+    final organization = organizationName;
+    if (isFromOrganization &&
+        organization != null &&
+        organization.trim().isNotEmpty) {
+      return organization;
+    }
+    return (organizerName == null || organizerName!.trim().isEmpty)
+        ? 'Organizador'
+        : organizerName!;
+  }
+
+  /// El badge "VERIFICADO" del bloque Organizador — de la fundación cuando
+  /// la jornada es suya, si no el flag propio de la fila.
+  bool get organizerIsVerified =>
+      isFromOrganization ? organizationVerified : organizerVerified;
+
+  /// "@cocibolcavive" cuando publica una fundación; nulo en las personales
+  /// (`profiles` no tiene handle).
+  String? get organizerHandle {
+    final handle = organizationHandle;
+    if (!isFromOrganization || handle == null || handle.trim().isEmpty) {
+      return null;
+    }
+    return '@$handle';
+  }
+
+  /// Iniciales del organizador para el avatar cuando no hay logo ni foto.
+  String get organizerInitials {
+    final parts = organizerDisplayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty);
+    final letters = parts.map((p) => p[0]).take(2).join().toUpperCase();
+    return letters.isEmpty ? '?' : letters;
+  }
 
   /// Purpose-built instead of a full `copyWith` (nothing else in this app
   /// mutates an already-loaded [EcoActivityModel] locally) — lets
@@ -129,6 +181,11 @@ class EcoActivityModel {
       organizerId: organizerId,
       organizerName: organizerName,
       organizerVerified: organizerVerified,
+      organizationId: organizationId,
+      organizationName: organizationName,
+      organizationHandle: organizationHandle,
+      organizationLogoUrl: organizationLogoUrl,
+      organizationVerified: organizationVerified,
       requirements: requirements,
       createdAt: createdAt,
       participantCount: participantCount,
@@ -146,6 +203,10 @@ class EcoActivityModel {
     // of a second round-trip per activity.
     final participants = (row['eco_participants'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
+    // `organizations(...)` es un embed to-one: un mapa cuando la jornada
+    // tiene organization_id, null cuando no, y ausente por completo si la
+    // consulta corrió sin el embed (migración 010 sin aplicar).
+    final organization = row['organizations'] as Map<String, dynamic>?;
     return EcoActivityModel(
       id: row['id'] as String,
       title: row['title'] as String,
@@ -159,6 +220,12 @@ class EcoActivityModel {
       organizerId: row['organizer_id'] as String?,
       organizerName: row['organizer_name'] as String?,
       organizerVerified: row['organizer_verified'] as bool? ?? false,
+      organizationId:
+          row['organization_id'] as String? ?? organization?['id'] as String?,
+      organizationName: organization?['name'] as String?,
+      organizationHandle: organization?['handle'] as String?,
+      organizationLogoUrl: organization?['logo_url'] as String?,
+      organizationVerified: organization?['is_verified'] as bool? ?? false,
       requirements:
           (row['requirements'] as List<dynamic>?)?.cast<String>() ?? const [],
       createdAt: DateTime.parse(row['created_at'] as String),

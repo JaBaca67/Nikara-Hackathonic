@@ -5,18 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
-import 'package:nikara_app/features/eco/presentation/widgets/eco_status_badge.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
+import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todas';
 
-/// "Actividades Ambientales" tab — category filters, a "ya te uniste a X"
-/// banner, one featured Hero card (the soonest upcoming activity), and a
-/// list of the rest. Ports the "Pantallaecomockgeneral" reference exactly:
-/// same section order, same badge language ("Unido"/"Disponible"/
-/// "Completada" via [EcoStatusBadge]).
+/// Cuántas actividades entran al carrusel de destacadas. Las mismas siguen
+/// apareciendo en "Todas las actividades" de abajo: el carrusel promociona,
+/// no reemplaza al listado (si no, filtrar por categoría podía dejar la
+/// lista vacía teniendo actividades).
+const int _kFeaturedCount = 3;
+
+/// Pestaña "Actividades Ambientales" — filtros por categoría, banner de
+/// "ya te uniste a X", carrusel deslizable de destacadas y el listado
+/// completo con la tarjeta extendida ([EcoActivityCard]).
 class EcoMainScreen extends StatefulWidget {
   const EcoMainScreen({super.key});
 
@@ -31,6 +37,9 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   String _selectedCategory = _kAllCategories;
   Future<void> Function()? _unsubscribe;
 
+  final _featuredController = PageController();
+  int _featuredPage = 0;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +50,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   @override
   void dispose() {
     EcoService.revision.removeListener(_onChanged);
+    _featuredController.dispose();
     unawaited(_unsubscribe?.call() ?? Future<void>.value());
     super.dispose();
   }
@@ -57,9 +67,9 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
         _loadError = null;
         _isLoading = false;
       });
-      // Opened after the first successful load, same reasoning as
-      // BusinessStorageService's realtime subscription — no point holding
-      // a socket open for a screen that never managed to load.
+      // Se abre después de la primera carga exitosa, mismo criterio que la
+      // suscripción realtime de BusinessStorageService — no tiene sentido
+      // mantener un socket abierto para una pantalla que nunca cargó.
       _unsubscribe ??= EcoService().subscribeToChanges(_onChanged);
     } on EcoServiceException catch (e) {
       if (!mounted) return;
@@ -77,17 +87,25 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   int get _joinedCount =>
       _activities.where((a) => a.isJoinedByCurrentUser).length;
 
-  /// The single featured card — the soonest-starting activity the user
-  /// hasn't already joined stands out more ("join this one next") than
-  /// re-featuring one they're already committed to; falls back to
-  /// whichever is soonest if every filtered activity is already joined.
-  EcoActivityModel? get _hero {
+  /// Las destacadas del carrusel: primero las que aún no se unió (leen como
+  /// "únete a esta") y luego el resto, siempre en orden de proximidad —
+  /// `getUpcomingActivities` ya devuelve la lista de la más próxima a la
+  /// más lejana.
+  List<EcoActivityModel> get _featured {
     final filtered = _filtered;
-    if (filtered.isEmpty) return null;
-    for (final activity in filtered) {
-      if (!activity.isJoinedByCurrentUser) return activity;
-    }
-    return filtered.first;
+    final ordered = [
+      ...filtered.where((a) => !a.isJoinedByCurrentUser),
+      ...filtered.where((a) => a.isJoinedByCurrentUser),
+    ];
+    return ordered.take(_kFeaturedCount).toList();
+  }
+
+  void _selectCategory(String category) {
+    setState(() {
+      _selectedCategory = category;
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
   }
 
   Future<void> _openDetail(EcoActivityModel activity) async {
@@ -133,10 +151,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
-    final hero = _hero;
-    final rest = hero == null
-        ? filtered
-        : filtered.where((a) => a.id != hero.id).toList();
+    final featured = _featured;
 
     return Scaffold(
       backgroundColor: AppColors.backgroundCream,
@@ -157,8 +172,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                     const SizedBox(height: 18),
                     _CategoryFilterRow(
                       selected: _selectedCategory,
-                      onSelected: (category) =>
-                          setState(() => _selectedCategory = category),
+                      onSelected: _selectCategory,
                     ),
                     const SizedBox(height: 16),
                     if (_joinedCount > 0) ...[
@@ -168,18 +182,30 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                     if (filtered.isEmpty)
                       const _EcoEmptyState()
                     else ...[
-                      if (hero != null) ...[
-                        _EcoHeroCard(
-                          activity: hero,
-                          onTap: () => _openDetail(hero),
-                          onJoin: () => _toggleJoin(hero),
+                      if (featured.isNotEmpty) ...[
+                        _FeaturedCarousel(
+                          activities: featured,
+                          controller: _featuredController,
+                          page: _featuredPage,
+                          onPageChanged: (page) =>
+                              setState(() => _featuredPage = page),
+                          onOpen: _openDetail,
+                          onJoin: _toggleJoin,
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 22),
                       ],
-                      for (final activity in rest)
+                      Text(
+                        'Todas las actividades',
+                        style: AppTextStyles.sectionTitle.copyWith(
+                          color: AppColors.settingsTextDark,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      for (final activity in filtered)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
-                          child: _EcoListCard(
+                          child: EcoActivityCard(
                             activity: activity,
                             onTap: () => _openDetail(activity),
                           ),
@@ -341,11 +367,86 @@ class _JoinedBanner extends StatelessWidget {
   }
 }
 
-/// The single featured card — cover, organizer chip, "Empieza pronto" tag
-/// when [EcoActivityModel.startsSoon], title/description, and the two
-/// primary actions ("Unirme"/"Más información").
-class _EcoHeroCard extends StatelessWidget {
-  const _EcoHeroCard({
+/// Carrusel de destacadas — [PageView] de tarjetas grandes con sus puntos
+/// indicadores, en lugar de la única tarjeta destacada que había antes.
+class _FeaturedCarousel extends StatelessWidget {
+  const _FeaturedCarousel({
+    required this.activities,
+    required this.controller,
+    required this.page,
+    required this.onPageChanged,
+    required this.onOpen,
+    required this.onJoin,
+  });
+
+  /// Alto fijo del [PageView]: la portada, los dos textos y los botones son
+  /// de alto conocido, y el texto largo se recorta con ellipsis dentro de
+  /// los [Flexible] de la tarjeta.
+  static const _cardHeight = 340.0;
+
+  final List<EcoActivityModel> activities;
+  final PageController controller;
+  final int page;
+  final ValueChanged<int> onPageChanged;
+  final ValueChanged<EcoActivityModel> onOpen;
+  final ValueChanged<EcoActivityModel> onJoin;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = page.clamp(0, activities.length - 1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: _cardHeight,
+          child: PageView.builder(
+            controller: controller,
+            itemCount: activities.length,
+            onPageChanged: onPageChanged,
+            itemBuilder: (context, index) {
+              final activity = activities[index];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: _FeaturedCard(
+                  activity: activity,
+                  onTap: () => onOpen(activity),
+                  onJoin: () => onJoin(activity),
+                ),
+              );
+            },
+          ),
+        ),
+        if (activities.length > 1) ...[
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < activities.length; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  width: i == current ? 18 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: i == current
+                        ? AppColors.ecoActive
+                        : AppColors.mapControlBorder,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Tarjeta destacada — portada, chip del organizador, tag "Empieza pronto",
+/// título/descripción y las dos acciones principales ("Unirme"/"Unido" y
+/// "Más información").
+class _FeaturedCard extends StatelessWidget {
+  const _FeaturedCard({
     required this.activity,
     required this.onTap,
     required this.onJoin,
@@ -383,13 +484,16 @@ class _EcoHeroCard extends StatelessWidget {
                 children: [
                   LocalImage(
                     path: null,
-                    fallbackIcon: Icons.park_rounded,
+                    fallbackIcon: ecoCategoryIcon(activity.category),
                     fallbackIconSize: 36,
                   ),
                   Positioned(
                     left: 12,
                     top: 12,
-                    child: _OrganizerChip(activity: activity, dark: true),
+                    child: _OrganizerChip(
+                      activity: activity,
+                      onTap: () => openEcoOrganizerProfile(context, activity),
+                    ),
                   ),
                   if (activity.startsSoon)
                     Positioned(
@@ -417,83 +521,95 @@ class _EcoHeroCard extends StatelessWidget {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  activity.title,
-                  style: AppTextStyles.sectionTitle.copyWith(
-                    color: AppColors.settingsTextDark,
-                    fontSize: 18,
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Flexible(
+                    child: Text(
+                      activity.title,
+                      style: AppTextStyles.sectionTitle.copyWith(
+                        color: AppColors.settingsTextDark,
+                        fontSize: 18,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  activity.description,
-                  style: AppTextStyles.settingsSubtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 46,
-                        child: ElevatedButton(
-                          onPressed:
-                              activity.status == EcoActivityStatus.completed
-                              ? null
-                              : onJoin,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary500,
-                            foregroundColor: AppColors.settingsTextDark,
-                            disabledBackgroundColor:
-                                AppColors.settingsBackground,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                  const SizedBox(height: 6),
+                  Flexible(
+                    child: Text(
+                      activity.description,
+                      style: AppTextStyles.settingsSubtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: ElevatedButton(
+                            onPressed:
+                                activity.status == EcoActivityStatus.completed
+                                ? null
+                                : onJoin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary500,
+                              foregroundColor: AppColors.settingsTextDark,
+                              disabledBackgroundColor:
+                                  AppColors.settingsBackground,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              textStyle: AppTextStyles.mapRowTitle.copyWith(
+                                fontSize: 14,
+                              ),
                             ),
-                            textStyle: AppTextStyles.mapRowTitle.copyWith(
-                              fontSize: 14,
+                            child: Text(
+                              activity.isJoinedByCurrentUser
+                                  ? 'Unido'
+                                  : 'Unirme',
                             ),
-                          ),
-                          child: Text(
-                            activity.isJoinedByCurrentUser ? 'Unido' : 'Unirme',
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: SizedBox(
-                        height: 46,
-                        child: OutlinedButton(
-                          onPressed: onTap,
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: AppColors.settingsBackground,
-                            foregroundColor: AppColors.settingsTextDark,
-                            side: const BorderSide(
-                              color: AppColors.mapControlBorder,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: SizedBox(
+                          height: 46,
+                          child: OutlinedButton(
+                            onPressed: onTap,
+                            style: OutlinedButton.styleFrom(
+                              backgroundColor: AppColors.settingsBackground,
+                              foregroundColor: AppColors.settingsTextDark,
+                              side: const BorderSide(
+                                color: AppColors.mapControlBorder,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              textStyle: AppTextStyles.mapRowTitle.copyWith(
+                                fontSize: 13,
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            textStyle: AppTextStyles.mapRowTitle.copyWith(
-                              fontSize: 13,
+                            child: const Text(
+                              'Más información',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          child: const Text('Más información'),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -502,121 +618,61 @@ class _EcoHeroCard extends StatelessWidget {
   }
 }
 
-class _EcoListCard extends StatelessWidget {
-  const _EcoListCard({required this.activity, required this.onTap});
+/// "FUNDACIÓN NICARAGUA VERDE" — quién firma la jornada, sobre la portada
+/// de la tarjeta destacada: el logo de la fundación (o el ícono genérico
+/// cuando publica una persona), su nombre y el check de verificación.
+/// Tocarlo abre el perfil público correspondiente.
+class _OrganizerChip extends StatelessWidget {
+  const _OrganizerChip({required this.activity, required this.onTap});
 
   final EcoActivityModel activity;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final logo = activity.organizationLogoUrl;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.fromLTRB(logo == null ? 10 : 5, 5, 10, 5),
         decoration: BoxDecoration(
-          color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.mapControlBorder),
+          color: AppColors.detailCoverCounterBg,
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: const SizedBox(
-                width: 64,
-                height: 64,
-                child: LocalImage(path: null, fallbackIcon: Icons.eco_outlined),
+            if (logo == null || logo.isEmpty)
+              const Icon(
+                Icons.groups_rounded,
+                size: 12,
+                color: AppColors.surface100,
+              )
+            else
+              EcoOrganizerAvatar(activity: activity, size: 20),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                activity.organizerDisplayName.toUpperCase(),
+                style: AppTextStyles.mapRowTitle.copyWith(
+                  fontSize: 10,
+                  letterSpacing: 0.3,
+                  color: AppColors.surface100,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _OrganizerChip(activity: activity, dark: false),
-                  const SizedBox(height: 4),
-                  Text(
-                    activity.title,
-                    style: AppTextStyles.sectionTitle.copyWith(
-                      color: AppColors.settingsTextDark,
-                      fontSize: 14,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    activity.description,
-                    style: AppTextStyles.settingsSubtitle.copyWith(
-                      fontSize: 12,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+            if (activity.organizerIsVerified) ...[
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.verified_rounded,
+                size: 12,
+                color: AppColors.ecoGreen500,
               ),
-            ),
-            const SizedBox(width: 8),
-            EcoStatusBadge(status: activity.status),
+            ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// "VOLUNTARIOS DEL PACÍFICO" small-caps organizer label, with the people
-/// icon from the mock — [dark] swaps to a light-on-dark chip for use over
-/// the hero card's cover image vs. a plain muted label in a list row.
-class _OrganizerChip extends StatelessWidget {
-  const _OrganizerChip({required this.activity, required this.dark});
-
-  final EcoActivityModel activity;
-  final bool dark;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = Text(
-      activity.organizerDisplayName.toUpperCase(),
-      style: AppTextStyles.mapRowTitle.copyWith(
-        fontSize: 10,
-        letterSpacing: 0.3,
-        color: dark ? AppColors.surface100 : AppColors.settingsTextMuted,
-      ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    );
-    final icon = Icon(
-      Icons.groups_rounded,
-      size: 12,
-      color: dark ? AppColors.surface100 : AppColors.settingsTextMuted,
-    );
-    if (!dark) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          icon,
-          const SizedBox(width: 4),
-          Flexible(child: label),
-        ],
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          icon,
-          const SizedBox(width: 5),
-          Flexible(child: label),
-        ],
       ),
     );
   }

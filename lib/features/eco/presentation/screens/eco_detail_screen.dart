@@ -5,40 +5,27 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_participant_avatars.dart';
+import 'package:nikara_app/features/eco/utils/eco_format.dart';
+import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
-import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-const List<String> _kSpanishMonths = [
-  'ene',
-  'feb',
-  'mar',
-  'abr',
-  'may',
-  'jun',
-  'jul',
-  'ago',
-  'sep',
-  'oct',
-  'nov',
-  'dic',
-];
-
-String _formatDateTime(DateTime dt) {
-  final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-  final minute = dt.minute.toString().padLeft(2, '0');
-  final period = dt.hour < 12 ? 'a.m.' : 'p.m.';
-  return '${dt.day} ${_kSpanishMonths[dt.month - 1]} · $hour12:$minute $period';
-}
-
-/// Full-screen activity detail — Estados 1/2/3 of "fases-pantalla-eco":
-/// Disponible ("Unirme", gold), Participando ("Abandonar actividad",
-/// outline), Completada (inactive badge, final participant count). Takes
-/// the [EcoActivityModel] directly (same convention as
-/// `BusinessDetailScreen`) rather than just an id, then quietly refreshes
-/// itself once mounted so a stale card (e.g. someone else joined a second
-/// ago) doesn't linger.
+/// Detalle de una actividad — Estados 1/2/3 de "fases-pantalla-eco":
+/// Disponible ("Unirme", dorado), Participando ("Abandonar actividad") y
+/// Completada (acción inhabilitada).
+///
+/// Comparte por completo la estructura de `BusinessDetailScreen` (portada
+/// con botones flotantes, tarjeta flotante de datos rápidos, pestañas
+/// segmentadas, secciones y barra inferior fija) reutilizando los widgets
+/// de `shared/widgets/detail_sections.dart`; solo cambia el contenido.
+/// Recibe el [EcoActivityModel] completo, no un id, y se refresca solo al
+/// montarse para que una tarjeta desactualizada (alguien se unió hace un
+/// segundo) no se quede colgada.
 class EcoDetailScreen extends StatefulWidget {
   const EcoDetailScreen({super.key, required this.activity});
 
@@ -49,9 +36,11 @@ class EcoDetailScreen extends StatefulWidget {
 }
 
 class _EcoDetailScreenState extends State<EcoDetailScreen> {
+  static const _coverHeight = 296.0;
+
   late EcoActivityModel _activity = widget.activity;
+  int _tab = 0;
   bool _showFullDescription = false;
-  bool _showParticipantsTab = false;
   bool _isSubmitting = false;
 
   List<({String userId, DateTime joinedAt})>? _participants;
@@ -69,9 +58,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       final fresh = await EcoService().getActivityById(_activity.id);
       if (fresh != null && mounted) setState(() => _activity = fresh);
     } on EcoServiceException {
-      // Background refresh — keep showing the copy the caller already had
-      // rather than surfacing an error for something the user didn't ask
-      // for directly.
+      // Refresco en segundo plano — se sigue mostrando la copia que ya
+      // traía quien navegó hasta acá en vez de un error por algo que la
+      // persona no pidió directamente.
     }
   }
 
@@ -91,7 +80,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       } else {
         await EcoService().leaveActivity(_activity.id);
       }
-      _participants = null; // stale after a join/leave — refetch on demand.
+      _participants = null; // quedó viejo tras unirse/salir — se re-pide.
     } on EcoServiceException catch (e) {
       setState(() {
         _activity = _activity.withParticipation(
@@ -132,9 +121,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     }
   }
 
-  /// "Cómo llegar" — switches to the Mapa tab and immediately starts route
-  /// preview toward this activity's coordinates (see [MapRouteRequest]).
-  void _onDirections() {
+  /// "Abrir mapa" de la tarjeta "Cómo llegar" — cambia a la pestaña Mapa y
+  /// arranca la vista previa de ruta hacia las coordenadas de la actividad
+  /// (ver [MapRouteRequest]).
+  void _openDirections() {
     if (!_activity.hasCoordinates) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -156,607 +146,358 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  void _showComingSoon() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+  }
+
+  /// "Agregar a ruta" — suma esta jornada como parada de un itinerario vía
+  /// [AddToRouteBottomSheet].
+  Future<void> _addToRoute() async {
+    await AddToRouteBottomSheet.showForEcoActivity(context, _activity);
+  }
+
+  /// Segunda columna de la tarjeta flotante — cambia con el estado, igual
+  /// que en la referencia: "Cupo" (Disponible), "Tu estado" (Participando),
+  /// "Estado" (Completada).
+  DetailQuickInfoItem get _statusInfoItem {
+    final activity = _activity;
+    return switch (activity.status) {
+      EcoActivityStatus.available => DetailQuickInfoItem(
+        label: 'Cupo',
+        value: activity.spotsAvailable == null
+            ? 'Abierto'
+            : '${activity.spotsAvailable} disponibles',
+        valueColor: AppColors.ecoActive,
+      ),
+      EcoActivityStatus.joined => const DetailQuickInfoItem(
+        label: 'Tu estado',
+        value: 'Participando',
+        valueColor: AppColors.ecoActive,
+      ),
+      EcoActivityStatus.completed => const DetailQuickInfoItem(
+        label: 'Estado',
+        value: 'Finalizada',
+        valueColor: AppColors.settingsTextMuted,
+      ),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final activity = _activity;
-    final status = activity.status;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
-      body: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _CoverHeader(activity: activity)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 140),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        activity.title,
-                        style: AppTextStyles.sectionTitle.copyWith(
-                          color: AppColors.settingsTextDark,
-                          fontSize: 22,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      _StatsRow(activity: activity, status: status),
-                      const SizedBox(height: 10),
-                      _DirectionsChip(onTap: _onDirections),
-                      const SizedBox(height: 18),
-                      _TabRow(
-                        showingParticipants: _showParticipantsTab,
-                        onSelect: (participants) {
-                          setState(() => _showParticipantsTab = participants);
-                          if (participants) unawaited(_loadParticipants());
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      if (_showParticipantsTab)
-                        _ParticipantsTab(
-                          activity: activity,
-                          participants: _participants,
-                          names: _participantNames,
-                          isLoading: _loadingParticipants,
-                        )
-                      else
-                        _InfoTab(
-                          activity: activity,
-                          showFullDescription: _showFullDescription,
-                          onToggleDescription: () => setState(
-                            () => _showFullDescription = !_showFullDescription,
-                          ),
-                        ),
-                    ],
-                  ),
+      backgroundColor: AppColors.settingsBackground,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DetailCoverImage(
+              photos: const [],
+              height: _coverHeight,
+              fallbackIcon: ecoCategoryIcon(activity.category),
+              onBack: () => Navigator.of(context).maybePop(),
+              caption: _CoverCaption(activity: activity),
+              actions: [
+                DetailCoverIconButton(
+                  icon: Icons.add_road_rounded,
+                  onTap: _addToRoute,
+                ),
+                const SizedBox(width: 8),
+                DetailCoverIconButton(
+                  icon: Icons.ios_share,
+                  onTap: _showComingSoon,
+                ),
+              ],
+            ),
+            Transform.translate(
+              offset: const Offset(0, -18),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: DetailQuickInfoCard(
+                  items: [
+                    DetailQuickInfoItem(
+                      label: 'Fecha y hora',
+                      value: formatEcoDateTimeShort(activity.startTime),
+                    ),
+                    _statusInfoItem,
+                  ],
                 ),
               ),
-            ],
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _BottomAction(
-              status: status,
-              isSubmitting: _isSubmitting,
-              onTap: _toggleJoin,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CoverHeader extends StatelessWidget {
-  const _CoverHeader({required this.activity});
-
-  final EcoActivityModel activity;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 240,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const LocalImage(
-            path: null,
-            fallbackIcon: Icons.park_rounded,
-            fallbackIconSize: 40,
-          ),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _CoverCircleButton(
-                    icon: Icons.arrow_back_rounded,
-                    onTap: () => Navigator.of(context).maybePop(),
+                  DetailSegmentedTabs(
+                    labels: const ['Información', 'Participantes'],
+                    selected: _tab,
+                    onChanged: (tab) {
+                      setState(() => _tab = tab);
+                      if (tab == 1) unawaited(_loadParticipants());
+                    },
                   ),
-                  _CoverCircleButton(
-                    icon: Icons.ios_share_rounded,
-                    onTap: () {},
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _tab == 0
+                        ? _InformationTab(
+                            activity: activity,
+                            showFullDescription: _showFullDescription,
+                            onToggleDescription: () => setState(
+                              () =>
+                                  _showFullDescription = !_showFullDescription,
+                            ),
+                            onDirections: _openDirections,
+                          )
+                        : _ParticipantsTab(
+                            participants: _participants,
+                            names: _participantNames,
+                            isLoading: _loadingParticipants,
+                          ),
                   ),
                 ],
               ),
             ),
-          ),
-          Positioned(
-            left: 16,
-            bottom: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                activity.category.toUpperCase(),
-                style: AppTextStyles.mapRowTitle.copyWith(
-                  fontSize: 11,
-                  letterSpacing: 0.3,
-                  color: AppColors.ecoActive,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CoverCircleButton extends StatelessWidget {
-  const _CoverCircleButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          shape: BoxShape.circle,
+          ],
         ),
-        child: Icon(icon, size: 18, color: AppColors.surface100),
+      ),
+      bottomNavigationBar: _EcoActionBar(
+        status: activity.status,
+        isSubmitting: _isSubmitting,
+        onTap: _toggleJoin,
       ),
     );
   }
 }
 
-/// "Fecha y hora" + a second stat that changes with [status] — "Cupo"
-/// (Disponible), "Tu estado" (Participando), "Estado" (Completada) — same
-/// two-column layout across all three, per the reference.
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({required this.activity, required this.status});
+/// Bloque inferior de la portada — pill de categoría, título y lugar sobre
+/// el degradado, con las mismas medidas que el de la pantalla de negocio.
+class _CoverCaption extends StatelessWidget {
+  const _CoverCaption({required this.activity});
 
   final EcoActivityModel activity;
-  final EcoActivityStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final (secondLabel, secondValue, valueColor) = switch (status) {
-      EcoActivityStatus.available => (
-        'Cupo',
-        activity.spotsAvailable == null
-            ? 'Abierto'
-            : '${activity.spotsAvailable} disponibles',
-        AppColors.ecoActive,
-      ),
-      EcoActivityStatus.joined => (
-        'Tu estado',
-        'Participando',
-        AppColors.ecoActive,
-      ),
-      EcoActivityStatus.completed => (
-        'Estado',
-        'Finalizada',
-        AppColors.settingsTextMuted,
-      ),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.mapControlBorder),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _Stat(
-              label: 'Fecha y hora',
-              value: _formatDateTime(activity.startTime),
-            ),
-          ),
-          Container(width: 1, height: 32, color: AppColors.mapControlBorder),
-          Expanded(
-            child: _Stat(
-              label: secondLabel,
-              value: secondValue,
-              valueColor: valueColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, this.valueColor});
-
-  final String label;
-  final String value;
-  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: AppTextStyles.mapRowCaption),
-        const SizedBox(height: 3),
+        if (activity.category.trim().isNotEmpty)
+          DetailCoverTagPill(
+            label: activity.category.toUpperCase(),
+            background: AppColors.surface100,
+            foreground: AppColors.ecoActive,
+          ),
+        const SizedBox(height: 10),
         Text(
-          value,
-          style: AppTextStyles.mapRowTitle.copyWith(
-            fontSize: 13,
-            color: valueColor ?? AppColors.settingsTextDark,
+          activity.title,
+          style: AppTextStyles.detailTitle.copyWith(
+            color: AppColors.surface100,
+            fontSize: 22,
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
+        if (activity.location.trim().isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(
+                Icons.place_rounded,
+                size: 14,
+                color: AppColors.surface100,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  activity.location,
+                  style: AppTextStyles.detailRatingCount.copyWith(
+                    color: AppColors.surface100.withValues(alpha: 0.85),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
 }
 
-class _DirectionsChip extends StatelessWidget {
-  const _DirectionsChip({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: const Icon(Icons.directions_outlined, size: 16),
-        label: const Text('Cómo llegar'),
-        style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.settingsBackground,
-          foregroundColor: AppColors.settingsTextDark,
-          side: const BorderSide(color: AppColors.mapControlBorder),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 12),
-        ),
-      ),
-    );
-  }
-}
-
-class _TabRow extends StatelessWidget {
-  const _TabRow({required this.showingParticipants, required this.onSelect});
-
-  final bool showingParticipants;
-  final ValueChanged<bool> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _TabButton(
-          label: 'Información',
-          selected: !showingParticipants,
-          onTap: () => onSelect(false),
-        ),
-        const SizedBox(width: 10),
-        _TabButton(
-          label: 'Participantes',
-          selected: showingParticipants,
-          onTap: () => onSelect(true),
-        ),
-      ],
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary500 : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          label,
-          style: AppTextStyles.mapRowTitle.copyWith(
-            fontSize: 13,
-            color: selected
-                ? AppColors.settingsTextDark
-                : AppColors.settingsTextMuted,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoTab extends StatelessWidget {
-  const _InfoTab({
+/// Pestaña "Información" — participantes, descripción, Organizador,
+/// Requisitos y qué llevar, y la tarjeta "Cómo llegar", en ese orden y con
+/// el mismo espaciado entre secciones que la pantalla de negocio.
+class _InformationTab extends StatelessWidget {
+  const _InformationTab({
     required this.activity,
     required this.showFullDescription,
     required this.onToggleDescription,
+    required this.onDirections,
   });
 
   final EcoActivityModel activity;
   final bool showFullDescription;
   final VoidCallback onToggleDescription;
+  final VoidCallback onDirections;
 
   @override
   Widget build(BuildContext context) {
+    final sections = <Widget>[
+      _ParticipantsPreview(count: activity.participantCount),
+      _DescriptionSection(
+        activity: activity,
+        expanded: showFullDescription,
+        onToggle: onToggleDescription,
+      ),
+      DetailSection(
+        title: 'Organizador',
+        child: DetailProfileCard(
+          avatar: EcoOrganizerAvatar(activity: activity, size: 48),
+          name: activity.organizerDisplayName,
+          // El handle de la fundación cuando publica una organización; para
+          // una jornada personal, la invitación a ver el perfil de quien la
+          // organiza.
+          caption:
+              activity.organizerHandle ??
+              (activity.isFromOrganization
+                  ? 'Organiza actividades ambientales'
+                  : 'Toca para ver su perfil'),
+          captionColor: AppColors.ecoActive,
+          verified: activity.organizerIsVerified,
+          accent: AppColors.ecoActive,
+          onTap: () => openEcoOrganizerProfile(context, activity),
+        ),
+      ),
+      if (activity.requirements.isNotEmpty)
+        DetailSection(
+          title: 'Requisitos y qué llevar',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final requirement in activity.requirements) ...[
+                DetailIconRow(
+                  icon: ecoRequirementIcon(requirement),
+                  label: requirement,
+                  iconColor: AppColors.ecoActive,
+                  iconBackground: AppColors.detailActivityIconBg,
+                ),
+                if (requirement != activity.requirements.last)
+                  const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      DetailSection(
+        title: 'Cómo llegar',
+        child: DetailMapCard(
+          address: activity.location.isEmpty
+              ? 'Ubicación por confirmar'
+              : activity.location,
+          caption: 'Se abrirá en el mapa de Níkara',
+          onTap: onDirections,
+          pinColor: AppColors.ecoActive,
+          pinIconColor: AppColors.surface100,
+        ),
+      ),
+    ];
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ParticipantAvatarsRow(count: activity.participantCount),
-        const SizedBox(height: 14),
-        Text(
-          activity.description,
-          style: AppTextStyles.settingsSubtitle.copyWith(height: 1.5),
-          maxLines: showFullDescription ? null : 3,
-          overflow: showFullDescription ? null : TextOverflow.ellipsis,
-        ),
-        if (activity.description.length > 140)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: GestureDetector(
-              onTap: onToggleDescription,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    showFullDescription ? 'Mostrar menos' : 'Mostrar más',
-                    style: AppTextStyles.mapRowTitle.copyWith(
-                      fontSize: 12,
-                      color: AppColors.ecoActive,
-                    ),
-                  ),
-                  Icon(
-                    showFullDescription
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    size: 16,
-                    color: AppColors.ecoActive,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        const SizedBox(height: 20),
-        Text(
-          'Organizador',
-          style: AppTextStyles.sectionTitle.copyWith(fontSize: 15),
-        ),
-        const SizedBox(height: 8),
-        _OrganizerCard(activity: activity),
-        if (activity.requirements.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text(
-            'Requisitos y qué llevar',
-            style: AppTextStyles.sectionTitle.copyWith(fontSize: 15),
-          ),
-          const SizedBox(height: 8),
-          for (final requirement in activity.requirements)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _RequirementRow(text: requirement),
-            ),
+        for (var i = 0; i < sections.length; i++) ...[
+          sections[i],
+          if (i != sections.length - 1) const SizedBox(height: 22),
         ],
       ],
     );
   }
 }
 
-class _ParticipantAvatarsRow extends StatelessWidget {
-  const _ParticipantAvatarsRow({required this.count});
+class _ParticipantsPreview extends StatelessWidget {
+  const _ParticipantsPreview({required this.count});
 
   final int count;
 
   @override
   Widget build(BuildContext context) {
-    const shown = 4;
-    final overlapCount = count > shown ? shown : count;
-    return Row(
-      children: [
-        SizedBox(
-          height: 32,
-          width: overlapCount == 0 ? 0 : 20.0 * (overlapCount - 1) + 32,
-          child: Stack(
-            children: [
-              for (var i = 0; i < overlapCount; i++)
-                Positioned(
-                  left: i * 20.0,
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.ecoGreen500.withValues(alpha: 0.5),
-                      border: Border.all(color: AppColors.surface100, width: 2),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          '+$count',
-          style: AppTextStyles.mapRowTitle.copyWith(
-            fontSize: 12,
-            color: AppColors.settingsTextMuted,
-          ),
-        ),
-      ],
-    );
+    if (count <= 0) {
+      return Text(
+        'Nadie se ha unido todavía — ¡sé la primera persona!',
+        style: AppTextStyles.settingsSubtitle,
+      );
+    }
+    return EcoParticipantAvatars(count: count);
   }
 }
 
-class _OrganizerCard extends StatelessWidget {
-  const _OrganizerCard({required this.activity});
+class _DescriptionSection extends StatelessWidget {
+  const _DescriptionSection({
+    required this.activity,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   final EcoActivityModel activity;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.mapControlBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.ecoGreen500.withValues(alpha: 0.3),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.park_rounded,
-              size: 20,
-              color: AppColors.ecoActive,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final description = activity.description.trim().isEmpty
+        ? 'Esta actividad todavía no tiene descripción.'
+        : activity.description;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          description,
+          style: AppTextStyles.detailDescriptionText,
+          maxLines: expanded ? null : 3,
+          overflow: expanded ? null : TextOverflow.ellipsis,
+        ),
+        if (description.length > 140) ...[
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: onToggle,
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        activity.organizerDisplayName,
-                        style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (activity.organizerVerified) ...[
-                      const SizedBox(width: 6),
-                      const _VerifiedBadge(),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 3),
                 Text(
-                  'Organiza actividades ambientales',
-                  style: AppTextStyles.mapRowCaption,
+                  expanded ? 'Mostrar menos' : 'Mostrar más',
+                  style: AppTextStyles.detailInlineLink.copyWith(
+                    color: AppColors.ecoActive,
+                  ),
+                ),
+                Icon(
+                  expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 15,
+                  color: AppColors.ecoActive,
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _VerifiedBadge extends StatelessWidget {
-  const _VerifiedBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.ecoActive.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.verified_rounded,
-            size: 11,
-            color: AppColors.ecoActive,
-          ),
-          const SizedBox(width: 3),
-          Text(
-            'VERIFICADO',
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 9,
-              letterSpacing: 0.2,
-              color: AppColors.ecoActive,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RequirementRow extends StatelessWidget {
-  const _RequirementRow({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.mapControlBorder),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.check_circle_outline_rounded,
-            size: 18,
-            color: AppColors.ecoActive,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: AppTextStyles.mapRowTitle.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }
 
 class _ParticipantsTab extends StatelessWidget {
   const _ParticipantsTab({
-    required this.activity,
     required this.participants,
     required this.names,
     required this.isLoading,
   });
 
-  final EcoActivityModel activity;
   final List<({String userId, DateTime joinedAt})>? participants;
   final Map<String, String> names;
   final bool isLoading;
@@ -776,69 +517,40 @@ class _ParticipantsTab extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
-          'Nadie se ha unido todavía — ¡sé el primero!',
+          'Nadie se ha unido todavía — ¡sé la primera persona!',
           textAlign: TextAlign.center,
           style: AppTextStyles.settingsSubtitle,
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          '${list.length} ${list.length == 1 ? 'persona participa' : 'personas participan'}',
-          style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
-        ),
-        const SizedBox(height: 10),
-        for (final participant in list)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.mapControlBorder),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.ecoGreen500.withValues(alpha: 0.4),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      size: 16,
-                      color: AppColors.ecoActive,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      names[participant.userId] ?? 'Voluntario',
-                      style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
+    return DetailSection(
+      title: list.length == 1
+          ? '1 persona participa'
+          : '${list.length} personas participan',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final participant in list) ...[
+            DetailIconRow(
+              icon: Icons.person,
+              label: names[participant.userId] ?? 'Voluntario',
+              iconColor: AppColors.ecoActive,
+              iconBackground: AppColors.detailActivityIconBg,
             ),
-          ),
-      ],
+            if (participant != list.last) const SizedBox(height: 8),
+          ],
+        ],
+      ),
     );
   }
 }
 
-/// Sticky bottom action — "Unirme" (gold, Disponible), "Abandonar
-/// actividad" (outline, Participando), or nothing at all once
-/// [EcoActivityStatus.completed].
-class _BottomAction extends StatelessWidget {
-  const _BottomAction({
+/// Barra inferior fija — "Unirme" (dorado), "Abandonar actividad" (outline
+/// de peligro) o la acción inhabilitada una vez que la actividad terminó.
+/// Siempre está presente para que el botón principal no se mueva de lugar
+/// entre estados.
+class _EcoActionBar extends StatelessWidget {
+  const _EcoActionBar({
     required this.status,
     required this.isSubmitting,
     required this.onTap,
@@ -850,58 +562,66 @@ class _BottomAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (status == EcoActivityStatus.completed) return const SizedBox.shrink();
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundCream,
-            borderRadius: BorderRadius.circular(20),
+    return DetailBottomBar(
+      child: SizedBox(
+        height: 48,
+        width: double.infinity,
+        child: switch (status) {
+          EcoActivityStatus.completed => FilledButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+            label: const Text('Actividad finalizada'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.segmentedTrackBg,
+              foregroundColor: AppColors.settingsTextMuted,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: AppTextStyles.detailBottomBarPrimary,
+            ),
           ),
-          child: SizedBox(
-            height: 52,
-            child: status == EcoActivityStatus.joined
-                ? OutlinedButton(
-                    onPressed: isSubmitting ? null : onTap,
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: AppColors.complementario1,
-                      foregroundColor: AppColors.settingsDanger,
-                      side: const BorderSide(color: AppColors.complementario2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: AppTextStyles.mapRowTitle.copyWith(
-                        fontSize: 14,
-                      ),
-                    ),
-                    child: isSubmitting
-                        ? const _ButtonSpinner(color: AppColors.settingsDanger)
-                        : const Text('Abandonar actividad'),
-                  )
-                : ElevatedButton(
-                    onPressed: isSubmitting ? null : onTap,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary500,
-                      foregroundColor: AppColors.settingsTextDark,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      textStyle: AppTextStyles.mapRowTitle.copyWith(
-                        fontSize: 14,
-                      ),
-                    ),
-                    child: isSubmitting
-                        ? const _ButtonSpinner(
-                            color: AppColors.settingsTextDark,
-                          )
-                        : const Text('Unirme'),
-                  ),
+          EcoActivityStatus.joined => OutlinedButton(
+            onPressed: isSubmitting ? null : onTap,
+            style: OutlinedButton.styleFrom(
+              backgroundColor: AppColors.complementario1,
+              foregroundColor: AppColors.settingsDanger,
+              side: const BorderSide(color: AppColors.complementario2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              textStyle: AppTextStyles.detailBottomBarSecondary,
+            ),
+            child: isSubmitting
+                ? const _ButtonSpinner(color: AppColors.settingsDanger)
+                : const Text('Abandonar actividad'),
           ),
-        ),
+          EcoActivityStatus.available => DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.detailPrimaryButtonGlow,
+                  offset: Offset(0, 4),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+            child: FilledButton(
+              onPressed: isSubmitting ? null : onTap,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary500,
+                foregroundColor: AppColors.settingsTextDark,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                textStyle: AppTextStyles.detailBottomBarPrimary,
+              ),
+              child: isSubmitting
+                  ? const _ButtonSpinner(color: AppColors.settingsTextDark)
+                  : const Text('Unirme'),
+            ),
+          ),
+        },
       ),
     );
   }

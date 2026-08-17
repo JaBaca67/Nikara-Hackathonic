@@ -10,7 +10,8 @@ import 'package:nikara_app/theme/app_theme.dart';
 enum GuestFeature {
   favoritos('tus favoritos', Icons.favorite_border),
   perfil('tu perfil', Icons.person_outline),
-  eco('actividades ECO', Icons.eco_outlined);
+  eco('actividades ECO', Icons.eco_outlined),
+  rutas('tus rutas', Icons.route_outlined);
 
   const GuestFeature(this.label, this.icon);
 

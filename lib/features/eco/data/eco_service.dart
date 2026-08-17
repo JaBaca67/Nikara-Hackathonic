@@ -32,6 +32,26 @@ class EcoService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  /// Lo que pide cada consulta de actividades: la fila, sus participantes
+  /// embebidos y, si la jornada se publicó en nombre de una fundación, los
+  /// datos de esa fundación para el bloque "Organizador" — todo en un solo
+  /// viaje en vez de una consulta por actividad.
+  static const _selectWithOrganization =
+      '*, eco_participants(user_id, joined_at), '
+      'organizations(id, name, handle, logo_url, is_verified)';
+
+  /// El mismo select sin el embed de `organizations`, para proyectos donde
+  /// supabase/sql/010_organizations.sql todavía no corrió (ver [_isMissingOrganizations]).
+  static const _selectWithoutOrganization =
+      '*, eco_participants(user_id, joined_at)';
+
+  /// PostgREST no encuentra la relación (PGRST200) o la columna
+  /// (42703/42P01) porque falta la migración 010. En vez de romper todo el
+  /// módulo ECO por una migración pendiente, quien llama repite la consulta
+  /// sin el embed y sigue mostrando las jornadas como antes.
+  static bool _isMissingOrganizations(PostgrestException e) =>
+      e.code == 'PGRST200' || e.code == '42703' || e.code == '42P01';
+
   /// Every activity that hasn't already ended (`start_time` in the past
   /// activities are excluded here — [getPastActivities] is the separate
   /// call for those), newest-start-first isn't the ordering EcoMainScreen
@@ -48,30 +68,46 @@ class EcoService {
     return _select(pastOnly: true);
   }
 
-  Future<List<EcoActivityModel>> _select({required bool pastOnly}) async {
+  /// Todas las jornadas de una fundación, la más próxima primero — el
+  /// listado del perfil público de la organización.
+  Future<List<EcoActivityModel>> getActivitiesByOrganization(
+    String organizationId,
+  ) async {
+    return _select(organizationId: organizationId);
+  }
+
+  /// Las jornadas que una persona publicó a título personal (sin
+  /// `organization_id`) — el listado de su perfil público.
+  Future<List<EcoActivityModel>> getPersonalActivitiesByOrganizer(
+    String organizerId,
+  ) async {
+    return _select(personalOrganizerId: organizerId);
+  }
+
+  Future<List<EcoActivityModel>> _select({
+    bool? pastOnly,
+    String? organizationId,
+    String? personalOrganizerId,
+  }) async {
     try {
-      final nowIso = DateTime.now().toUtc().toIso8601String();
-      // eco_participants(user_id, joined_at) is embedded via Postgrest's
-      // nested-select syntax — one round trip gets every activity's full
-      // participant list, which EcoActivityModel.fromRow reduces into
-      // participantCount/isJoinedByCurrentUser instead of a query per
-      // activity (or per activity per user).
-      var query = _client
-          .from('eco_activities')
-          .select('*, eco_participants(user_id, joined_at)');
-      query = pastOnly
-          ? query.lt('start_time', nowIso)
-          : query.gte('start_time', nowIso);
-      final rows = await query.order('start_time', ascending: !pastOnly);
-      final currentUserId = AuthService().currentAuthUser?.id;
-      return (rows as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map(
-            (row) =>
-                EcoActivityModel.fromRow(row, currentUserId: currentUserId),
-          )
-          .toList(growable: false);
+      return await _runSelect(
+        select: _selectWithOrganization,
+        pastOnly: pastOnly,
+        organizationId: organizationId,
+        personalOrganizerId: personalOrganizerId,
+      );
     } on PostgrestException catch (e) {
+      if (_isMissingOrganizations(e)) {
+        // Migración 010 pendiente: filtrar por fundación no puede devolver
+        // nada todavía, y el resto de las consultas se sirve sin el embed.
+        if (organizationId != null) return const [];
+        return _runSelect(
+          select: _selectWithoutOrganization,
+          pastOnly: pastOnly,
+          personalOrganizerId: personalOrganizerId,
+          skipOrganizationFilter: true,
+        );
+      }
       throw EcoServiceException(
         'No se pudieron cargar las actividades: ${e.message}',
       );
@@ -82,25 +118,73 @@ class EcoService {
     }
   }
 
+  /// eco_participants(user_id, joined_at) is embedded via Postgrest's
+  /// nested-select syntax — one round trip gets every activity's full
+  /// participant list, which EcoActivityModel.fromRow reduces into
+  /// participantCount/isJoinedByCurrentUser instead of a query per
+  /// activity (or per activity per user).
+  Future<List<EcoActivityModel>> _runSelect({
+    required String select,
+    bool? pastOnly,
+    String? organizationId,
+    String? personalOrganizerId,
+    bool skipOrganizationFilter = false,
+  }) async {
+    var query = _client.from('eco_activities').select(select);
+    if (pastOnly != null) {
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      query = pastOnly
+          ? query.lt('start_time', nowIso)
+          : query.gte('start_time', nowIso);
+    }
+    if (organizationId != null) {
+      query = query.eq('organization_id', organizationId);
+    }
+    if (personalOrganizerId != null) {
+      query = query.eq('organizer_id', personalOrganizerId);
+      if (!skipOrganizationFilter) {
+        query = query.isFilter('organization_id', null);
+      }
+    }
+    final rows = await query.order('start_time', ascending: pastOnly != true);
+    final currentUserId = AuthService().currentAuthUser?.id;
+    return (rows as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .map(
+          (row) => EcoActivityModel.fromRow(row, currentUserId: currentUserId),
+        )
+        .toList(growable: false);
+  }
+
   Future<EcoActivityModel?> getActivityById(String id) async {
     try {
-      final row = await _client
-          .from('eco_activities')
-          .select('*, eco_participants(user_id, joined_at)')
-          .eq('id', id)
-          .maybeSingle();
-      if (row == null) return null;
-      return EcoActivityModel.fromRow(
-        row,
-        currentUserId: AuthService().currentAuthUser?.id,
-      );
+      return await _getActivityById(id, select: _selectWithOrganization);
     } on PostgrestException catch (e) {
+      if (_isMissingOrganizations(e)) {
+        return _getActivityById(id, select: _selectWithoutOrganization);
+      }
       throw EcoServiceException('No se pudo cargar la actividad: ${e.message}');
     } catch (_) {
       throw const EcoServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
+  }
+
+  Future<EcoActivityModel?> _getActivityById(
+    String id, {
+    required String select,
+  }) async {
+    final row = await _client
+        .from('eco_activities')
+        .select(select)
+        .eq('id', id)
+        .maybeSingle();
+    if (row == null) return null;
+    return EcoActivityModel.fromRow(
+      row,
+      currentUserId: AuthService().currentAuthUser?.id,
+    );
   }
 
   /// Every participant's `user_id`/`joined_at` for the detail screen's
@@ -203,6 +287,12 @@ class EcoService {
   /// claim: `organizer_verified` is intentionally left at its column
   /// default (`false`) here, same reasoning as `BusinessModel.isVerified`
   /// — nothing in the client ever sets that itself.
+  ///
+  /// [organizationId] es el "publicar como" del formulario: nulo publica a
+  /// título personal, con valor publica en nombre de esa fundación (el
+  /// badge VERIFICADO sale entonces de `organizations.is_verified`, no de
+  /// esta fila). `organizer_id` se guarda siempre, también cuando publica
+  /// una fundación: es quien creó la jornada y quien puede gestionarla.
   Future<void> createActivity({
     required String title,
     required String description,
@@ -213,6 +303,7 @@ class EcoService {
     required DateTime startTime,
     int? maxCapacity,
     List<String> requirements = const [],
+    String? organizationId,
   }) async {
     final user = AuthService().currentAuthUser;
     if (user == null) {
@@ -234,6 +325,10 @@ class EcoService {
         'organizer_id': user.id,
         'organizer_name': profile?.fullName,
         'requirements': requirements,
+        // Se omite la clave cuando es null (sintaxis de elemento
+        // null-aware) para que publicar a título personal siga funcionando
+        // aunque la migración 010 todavía no haya corrido.
+        'organization_id': ?organizationId,
       });
       revision.value++;
     } on PostgrestException catch (e) {

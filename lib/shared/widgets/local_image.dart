@@ -10,6 +10,10 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// placeholder whenever the path is missing, the file no longer exists on
 /// disk, or loading fails for any other reason (e.g. a web session whose
 /// blob URL expired after a refresh).
+///
+/// También acepta una URL `http(s)` y la carga por red en cualquier
+/// plataforma: los campos `logo_url`/`banner_url` de una fundación admiten
+/// tanto una imagen del dispositivo como una URL pegada a mano.
 class LocalImage extends StatelessWidget {
   const LocalImage({
     super.key,
@@ -28,9 +32,13 @@ class LocalImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final imagePath = path;
     if (imagePath == null || imagePath.isEmpty) return _fallback();
-    if (!kIsWeb && !File(imagePath).existsSync()) return _fallback();
+    final isRemote =
+        imagePath.startsWith('http://') || imagePath.startsWith('https://');
+    if (!kIsWeb && !isRemote && !File(imagePath).existsSync()) {
+      return _fallback();
+    }
 
-    return kIsWeb
+    return kIsWeb || isRemote
         ? Image.network(
             imagePath,
             width: double.infinity,
@@ -53,7 +61,11 @@ class LocalImage extends StatelessWidget {
       height: double.infinity,
       color: AppColors.placeholderTan,
       alignment: Alignment.center,
-      child: Icon(fallbackIcon, size: fallbackIconSize, color: AppColors.neutral500),
+      child: Icon(
+        fallbackIcon,
+        size: fallbackIconSize,
+        color: AppColors.neutral500,
+      ),
     );
   }
 }

@@ -6,15 +6,15 @@ import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/features/home/presentation/widgets/main_navigation_bar.dart';
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/features/routes/presentation/screens/routes_main_screen.dart';
 import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// App shell for the 5 main tabs — Inicio(0), Mapa(1), ECO(2), Rutas(3,
-/// inert placeholder — see [_RoutesComingSoonTab]), Perfil(4). An
-/// [IndexedStack] keeps every tab's scroll position and widget state alive
-/// across switches instead of rebuilding on each tap.
+/// App shell for the 5 main tabs — Inicio(0), Mapa(1), ECO(2), Rutas(3),
+/// Perfil(4). An [IndexedStack] keeps every tab's scroll position and
+/// widget state alive across switches instead of rebuilding on each tap.
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key, this.initialIndex = 0});
 
@@ -52,27 +52,33 @@ class _MainLayoutState extends State<MainLayout> {
 
   bool get _isGuest => !AuthService().isLoggedIn;
 
-  /// Perfil (4) reads the signed-in user's id to fetch real data — for a
-  /// guest that's null, so that slot is swapped for a lightweight locked
-  /// placeholder instead of ever mounting the real screen (IndexedStack
-  /// builds every child up front, visible or not). Rutas (3) has no real
-  /// feature behind it yet — see [_RoutesComingSoonTab] — so it's never
-  /// guest-gated; there's nothing there to protect. ECO (2) is browsable by
-  /// anyone — only the "Unirme" action itself is guest-gated, inside
-  /// EcoMainScreen/EcoDetailScreen (same pattern as favoriting a business).
+  /// Perfil (4) y Rutas (3) leen el id de la sesión para traer datos reales
+  /// — para un invitado eso es null, así que esos dos slots se cambian por
+  /// un placeholder bloqueado en vez de montar la pantalla real (IndexedStack
+  /// construye todos sus hijos, se vean o no). ECO (2) sí lo puede ver
+  /// cualquiera: solo la acción "Unirme" está detrás del guard, dentro de
+  /// EcoMainScreen/EcoDetailScreen (mismo patrón que marcar un favorito).
   List<Widget> get _tabs => [
     const HomeScreen(),
     const MapScreen(),
     const EcoMainScreen(),
-    const _RoutesComingSoonTab(),
+    _isGuest
+        ? const _GuestLockedTab(feature: GuestFeature.rutas)
+        : const RoutesMainScreen(),
     _isGuest
         ? const _GuestLockedTab(feature: GuestFeature.perfil)
         : ProfileScreen(onExploreRequested: () => _goToTab(0)),
   ];
 
+  static const _guestGatedTabs = {
+    3: GuestFeature.rutas,
+    4: GuestFeature.perfil,
+  };
+
   void _onNavTap(int index) {
-    if (_isGuest && index == 4) {
-      GuestGuardBottomSheet.show(context, feature: GuestFeature.perfil);
+    final gated = _guestGatedTabs[index];
+    if (_isGuest && gated != null) {
+      GuestGuardBottomSheet.show(context, feature: gated);
       return;
     }
     setState(() => _currentIndex = index);
@@ -95,48 +101,6 @@ class _MainLayoutState extends State<MainLayout> {
         builder: (context, navigating, child) =>
             navigating ? const SizedBox.shrink() : child!,
         child: MainNavigationBar(currentIndex: _currentIndex, onTap: _onNavTap),
-      ),
-    );
-  }
-}
-
-/// Placeholder for the "Rutas" tab — the reservations feature it used to
-/// hold was removed; a future map-based routes/itinerary system will take
-/// this slot. Deliberately inert (no auth gate, no data) until that ships.
-class _RoutesComingSoonTab extends StatelessWidget {
-  const _RoutesComingSoonTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.route_rounded,
-                size: 40,
-                color: AppColors.neutral600,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Muy pronto',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.sectionTitle,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Rutas y planes por explorar en el mapa — estamos trabajando '
-                'en ello.',
-                textAlign: TextAlign.center,
-                style: AppTextStyles.body,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

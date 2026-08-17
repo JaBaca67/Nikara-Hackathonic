@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// "Registrar actividad" form, reachable from Perfil/Ajustes — collects
@@ -36,6 +43,36 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
   final List<String> _requirements = [];
 
   bool _isSaving = false;
+
+  /// "Publicar como": las fundaciones de esta cuenta y cuál está elegida.
+  /// [_selectedOrganization] en null significa "Mi perfil personal", que es
+  /// como arranca siempre — publicar en nombre de una fundación es una
+  /// decisión explícita, nunca el default.
+  List<OrganizationModel> _organizations = const [];
+  OrganizationModel? _selectedOrganization;
+  String _personalName = 'Mi perfil personal';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPublishAsOptions());
+  }
+
+  Future<void> _loadPublishAsOptions() async {
+    try {
+      final organizations = await OrganizationService().getMyOrganizations();
+      final profile = await AuthService().getCurrentProfile();
+      if (!mounted) return;
+      setState(() {
+        _organizations = organizations;
+        final name = profile?.fullName.trim() ?? '';
+        if (name.isNotEmpty) _personalName = name;
+      });
+    } on OrganizationServiceException {
+      // Sin fundaciones que ofrecer el formulario funciona igual, publicando
+      // a título personal — no vale la pena interrumpir con un error.
+    }
+  }
 
   @override
   void dispose() {
@@ -128,11 +165,19 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         startTime: startTime,
         maxCapacity: int.tryParse(_capacityController.text.trim()),
         requirements: _requirements,
+        organizationId: _selectedOrganization?.id,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('¡Actividad registrada!')));
+      final organization = _selectedOrganization;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            organization == null
+                ? '¡Actividad registrada!'
+                : '¡Actividad publicada como ${organization.name}!',
+          ),
+        ),
+      );
       Navigator.of(context).pop();
     } on EcoServiceException catch (e) {
       if (!mounted) return;
@@ -161,22 +206,33 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            _FieldLabel('Título'),
-            _NikaraTextField(
+            if (_organizations.isNotEmpty) ...[
+              const EcoFieldLabel('Publicar como'),
+              _PublishAsPicker(
+                organizations: _organizations,
+                personalName: _personalName,
+                selected: _selectedOrganization,
+                onChanged: (organization) =>
+                    setState(() => _selectedOrganization = organization),
+              ),
+              const SizedBox(height: 20),
+            ],
+            const EcoFieldLabel('Título'),
+            EcoTextField(
               controller: _titleController,
               hint: 'Ej. Reforestación Lago Cocibolca',
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Escribe un título.' : null,
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Categoría'),
+            const EcoFieldLabel('Categoría'),
             _CategoryPicker(
               selected: _category,
               onChanged: (c) => setState(() => _category = c),
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Descripción'),
-            _NikaraTextField(
+            const EcoFieldLabel('Descripción'),
+            EcoTextField(
               controller: _descriptionController,
               hint: 'Describe la jornada, qué se va a hacer y por qué importa.',
               maxLines: 4,
@@ -185,8 +241,8 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                   : null,
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Ubicación'),
-            _NikaraTextField(
+            const EcoFieldLabel('Ubicación'),
+            EcoTextField(
               controller: _locationController,
               hint: 'Ej. Cerro Apante, Managua',
               validator: (v) => (v == null || v.trim().isEmpty)
@@ -223,11 +279,11 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Fecha y hora'),
+            const EcoFieldLabel('Fecha y hora'),
             Row(
               children: [
                 Expanded(
-                  child: _PickerButton(
+                  child: EcoPickerButton(
                     icon: Icons.calendar_today_rounded,
                     label: _date == null
                         ? 'Elegir fecha'
@@ -237,7 +293,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _PickerButton(
+                  child: EcoPickerButton(
                     icon: Icons.access_time_rounded,
                     label: _time == null
                         ? 'Elegir hora'
@@ -248,18 +304,18 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Cupo límite (opcional)'),
-            _NikaraTextField(
+            const EcoFieldLabel('Cupo límite (opcional)'),
+            EcoTextField(
               controller: _capacityController,
               hint: 'Ej. 25',
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
-            _FieldLabel('Requisitos'),
+            const EcoFieldLabel('Requisitos'),
             Row(
               children: [
                 Expanded(
-                  child: _NikaraTextField(
+                  child: EcoTextField(
                     controller: _requirementController,
                     hint: 'Ej. Botas cerradas',
                     onSubmitted: (_) => _addRequirement(),
@@ -294,102 +350,12 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
               ),
             ],
             const SizedBox(height: 28),
-            SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary500,
-                  foregroundColor: AppColors.settingsTextDark,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.settingsTextDark,
-                        ),
-                      )
-                    : const Text('Publicar actividad'),
-              ),
+            EcoPrimaryButton(
+              label: 'Publicar actividad',
+              isBusy: _isSaving,
+              onPressed: _save,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
-      ),
-    );
-  }
-}
-
-class _NikaraTextField extends StatelessWidget {
-  const _NikaraTextField({
-    required this.controller,
-    required this.hint,
-    this.maxLines = 1,
-    this.keyboardType,
-    this.validator,
-    this.onSubmitted,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final int maxLines;
-  final TextInputType? keyboardType;
-  final String? Function(String?)? validator;
-  final ValueChanged<String>? onSubmitted;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      validator: validator,
-      onFieldSubmitted: onSubmitted,
-      style: AppTextStyles.settingsSubtitle.copyWith(
-        color: AppColors.settingsTextDark,
-      ),
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: AppColors.surface100,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.mapControlBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.mapControlBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
         ),
       ),
     );
@@ -439,28 +405,173 @@ class _CategoryPicker extends StatelessWidget {
   }
 }
 
-class _PickerButton extends StatelessWidget {
-  const _PickerButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
+/// Selector "Publicar como" — la primera decisión del formulario cuando la
+/// cuenta tiene fundaciones registradas: la jornada sale a nombre de la
+/// persona (opción por defecto, `organization_id` nulo) o de una de sus
+/// fundaciones.
+///
+/// Es un segmentado de pastillas y no un `SegmentedButton`/`DropdownButton`
+/// de Material porque cada opción lleva su avatar y su nombre completo, y
+/// porque así hereda el mismo lenguaje visual de los chips de categoría de
+/// esta misma pantalla.
+class _PublishAsPicker extends StatelessWidget {
+  const _PublishAsPicker({
+    required this.organizations,
+    required this.personalName,
+    required this.selected,
+    required this.onChanged,
   });
 
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+  final List<OrganizationModel> organizations;
+  final String personalName;
+  final OrganizationModel? selected;
+  final ValueChanged<OrganizationModel?> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(label, overflow: TextOverflow.ellipsis),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.settingsTextDark,
-        side: const BorderSide(color: AppColors.mapControlBorder),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PublishAsOption(
+          label: personalName,
+          caption: 'A título personal',
+          selected: selected == null,
+          onTap: () => onChanged(null),
+          avatar: const _PublishAsAvatar(icon: Icons.person_rounded),
+        ),
+        for (final organization in organizations) ...[
+          const SizedBox(height: 8),
+          _PublishAsOption(
+            label: organization.name,
+            caption: organization.handleTag,
+            selected: selected?.id == organization.id,
+            onTap: () => onChanged(organization),
+            verified: organization.isVerified,
+            avatar: _PublishAsAvatar(
+              icon: Icons.eco_rounded,
+              imagePath: organization.logoUrl,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PublishAsOption extends StatelessWidget {
+  const _PublishAsOption({
+    required this.label,
+    required this.caption,
+    required this.selected,
+    required this.onTap,
+    required this.avatar,
+    this.verified = false,
+  });
+
+  final String label;
+  final String caption;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget avatar;
+  final bool verified;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.detailActivityIconBg
+              : AppColors.surface100,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.ecoActive : AppColors.mapControlBorder,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            avatar,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: AppTextStyles.mapRowTitle.copyWith(
+                            fontSize: 13,
+                            color: AppColors.settingsTextDark,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (verified) ...[
+                        const SizedBox(width: 5),
+                        const Icon(
+                          Icons.verified_rounded,
+                          size: 13,
+                          color: AppColors.ecoActive,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    caption,
+                    style: AppTextStyles.settingsSubtitle.copyWith(
+                      fontSize: 11.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              size: 20,
+              color: selected ? AppColors.ecoActive : AppColors.neutral400,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishAsAvatar extends StatelessWidget {
+  const _PublishAsAvatar({required this.icon, this.imagePath});
+
+  final IconData icon;
+  final String? imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = imagePath;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: path == null || path.isEmpty
+            ? Container(
+                color: AppColors.detailActivityIconBg,
+                alignment: Alignment.center,
+                child: Icon(icon, size: 20, color: AppColors.ecoActive),
+              )
+            : LocalImage(path: path, fallbackIcon: icon),
       ),
     );
   }
