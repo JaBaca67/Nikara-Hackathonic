@@ -37,13 +37,13 @@
 
 ## Descripción general
 
-**Níkara** es una aplicación móvil desarrollada en **Flutter** (con soporte adicional para Web y Windows Desktop) que conecta a **turistas** con **negocios locales** — hospedaje, gastronomía, tours, artesanía — y con **jornadas ECO** de impacto ambiental (limpiezas de playas, reforestación, voluntariado).
+**Níkara** es una plataforma digital de turismo sostenible que conecta a viajeros con destinos turísticos conocidos y emergentes de Nicaragua mediante mapas interactivos, navegación GPS y experiencias comunitarias verificadas.
 
-El objetivo es promover un turismo responsable que:
+La plataforma permite descubrir lugares auténticos, apoyar pequeños emprendimientos locales y distribuir mejor el flujo turístico hacia zonas menos visitadas, contribuyendo al desarrollo económico de las comunidades y a la conservación del patrimonio natural y cultural.
 
-- **Economía local** — da visibilidad a emprendedores turísticos y gastronómicos.
-- **Cuidado ambiental** — impulsa jornadas ecológicas organizadas por fundaciones y usuarios.
-- **Exploración guiada** — facilita mapas interactivos, rutas personalizadas e itinerarios por días.
+- **Economía local** — visibilidad y herramientas de gestión para emprendedores turísticos y gastronómicos.
+- **Cuidado ambiental** — jornadas ecológicas organizadas por fundaciones y usuarios, con impacto medible.
+- **Turismo distribuido** — mapas y rutas que también llevan al viajero a destinos emergentes, no solo a los ya masificados.
 
 > [!NOTE]
 > La interfaz está íntegramente en español y el diseño se deriva 1:1 del archivo Figma **"UI-NÍKARA"** — es la fuente de verdad visual del proyecto.
@@ -71,12 +71,20 @@ El sistema define **4 roles**, gestionados sobre la tabla `profiles` de Supabase
 
 | Categoría | Tecnología | Detalle |
 |---|---|---|
-| ![Frontend](https://img.shields.io/badge/-Frontend-02569B?style=flat-square&logo=flutter&logoColor=white) | Flutter (Dart) | Android e iOS — con soporte adicional para Web y Windows Desktop |
+| ![Frontend](https://img.shields.io/badge/-Frontend-02569B?style=flat-square&logo=flutter&logoColor=white) | Flutter (Dart) | Android e iOS |
 | ![Backend](https://img.shields.io/badge/-Backend%20%26%20BD-3ECF8E?style=flat-square&logo=supabase&logoColor=white) | Supabase | PostgreSQL + Auth + Storage |
 | ![Mapas](https://img.shields.io/badge/-Mapas-4285F4?style=flat-square&logo=googlemaps&logoColor=white) | Google Maps API | SDK para Flutter (`google_maps_flutter`) + Directions API para ruteo ("Cómo llegar") + `geolocator` |
-| ![Auth](https://img.shields.io/badge/-Autenticación-DB4437?style=flat-square&logo=google&logoColor=white) | Supabase Auth | Correo/contraseña, Google Sign-In, Sign in with Apple |
-| ![UI](https://img.shields.io/badge/-UI-6B4226?style=flat-square) | `google_fonts`, `font_awesome_flutter`, `flutter_svg` | Fuente personalizada **Leelawadee** |
+| ![Auth](https://img.shields.io/badge/-Autenticación-DB4437?style=flat-square&logo=google&logoColor=white) | Supabase Auth | Correo/contraseña, Google Sign-In, Facebook |
+| ![UI](https://img.shields.io/badge/-UI-6B4226?style=flat-square) | `google_fonts`, `font_awesome_flutter`, `flutter_svg` | Tipografía **League Spartan** (títulos) + **Nunito** (cuerpo) |
 | ![Persistencia](https://img.shields.io/badge/-Persistencia%20local-6B4226?style=flat-square) | `shared_preferences` | Sesión de invitado, favoritos, extras de perfil |
+
+### Sistema de diseño
+
+Derivado 1:1 del archivo Figma **"UI-NÍKARA"** — 2 tipografías y 3 colores principales:
+
+![League Spartan](https://img.shields.io/badge/Aa-League_Spartan-121212?style=flat-square) ![Nunito](https://img.shields.io/badge/Aa-Nunito-121212?style=flat-square)
+
+![](https://img.shields.io/badge/%20-FDBE02?style=flat-square) `Gold #FDBE02` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-8B922A?style=flat-square) `Olive #8B922A` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-FFF9F0?style=flat-square) `Cream #FFF9F0`
 
 <br />
 
@@ -100,9 +108,9 @@ lib/
 └── theme/           # AppColors + AppTheme (tokens ligados a Figma)
 ```
 
-### Esquema de base de datos (Supabase / PostgreSQL)
+### Modelo de datos
 
-El backend vive completamente en Supabase. El esquema se construye ejecutando en orden los scripts SQL de `supabase/sql/` (`001_...` → `013_...`), que cubren: perfiles y roles, negocios con geolocalización (`PostGIS`), organizaciones, jornadas ECO y participantes, rutas/itinerarios por días, notificaciones, reseñas y favoritos.
+El backend vive completamente en Supabase (PostgreSQL). El diagrama resume las entidades principales y sus relaciones:
 
 ```mermaid
 erDiagram
@@ -118,9 +126,6 @@ erDiagram
     ECO_ACTIVITIES ||--o{ ROUTE_STOPS : "eco_activity_id"
 ```
 
-> [!IMPORTANT]
-> Ninguna migración de `supabase/sql/` se aplica automáticamente — cada una debe ejecutarse **a mano y en orden** desde el SQL Editor del dashboard de Supabase. El detalle completo de cada tabla, incluyendo el diagrama DBML, está en [`docs/database_erd.md`](docs/database_erd.md).
-
 <br />
 
 ![](https://img.shields.io/badge/Setup-4285F4?style=flat-square)
@@ -131,7 +136,7 @@ erDiagram
 
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) `3.44.5` (Dart `^3.12.2`) — verificar con `flutter --version`
 - [Git](https://git-scm.com/)
-- Emulador Android/iOS configurado, o dispositivo físico conectado (también corre en Chrome o Windows Desktop)
+- Emulador Android/iOS configurado, o dispositivo físico conectado
 
 ### 1. Clonar el repositorio
 
@@ -166,25 +171,11 @@ Editar `dart_defines.json`:
 > [!NOTE]
 > La URL y `anon key` de Supabase ya están configuradas en `lib/core/supabase/supabase_config.dart` (son públicas por diseño; el proyecto usa RLS deshabilitada intencionalmente). Para apuntar a un proyecto Supabase propio, reemplazar esos valores ahí. Adicionalmente, para renderizar el mapa nativo, configurar la key del SDK de Maps en `android/local.properties` (Android) y `ios/Flutter/Maps.xcconfig` (iOS).
 
-### 4. Inicializar la base de datos
-
-Ejecutar en orden, sobre el proyecto Supabase (SQL Editor del dashboard o CLI), todos los scripts de `supabase/sql/` desde `001_profiles_trigger_and_rls.sql` hasta `013_final_schema_additions.sql`.
-
-### 5. Ejecutar la aplicación
+### 4. Ejecutar la aplicación
 
 ```bash
 flutter run --dart-define-from-file=dart_defines.json
 ```
-
-<details>
-<summary>Otros targets disponibles</summary>
-
-```bash
-flutter run -d chrome     # Web
-flutter run -d windows    # Windows Desktop
-```
-
-</details>
 
 <br />
 
@@ -197,7 +188,7 @@ flutter run -d windows    # Windows Desktop
 | `flutter analyze` | Linting estático |
 | `dart format .` | Formateo de código |
 | `flutter test` | Ejecutar la suite de pruebas |
-| `flutter build apk / web / windows` | Build de release |
+| `flutter build apk` | Build de release |
 
 <br />
 
