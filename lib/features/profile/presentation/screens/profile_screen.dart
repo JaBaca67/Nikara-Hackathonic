@@ -797,7 +797,7 @@ class _LevelProgressCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1AF0B500),
+            color: AppColors.cardGlowSoft,
             offset: Offset(0, 2),
             blurRadius: 6,
           ),
@@ -1162,7 +1162,7 @@ class _FavoritePlaceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1AF0B500),
+            color: AppColors.cardGlowSoft,
             offset: Offset(0, 2),
             blurRadius: 5,
           ),
@@ -1218,7 +1218,11 @@ class _FavoritePlaceCard extends StatelessWidget {
             onTap: onFavoriteToggle,
             child: const Padding(
               padding: EdgeInsets.all(4),
-              child: Icon(Icons.favorite, size: 20, color: Color(0xFFE8798F)),
+              child: Icon(
+                Icons.favorite,
+                size: 20,
+                color: AppColors.favoriteActive,
+              ),
             ),
           ),
         ],
@@ -1251,7 +1255,7 @@ class _FavoriteBusinessCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1AF0B500),
+            color: AppColors.cardGlowSoft,
             offset: Offset(0, 2),
             blurRadius: 5,
           ),
@@ -1308,7 +1312,11 @@ class _FavoriteBusinessCard extends StatelessWidget {
             onTap: onFavoriteToggle,
             child: const Padding(
               padding: EdgeInsets.all(4),
-              child: Icon(Icons.favorite, size: 20, color: Color(0xFFE8798F)),
+              child: Icon(
+                Icons.favorite,
+                size: 20,
+                color: AppColors.favoriteActive,
+              ),
             ),
           ),
         ],
@@ -1509,7 +1517,7 @@ class _MyBusinessCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x1AF0B500),
+            color: AppColors.cardGlowSoft,
             offset: Offset(0, 2),
             blurRadius: 5,
           ),

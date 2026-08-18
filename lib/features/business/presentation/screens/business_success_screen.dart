@@ -31,15 +31,17 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
     );
     _checkScale = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.15).chain(
-          CurveTween(curve: Curves.easeOutBack),
-        ),
+        tween: Tween(
+          begin: 0.0,
+          end: 1.15,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 65,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.15, end: 1.0).chain(
-          CurveTween(curve: Curves.easeOut),
-        ),
+        tween: Tween(
+          begin: 1.15,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
         weight: 35,
       ),
     ]).animate(_controller);
@@ -150,7 +152,10 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: Text('Ir al Inicio', style: AppTextStyles.buttonLg),
+                      child: Text(
+                        'Ir al Inicio',
+                        style: AppTextStyles.buttonLg,
+                      ),
                     ),
                   ),
                 ),

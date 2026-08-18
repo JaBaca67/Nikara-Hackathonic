@@ -691,7 +691,7 @@ class _AvatarPicker extends StatelessWidget {
               child: const Icon(
                 Icons.photo_camera,
                 size: 15,
-                color: Colors.white,
+                color: AppColors.surface100,
               ),
             ),
           ),

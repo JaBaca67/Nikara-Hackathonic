@@ -200,7 +200,7 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Color(0x24261D0C),
+                              color: AppColors.mapControlShadowStrong,
                               offset: Offset(0, -8),
                               blurRadius: 30,
                             ),

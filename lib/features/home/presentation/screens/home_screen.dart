@@ -422,7 +422,7 @@ class _CategoryChipsRow extends StatelessWidget {
                 boxShadow: isSelected
                     ? const [
                         BoxShadow(
-                          color: Color(0x47F0B500),
+                          color: AppColors.detailSegmentGlow,
                           offset: Offset(0, 2),
                           blurRadius: 8,
                         ),
@@ -549,7 +549,7 @@ class _HeroCard extends StatelessWidget {
                   colors: [
                     Colors.transparent,
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.78),
+                    AppColors.detailCoverScrimBottom,
                   ],
                 ),
               ),
@@ -616,7 +616,11 @@ class _HeroCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.near_me, size: 13, color: Colors.white),
+                    const Icon(
+                      Icons.near_me,
+                      size: 13,
+                      color: AppColors.surface100,
+                    ),
                     const SizedBox(width: 5),
                     Flexible(
                       child: Text(
@@ -652,8 +656,8 @@ class _HeroCard extends StatelessWidget {
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
                                       color: selected
-                                          ? Colors.white
-                                          : Colors.white.withValues(
+                                          ? AppColors.surface100
+                                          : AppColors.surface100.withValues(
                                               alpha: 0.35,
                                             ),
                                       width: 2,
@@ -687,10 +691,14 @@ class _HeroCard extends StatelessWidget {
                               vertical: 10,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
+                              color: AppColors.surface100.withValues(
+                                alpha: 0.18,
+                              ),
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.42),
+                                color: AppColors.surface100.withValues(
+                                  alpha: 0.42,
+                                ),
                               ),
                             ),
                             child: Text(
@@ -821,7 +829,7 @@ class _DestacadoCard extends StatelessWidget {
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x1AF0B500),
+                  color: AppColors.cardGlowSoft,
                   offset: Offset(0, 2),
                   blurRadius: 10,
                 ),
@@ -1014,7 +1022,7 @@ class _NearbyRow extends StatelessWidget {
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x1AF0B500),
+                  color: AppColors.cardGlowSoft,
                   offset: Offset(0, 2),
                   blurRadius: 8,
                 ),

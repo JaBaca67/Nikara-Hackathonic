@@ -370,7 +370,7 @@ class _SettingsHeader extends StatelessWidget {
               height: 36,
               alignment: Alignment.center,
               decoration: const BoxDecoration(
-                color: Color(0xFFF2EBE0),
+                color: AppColors.profileDivider,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -434,7 +434,7 @@ class _SettingsSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x14F0B500),
+                    color: AppColors.detailCardGlow,
                     offset: Offset(0, 2),
                     blurRadius: 10,
                   ),
@@ -449,7 +449,7 @@ class _SettingsSection extends StatelessWidget {
                             ? null
                             : const Border(
                                 bottom: BorderSide(
-                                  color: Color(0x1AF0B500),
+                                  color: AppColors.cardGlowSoft,
                                   width: 0.8,
                                 ),
                               ),

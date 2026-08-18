@@ -47,7 +47,11 @@ class GuestExploreButton extends StatelessWidget {
                 color: AppColors.authLink,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.explore, size: 14, color: Colors.white),
+              child: const Icon(
+                Icons.explore,
+                size: 14,
+                color: AppColors.surface100,
+              ),
             ),
             const SizedBox(width: 9),
             Flexible(

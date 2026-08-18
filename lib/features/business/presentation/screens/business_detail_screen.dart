@@ -1209,7 +1209,7 @@ class _ReviewCard extends StatelessWidget {
                 child: Text(
                   initial,
                   style: AppTextStyles.reviewAuthor.copyWith(
-                    color: Colors.white,
+                    color: AppColors.surface100,
                   ),
                 ),
               ),
@@ -1259,7 +1259,7 @@ class _ReviewCard extends StatelessWidget {
                               alignment: Alignment.center,
                               child: const Icon(
                                 Icons.videocam,
-                                color: Colors.white,
+                                color: AppColors.surface100,
                                 size: 20,
                               ),
                             )
@@ -1590,7 +1590,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                                     alignment: Alignment.center,
                                     child: const Icon(
                                       Icons.videocam,
-                                      color: Colors.white,
+                                      color: AppColors.surface100,
                                     ),
                                   )
                                 : LocalImage(path: path),
@@ -1610,7 +1610,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                               child: const Icon(
                                 Icons.close,
                                 size: 14,
-                                color: Colors.white,
+                                color: AppColors.surface100,
                               ),
                             ),
                           ),

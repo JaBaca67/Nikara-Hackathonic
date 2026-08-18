@@ -329,7 +329,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0x14261D0C),
+                      color: AppColors.shadowAmbient,
                       offset: Offset(0, -6),
                       blurRadius: 22,
                     ),
@@ -378,7 +378,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: const [
                               BoxShadow(
-                                color: Color(0x52F0B500),
+                                color: AppColors.detailPrimaryButtonGlow,
                                 offset: Offset(0, 4),
                                 blurRadius: 14,
                               ),

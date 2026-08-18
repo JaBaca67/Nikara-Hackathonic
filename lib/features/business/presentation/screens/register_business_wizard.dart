@@ -858,7 +858,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14F0B500),
+            color: AppColors.detailCardGlow,
             offset: Offset(0, 2),
             blurRadius: 10,
           ),
@@ -1521,7 +1521,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                       vertical: 2,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0x801A1510),
+                                      color: AppColors.detailCoverCounterBg,
                                       borderRadius: BorderRadius.circular(999),
                                     ),
                                     child: Text(
@@ -1549,7 +1549,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     child: const Icon(
                                       Icons.close,
                                       size: 12,
-                                      color: Colors.white,
+                                      color: AppColors.surface100,
                                     ),
                                   ),
                                 ),
@@ -1643,7 +1643,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                       ? const Icon(
                                           Icons.check,
                                           size: 14,
-                                          color: Colors.white,
+                                          color: AppColors.surface100,
                                         )
                                       : null,
                                 ),
@@ -2106,7 +2106,7 @@ class _WizardStepper extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x14F0B500),
+            color: AppColors.detailCardGlow,
             offset: Offset(0, 2),
             blurRadius: 10,
           ),
@@ -2718,7 +2718,7 @@ class _WizardFooter extends StatelessWidget {
         border: Border(top: BorderSide(color: AppColors.mapControlBorder)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x14261D0C),
+            color: AppColors.shadowAmbient,
             offset: Offset(0, -6),
             blurRadius: 22,
           ),
@@ -2771,7 +2771,7 @@ class _WizardFooter extends StatelessWidget {
                       ? null
                       : const [
                           BoxShadow(
-                            color: Color(0x52F0B500),
+                            color: AppColors.detailPrimaryButtonGlow,
                             offset: Offset(0, 4),
                             blurRadius: 14,
                           ),
@@ -2930,7 +2930,7 @@ class _MapLocationPicker extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x29261D0C),
+              color: AppColors.mapCardShadow,
               offset: Offset(0, 2),
               blurRadius: 8,
             ),

@@ -407,6 +407,12 @@ abstract class AppColors {
   /// [primary500] @ 32%.
   static const detailPrimaryButtonGlow = Color(0x52F0B500);
 
+  /// Gold glow under cards/badges on Home, Perfil and Ajustes — sits
+  /// between [detailCardGlow] (8%) and [detailSegmentGlow] (28%).
+  /// Standardization pass: previously inlined identically as a literal hex
+  /// across 7 call sites in those three screens.
+  static const cardGlowSoft = Color(0x1AF0B500);
+
   // --- Wizard redesign (Claude Design turn 4, "Creación y edición de
   // negocio local — flujo en 4 pasos", Pantallas 4a-4e) ---
 

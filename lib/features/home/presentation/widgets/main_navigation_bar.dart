@@ -57,7 +57,7 @@ class MainNavigationBar extends StatelessWidget {
           border: Border.all(color: AppColors.mapControlBorder),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x1F000000),
+              color: AppColors.cardBorder,
               offset: Offset(0, 8),
               blurRadius: 24,
             ),
