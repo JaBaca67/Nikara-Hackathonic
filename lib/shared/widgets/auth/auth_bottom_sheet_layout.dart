@@ -14,7 +14,7 @@ const double _kSheetOpenSize = 0.72;
 const double _kContentFadeSpan = 0.08;
 
 /// Gap fijo entre el logo y el borde superior del sheet cuando este lo alcanza.
-const double _kLogoToSheetGap = 30.0;
+const double _kLogoToSheetGap = 14.0;
 
 /// Aumentado de 150 para que "NÍKARA" se lea prominente y nítido; [FittedBox] en el call site evita cortes en pantallas angostas.
 const double _kLogoHeight = 210.0;
