@@ -1,30 +1,54 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:nikara_app/main.dart';
+import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/theme/app_theme.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  setUpAll(() async {
+    // AuthService touches Supabase.instance synchronously (even just to
+    // check isLoggedIn), which throws an assertion error if Supabase was
+    // never initialized — real credentials aren't needed, initialize()
+    // only needs to complete its local setup for that assertion to pass.
+    // Supabase.initialize() reaches for SharedPreferences internally
+    // (GoTrue's local session storage), so the mock store has to exist
+    // before initialize() runs, not just before each test.
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://example.supabase.co',
+      publishableKey: 'test-anon-key-not-real',
+    );
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  setUp(() {
+    // Some services still read local SharedPreferences state (favorites,
+    // avatar cache) — without a mocked store this hits a real platform
+    // channel that doesn't exist in the test environment.
+    SharedPreferences.setMockInitialValues({});
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+  testWidgets('Prueba de humo para la pantalla de Login', (
+    WidgetTester tester,
+  ) async {
+    // LoginScreen directly (not MyApp/SplashTransitionScreen) — this is a
+    // smoke test for the Login screen itself, not the app's boot sequence.
+    await tester.pumpWidget(
+      MaterialApp(theme: AppTheme.lightTheme, home: const LoginScreen()),
+    );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    // Verify that our counter has incremented.
+    // Verificamos que nuestra pantalla de Login cargó correctamente
+    // buscando los textos de tu diseño.
+    expect(find.text('Bienvenido de nuevo'), findsOneWidget);
+    expect(
+      find.text('Inicia sesión para continuar tu aventura'),
+      findsOneWidget,
+    );
+
+    // Verificamos que el contador viejo ya no existe
     expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
   });
 }

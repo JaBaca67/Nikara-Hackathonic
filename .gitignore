@@ -39,6 +39,10 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# Local dart-define values (Google Directions API key) — see
+# lib/core/config/maps_config.dart and dart_defines.json.example.
+/dart_defines.json
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

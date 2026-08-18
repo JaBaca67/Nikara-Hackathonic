@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(python -c \"import json,sys; print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))\"); case \"$f\" in *.dart) dart format \"$f\" >/dev/null 2>&1 ;; esac",
+            "statusMessage": "dart format"
+          },
+          {
+            "type": "command",
+            "command": "f=$(python -c \"import json,sys; print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))\"); case \"$f\" in *.dart) out=$(dart analyze --no-fatal-warnings \"$f\" 2>&1); if printf '%s' \"$out\" | grep -qE '^[[:space:]]*error -'; then FPATH=\"$f\" python -c \"import json,os,sys; print(json.dumps({'decision':'block','reason':'dart analyze encontro errores en '+os.environ['FPATH']+':\n'+sys.stdin.read()}))\" <<< \"$out\"; fi ;; esac",
+            "statusMessage": "dart analyze"
+          }
+        ]
+      }
+    ]
+  }
+}

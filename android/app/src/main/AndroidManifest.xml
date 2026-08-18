@@ -1,8 +1,29 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Debug/profile builds already get this from
+         android/app/src/{debug,profile}/AndroidManifest.xml (Flutter's own
+         hot-reload tooling needs it there), which is why every network call
+         (Supabase, Directions) already works in a `flutter run` build
+         without this line. A release build has no such overlay, so without
+         it here a release APK build would silently lose ALL networking,
+         not just "Cómo llegar". -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
-        android:label="nikara_app"
+        android:label="Níkara"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Google Maps SDK for Android — reads the key from
+             android/local.properties (gradle injects it via manifest
+             placeholder below) so the real key never lands in source
+             control. Add `MAPS_API_KEY=your_key_here` to local.properties
+             (gitignored) and wire it in android/app/build.gradle.kts, e.g.:
+               val mapsApiKey = project.findProperty("MAPS_API_KEY") as String? ?: ""
+               android { defaultConfig { manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey } }
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -23,6 +44,17 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- OAuth redirect callback — where Supabase sends the browser
+                 back after a browser-based provider (currently only
+                 Facebook; see AuthService.signInWithFacebook and
+                 SupabaseConfig.oauthRedirectUrl) finishes. Must match that
+                 constant exactly. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.nikara.app" android:host="login-callback"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

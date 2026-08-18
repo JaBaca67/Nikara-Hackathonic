@@ -34,6 +34,29 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  google_fonts: ^8.1.0
+  font_awesome_flutter: ^11.0.0
+  flutter_svg: ^2.2.1
+  shared_preferences: ^2.5.5
+  image_picker: ^1.2.3
+  uuid: ^4.6.0
+  url_launcher: ^6.3.2
+  supabase_flutter: ^2.8.0
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^7.0.1
+  # Already pulled in transitively (gotrue/supabase_flutter) — declared
+  # directly since AuthService imports it itself, for Apple Sign-In's nonce
+  # hashing (see AuthService.signInWithApple).
+  crypto: ^3.0.6
+  google_maps_flutter: ^2.10.1
+  geolocator: ^14.0.3
+  # Already pulled in transitively (supabase_flutter -> gotrue/postgrest use
+  # it internally) — declared directly since DirectionsService imports it
+  # itself, to call the Google Directions API for "Cómo llegar" routing.
+  http: ^1.6.0
+  # Turn-by-turn voice guidance during live navigation — see
+  # lib/core/services/tts_service.dart.
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
@@ -46,8 +69,33 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+  # Generates every platform's app/launcher icon from assets/icon/ — run
+  # `dart run flutter_launcher_icons` after changing any of those sources.
+  flutter_launcher_icons: ^0.14.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
+
+# flutter_launcher_icons config — sources are generated from the real
+# Níkara flower mark (assets/images/nikara_logo.png) composited on the
+# exact splash-screen gradient (see _SplashGradientBackground in
+# lib/shared/widgets/splash_transition_screen.dart), not a new/invented
+# look. Regenerate the three PNGs in assets/icon/ (via the same recipe)
+# before re-running this if the brand mark or gradient ever changes.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#FFCC33"
+    theme_color: "#FFCC33"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
 
 # The following section is specific to Flutter packages.
 flutter:
@@ -58,9 +106,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/images/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -73,11 +120,14 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
+  fonts:
+    - family: Leelawadee
+      fonts:
+      - asset: assets/fonts/LEELAWUI.TTF  # Tu fuente normal
+      - asset: assets/fonts/LEELAUIB.TTF  # Tu fuente Bold (Negrita)
+        weight: 700
+      - asset: assets/fonts/LEELUISL.TTF  # Tu fuente Light (Delgada)
+        weight: 300
   #         style: italic
   #   - family: Trajan Pro
   #     fonts:
