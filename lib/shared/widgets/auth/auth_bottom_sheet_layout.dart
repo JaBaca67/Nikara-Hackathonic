@@ -16,8 +16,8 @@ const double _kContentFadeSpan = 0.08;
 /// Gap fijo entre el logo y el borde superior del sheet cuando este lo alcanza.
 const double _kLogoToSheetGap = 30.0;
 
-/// Aumentado de 78 tras feedback de que se veía demasiado tímido para la marca.
-const double _kLogoHeight = 150.0;
+/// Aumentado de 150 para que "NÍKARA" se lea prominente y nítido; [FittedBox] en el call site evita cortes en pantallas angostas.
+const double _kLogoHeight = 210.0;
 
 /// Shell compartido por las pantallas de Auth (Login + los 3 pasos de Register): fondo "Sunset" animado, logo, y un bottom sheet arrastrable con [child]. La altura de [child] decide el tamaño del sheet — un `AnimatedSwitcher` de contenido variable debe top-align el suyo propio.
 class AuthBottomSheetLayout extends StatefulWidget {
@@ -82,8 +82,14 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                       top: logoTop,
                       left: 0,
                       right: 0,
-                      child: const Center(
-                        child: NikaraLogoSvg(height: _kLogoHeight),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 28),
+                          child: FittedBox(
+                            fit: BoxFit.contain,
+                            child: const NikaraLogoSvg(height: _kLogoHeight),
+                          ),
+                        ),
                       ),
                     );
                   },

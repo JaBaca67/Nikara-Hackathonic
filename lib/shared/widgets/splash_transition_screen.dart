@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
@@ -102,46 +103,35 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
         backgroundColor: AppColors.secundario6,
         body: AuroraBackgroundWidget(
           child: Center(
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_introController, _pulseController]),
-              builder: (context, child) {
-                final pulse = _introController.isCompleted
-                    ? _pulseScale.value
-                    : 1.0;
-                return Opacity(
-                  opacity: _introFade.value,
-                  child: Transform.scale(
-                    scale: _introScale.value * pulse,
-                    child: child,
-                  ),
-                );
-              },
-              child: const _SplashLogo(),
+            child: Padding(
+              // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.
+              padding: const EdgeInsets.symmetric(horizontal: 36),
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([
+                    _introController,
+                    _pulseController,
+                  ]),
+                  builder: (context, child) {
+                    final pulse = _introController.isCompleted
+                        ? _pulseScale.value
+                        : 1.0;
+                    return Opacity(
+                      opacity: _introFade.value,
+                      child: Transform.scale(
+                        scale: _introScale.value * pulse,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: const NikaraLogoSvg(height: 220),
+                ),
+              ),
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SplashLogo extends StatelessWidget {
-  const _SplashLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Image.asset(
-          'assets/images/nikara_logo.png',
-          width: 150,
-          height: 150,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-        ),
-        Text('NÍKARA', style: AppTextStyles.logoWordmark),
-      ],
     );
   }
 }

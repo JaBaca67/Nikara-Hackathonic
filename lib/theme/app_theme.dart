@@ -23,13 +23,6 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Wordmark del logo "NÍKARA".
-  static TextStyle get logoWordmark => GoogleFonts.quintessential(
-    color: Colors.white,
-    fontSize: 40,
-    height: 1.0,
-  );
-
   static TextStyle get body => GoogleFonts.nunito(
     color: AppColors.neutral600,
     fontSize: 14,

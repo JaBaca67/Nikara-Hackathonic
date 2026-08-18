@@ -76,12 +76,11 @@ dev_dependencies:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
-# flutter_launcher_icons config — sources are generated from the real
-# Níkara flower mark (assets/images/nikara_logo.png) composited on the
-# exact splash-screen gradient (see _SplashGradientBackground in
-# lib/shared/widgets/splash_transition_screen.dart), not a new/invented
-# look. Regenerate the three PNGs in assets/icon/ (via the same recipe)
-# before re-running this if the brand mark or gradient ever changes.
+# flutter_launcher_icons config — image_path/adaptive_icon_foreground son PNGs
+# porque la herramienta no acepta SVG como fuente, pero su contenido se
+# genera componiendo el logotipo oficial (assets/images/logo_nikara.svg)
+# sobre el gradiente cálido de marca. Regenerar los 3 PNGs en assets/icon/
+# desde ese SVG si el logo o el gradiente cambian.
 flutter_launcher_icons:
   android: true
   ios: true
