@@ -3,9 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// A row of independent single-digit boxes for entering a verification
-/// code — auto-advances focus forward as each digit is typed, and moves
-/// focus back on backspace from an empty box (the standard OTP UX).
+/// Fila de casillas de un dígito para un código de verificación, con avance/retroceso de foco automático (UX estándar de OTP).
 class OtpInputRow extends StatefulWidget {
   const OtpInputRow({
     super.key,
@@ -31,13 +29,7 @@ class _OtpInputRowState extends State<OtpInputRow> {
     widget.length,
     (_) => FocusNode(),
   );
-  // Ancestor listener nodes, deliberately NOT the same instance as
-  // _focusNodes[i] — giving KeyboardListener and its child TextField the
-  // same FocusNode crashes with "Tried to make a child into a parent of
-  // itself" (both widgets attach a Focus to that node at different tree
-  // depths). Key events still reach these because Flutter's Focus system
-  // bubbles unhandled key events up from the focused descendant to its
-  // ancestors' onKeyEvent handlers.
+  // Nodos separados de _focusNodes a propósito: compartir el mismo FocusNode entre KeyboardListener y su TextField crashea ("child into a parent of itself").
   late final List<FocusNode> _listenerNodes = List.generate(
     widget.length,
     (_) => FocusNode(skipTraversal: true, canRequestFocus: false),

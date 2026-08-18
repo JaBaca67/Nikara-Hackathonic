@@ -5,8 +5,7 @@ import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart'
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// A restricted action a guest just tried to reach — drives the copy in
-/// [GuestGuardBottomSheet].
+/// Acción restringida que un invitado intentó usar; define el copy de [GuestGuardBottomSheet].
 enum GuestFeature {
   favoritos('tus favoritos', Icons.favorite_border),
   perfil('tu perfil', Icons.person_outline),
@@ -19,16 +18,11 @@ enum GuestFeature {
   final IconData icon;
 }
 
-/// Gate for anything that requires a real account — favorites, the Perfil
-/// tab. A guest ([AuthService.isLoggedIn] false while inside the
-/// app) never gets silently blocked; [allow] always explains why via
-/// [GuestGuardBottomSheet] and points at how to unlock it.
+/// Gate para funciones que requieren cuenta real; nunca bloquea en silencio, siempre explica por qué vía [GuestGuardBottomSheet].
 class GuestGuard {
   const GuestGuard._();
 
-  /// Returns true and does nothing if the user already has a real account.
-  /// Otherwise shows [GuestGuardBottomSheet] and returns false — callers
-  /// should just stop, there's no seamless "continue after login" here.
+  /// True si ya hay cuenta real; si no, muestra el sheet y devuelve false (sin "continuar tras login" automático).
   static Future<bool> allow(BuildContext context, GuestFeature feature) async {
     if (AuthService().isLoggedIn) return true;
     await GuestGuardBottomSheet.show(context, feature: feature);
@@ -36,9 +30,7 @@ class GuestGuard {
   }
 }
 
-/// "Crea tu cuenta en 10 segundos para desbloquear esta función" — the
-/// dynamic bottom sheet [GuestGuard.allow] shows when a guest reaches a
-/// restricted action.
+/// Bottom sheet que [GuestGuard.allow] muestra al topar con una acción restringida.
 class GuestGuardBottomSheet extends StatelessWidget {
   const GuestGuardBottomSheet({super.key, required this.feature});
 
@@ -50,10 +42,7 @@ class GuestGuardBottomSheet extends StatelessWidget {
   }) {
     return showModalBottomSheet(
       context: context,
-      // Not the default (false): a non-scroll-controlled sheet caps at
-      // 9/16 of the screen height, which this sheet's content — icon,
-      // heading, body copy, two buttons — is tall enough to exceed on a
-      // shorter phone.
+      // Sin scroll-controlled, el sheet se limita a 9/16 de la pantalla y este contenido no cabe en un teléfono bajo.
       isScrollControlled: true,
       backgroundColor: AppColors.surface100,
       shape: const RoundedRectangleBorder(

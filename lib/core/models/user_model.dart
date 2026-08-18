@@ -1,5 +1,4 @@
-/// Mirrors Supabase's `public.profiles.role` enum (`user_role`) exactly —
-/// the member names below (`.name`) are sent/read as-is against Postgres.
+/// Replica el enum `user_role` de Supabase (`public.profiles.role`); los nombres se envían/leen tal cual contra Postgres.
 enum UserRole { turista, emprendedor, admin, auditor }
 
 UserRole _roleFromString(String? raw) {
@@ -15,9 +14,7 @@ UserRole _roleFromString(String? raw) {
   }
 }
 
-/// A row from Supabase's `profiles` table — `id` is the same uuid as
-/// `auth.users.id`. This is the app's one real, backend-verified user
-/// identity (see [AuthService]); there is no local/mock stand-in for it.
+/// Fila de la tabla `profiles`; `id` es el mismo uuid que `auth.users.id`. Única identidad de usuario real (ver [AuthService]), sin equivalente local/mock.
 class UserModel {
   const UserModel({
     required this.id,
@@ -34,21 +31,17 @@ class UserModel {
   final UserRole role;
   final String phone;
 
-  /// `profiles.points` — not yet written to by any flow in this app (no
-  /// gamification action currently syncs to Supabase), so this reads back
-  /// whatever value the row already has, genuinely 0 for a fresh signup.
+  /// `profiles.points` — ningún flujo de la app escribe aquí todavía (sin sync de gamificación a Supabase); 0 en una cuenta nueva.
   final int points;
 
-  /// Just the first token of [fullName], e.g. "Ixchel Galo Martínez" ->
-  /// "Ixchel" — used for the Home header's "Buen día, {firstName}" greeting.
+  /// Primer token de [fullName], p. ej. "Ixchel Galo Martínez" -> "Ixchel", para el saludo "Buen día, {firstName}" del Home.
   String get firstName {
     final trimmed = fullName.trim();
     if (trimmed.isEmpty) return '';
     return trimmed.split(RegExp(r'\s+')).first;
   }
 
-  /// First-name + last-initial, e.g. "Ixchel Galo" -> "IG" — used for the
-  /// avatar fallback since `profiles` has no avatar column.
+  /// Inicial de nombre + apellido, p. ej. "Ixchel Galo" -> "IG"; fallback de avatar ya que `profiles` no tiene columna de avatar.
   String get initials {
     final parts = fullName
         .trim()

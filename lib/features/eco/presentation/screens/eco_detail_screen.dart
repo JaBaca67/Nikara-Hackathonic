@@ -15,17 +15,7 @@ import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Detalle de una actividad — Estados 1/2/3 de "fases-pantalla-eco":
-/// Disponible ("Unirme", dorado), Participando ("Abandonar actividad") y
-/// Completada (acción inhabilitada).
-///
-/// Comparte por completo la estructura de `BusinessDetailScreen` (portada
-/// con botones flotantes, tarjeta flotante de datos rápidos, pestañas
-/// segmentadas, secciones y barra inferior fija) reutilizando los widgets
-/// de `shared/widgets/detail_sections.dart`; solo cambia el contenido.
-/// Recibe el [EcoActivityModel] completo, no un id, y se refresca solo al
-/// montarse para que una tarjeta desactualizada (alguien se unió hace un
-/// segundo) no se quede colgada.
+/// Reutiliza la estructura de `BusinessDetailScreen`/`detail_sections.dart`; recibe el [EcoActivityModel] completo y se refresca al montarse por si quedó desactualizado.
 class EcoDetailScreen extends StatefulWidget {
   const EcoDetailScreen({super.key, required this.activity});
 
@@ -58,9 +48,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       final fresh = await EcoService().getActivityById(_activity.id);
       if (fresh != null && mounted) setState(() => _activity = fresh);
     } on EcoServiceException {
-      // Refresco en segundo plano — se sigue mostrando la copia que ya
-      // traía quien navegó hasta acá en vez de un error por algo que la
-      // persona no pidió directamente.
+      // Refresco en segundo plano: si falla, se sigue mostrando la copia que ya traía.
     }
   }
 
@@ -121,9 +109,6 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     }
   }
 
-  /// "Abrir mapa" de la tarjeta "Cómo llegar" — cambia a la pestaña Mapa y
-  /// arranca la vista previa de ruta hacia las coordenadas de la actividad
-  /// (ver [MapRouteRequest]).
   void _openDirections() {
     if (!_activity.hasCoordinates) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -152,15 +137,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     ).showSnackBar(const SnackBar(content: Text('Próximamente')));
   }
 
-  /// "Agregar a ruta" — suma esta jornada como parada de un itinerario vía
-  /// [AddToRouteBottomSheet].
   Future<void> _addToRoute() async {
     await AddToRouteBottomSheet.showForEcoActivity(context, _activity);
   }
 
-  /// Segunda columna de la tarjeta flotante — cambia con el estado, igual
-  /// que en la referencia: "Cupo" (Disponible), "Tu estado" (Participando),
-  /// "Estado" (Completada).
   DetailQuickInfoItem get _statusInfoItem {
     final activity = _activity;
     return switch (activity.status) {
@@ -275,8 +255,6 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   }
 }
 
-/// Bloque inferior de la portada — pill de categoría, título y lugar sobre
-/// el degradado, con las mismas medidas que el de la pantalla de negocio.
 class _CoverCaption extends StatelessWidget {
   const _CoverCaption({required this.activity});
 
@@ -332,9 +310,6 @@ class _CoverCaption extends StatelessWidget {
   }
 }
 
-/// Pestaña "Información" — participantes, descripción, Organizador,
-/// Requisitos y qué llevar, y la tarjeta "Cómo llegar", en ese orden y con
-/// el mismo espaciado entre secciones que la pantalla de negocio.
 class _InformationTab extends StatelessWidget {
   const _InformationTab({
     required this.activity,
@@ -362,9 +337,7 @@ class _InformationTab extends StatelessWidget {
         child: DetailProfileCard(
           avatar: EcoOrganizerAvatar(activity: activity, size: 48),
           name: activity.organizerDisplayName,
-          // El handle de la fundación cuando publica una organización; para
-          // una jornada personal, la invitación a ver el perfil de quien la
-          // organiza.
+          // Handle de la fundación si publicó una organización; si no, invitación a ver el perfil personal.
           caption:
               activity.organizerHandle ??
               (activity.isFromOrganization
@@ -545,10 +518,7 @@ class _ParticipantsTab extends StatelessWidget {
   }
 }
 
-/// Barra inferior fija — "Unirme" (dorado), "Abandonar actividad" (outline
-/// de peligro) o la acción inhabilitada una vez que la actividad terminó.
-/// Siempre está presente para que el botón principal no se mueva de lugar
-/// entre estados.
+/// Siempre presente (nunca se oculta) para que el botón principal no cambie de posición entre estados.
 class _EcoActionBar extends StatelessWidget {
   const _EcoActionBar({
     required this.status,

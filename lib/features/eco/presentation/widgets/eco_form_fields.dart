@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Campos de formulario del módulo ECO — los comparten
-/// `CreateEcoActivityScreen` y `CreateOrganizationScreen`, que son el mismo
-/// formulario visual (etiqueta arriba, campo crema con borde de un pelo,
-/// foco dorado) con distintos campos.
+/// Campos compartidos por `CreateEcoActivityScreen` y `CreateOrganizationScreen`, mismo formulario visual con distintos campos.
 
 /// Etiqueta encima de un campo ("Título", "Handle").
 class EcoFieldLabel extends StatelessWidget {
@@ -44,8 +41,7 @@ class EcoTextField extends StatelessWidget {
   final String? Function(String?)? validator;
   final ValueChanged<String>? onSubmitted;
 
-  /// La arroba fija del campo "Handle" — se dibuja dentro del campo para
-  /// dejar claro que no hay que escribirla.
+  /// Ej. la arroba fija del campo "Handle", para dejar claro que no hay que escribirla.
   final String? prefixText;
 
   @override
@@ -88,8 +84,6 @@ class EcoTextField extends StatelessWidget {
   }
 }
 
-/// Botón con ícono y borde de un pelo — selector de fecha/hora del
-/// formulario de actividad y "Elegir del dispositivo" del de fundación.
 class EcoPickerButton extends StatelessWidget {
   const EcoPickerButton({
     super.key,
@@ -118,8 +112,6 @@ class EcoPickerButton extends StatelessWidget {
   }
 }
 
-/// Botón principal del formulario ("Publicar actividad", "Registrar
-/// fundación") con su estado de guardado.
 class EcoPrimaryButton extends StatelessWidget {
   const EcoPrimaryButton({
     super.key,

@@ -26,19 +26,16 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 const _kStepLabels = ['Identidad', 'Perfil', 'Verificación'];
 
-/// Pantallas 10a/10b/10c — "Registro en 3 pasos" (Claude Design canvas
-/// "Nikara Inicio y Mapa", turn 10):
+/// Registro en 3 pasos: Identidad (correo + contraseña), Perfil (avatar,
+/// nombre, usuario, celular) y Verificación (OTP).
 ///
-/// 10a. Identidad — correo + contraseña, fuerza de contraseña en vivo.
-/// 10b. Perfil — avatar, nombre, apellidos, usuario, celular. The real
-///      Supabase account is created at the end of this step (needs
-///      email+password from 10a and phone from here) — 10c that follows
-///      is onboarding for an account that already exists.
-/// 10c. Verificación — 6 cajas OTP con auto-focus, reenvío con cooldown.
-///      There's no SMS/email OTP provider configured in Supabase, so
-///      "Verificar código" is an honest stub (never fakes success) and
-///      "Saltar por ahora" — which stores `isPhoneVerified: false`
-///      locally — is the fully-supported path, ending the flow.
+/// La cuenta real de Supabase se crea al final de Perfil (necesita
+/// email/contraseña de Identidad y el teléfono de este paso) — Verificación
+/// es onboarding de una cuenta que ya existe.
+///
+/// No hay proveedor de OTP por SMS/email configurado en Supabase: "Verificar
+/// código" es un stub honesto (nunca finge éxito) y "Saltar por ahora"
+/// —que guarda `isPhoneVerified: false` localmente— es el camino soportado.
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -81,8 +78,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    // Drives the live password-strength card — no other field needs a
-    // rebuild on every keystroke.
+    // Alimenta la tarjeta de fuerza de contraseña en vivo; los demás campos
+    // no necesitan rebuild en cada tecla.
     _passwordController.addListener(() => setState(() {}));
   }
 
@@ -194,10 +191,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  /// Validates Perfil, then actually creates the Supabase account (needs
-  /// email/password from 10a plus phone from here) and saves
-  /// username/photo locally. 10c that follows is onboarding for an
-  /// account that already exists — there's no "Atrás" past this point.
+  /// Valida Perfil, crea la cuenta real en Supabase (necesita email y
+  /// contraseña de Identidad más el teléfono de acá) y guarda
+  /// usuario/foto localmente — no hay "Atrás" después de esto.
   Future<void> _createAccountAndContinue() async {
     FocusScope.of(context).unfocus();
     if (!(_step2FormKey.currentState?.validate() ?? false)) {
@@ -229,9 +225,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // Best-effort: the real account already exists at this point even if
-    // these local writes somehow fail, so failures here don't block
-    // moving forward.
+    // Best-effort: la cuenta real ya existe, así que si estas escrituras
+    // locales fallan no bloquean el flujo.
     final username = _usernameController.text.trim();
     if (username.isNotEmpty) {
       await _extrasService.updateUsername(username);
@@ -291,12 +286,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  /// Single entry point for both the header's back button and the
-  /// hardware back gesture (wired via [AuthBottomSheetLayout.onBack]) —
-  /// keeping them on one method is what fixes the "Atrás borra todo y
-  /// regresa al Login" bug: stepping backward always goes through
-  /// `setState` instead of ever popping the route mid-wizard, so every
-  /// controller (and everything already typed into it) survives.
+  /// Punto único para el botón de atrás del header y el gesto físico
+  /// (vía [AuthBottomSheetLayout.onBack]) — unificarlos arregla el bug de
+  /// "Atrás borra todo y vuelve al Login": retroceder siempre pasa por
+  /// `setState`, nunca hace pop de la ruta a mitad del wizard, así que
+  /// cada controller sobrevive.
   Future<void> _handleBackRequest() async {
     FocusScope.of(context).unfocus();
     if (_step == 1) {
@@ -304,25 +298,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
     if (_step >= 2) {
-      // Verificación — the real account already exists at this point, so
-      // there's no in-progress data left to protect; just let the user out.
+      // La cuenta ya existe en este punto, no hay datos en progreso que proteger.
       Navigator.of(context).pop();
       return;
     }
-    // _step == 0: only here can leaving actually discard typed
-    // email/password, so confirm first instead of exiting silently.
+    // Solo acá salir borra de verdad lo tipeado, por eso se confirma antes.
     final shouldExit = await _confirmCancelRegistration();
     if (shouldExit && mounted) Navigator.of(context).pop();
   }
 
-  /// Custom [Dialog] instead of [AlertDialog] so the two actions can be the
-  /// exact same [AuthPrimaryButton]/[AuthOutlinedButton] widgets the rest
-  /// of the Auth flow uses, full-width and stacked, rather than a generic
-  /// Material action row. "Seguir aquí" (stay) gets the gold primary
-  /// treatment — it's the recommended/default path — and "Salir" (discard
-  /// everything typed) is deliberately the quieter outlined button instead
-  /// of a loud red one, so leaving doesn't read as more inviting than
-  /// staying.
+  /// [Dialog] a medida en vez de [AlertDialog] para reusar los mismos
+  /// botones del resto del flujo de Auth, apilados a todo ancho. "Seguir
+  /// aquí" lleva el dorado primario (opción recomendada); "Salir" es el
+  /// outlined discreto, para que irse no luzca más invitante que quedarse.
   Future<bool> _confirmCancelRegistration() async {
     final result = await showDialog<bool>(
       context: context,
@@ -372,13 +360,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return result ?? false;
   }
 
-  /// Inline "Atrás" affordance for the step content itself — replaces the
-  /// floating circular button that used to sit on top of
-  /// [AuthBottomSheetLayout]'s busy animated gradient, which read as
-  /// decoration more than as a clearly tappable control. Living inside the
-  /// flat card background, in the same League Spartan / [AppColors.authInk]
-  /// type system as everything else on the step, is what makes it actually
-  /// read as a back button.
+  /// Reemplaza el botón circular flotante que quedaba sobre el degradado
+  /// animado de [AuthBottomSheetLayout] y se leía más como decoración que
+  /// como control tocable — vivir dentro de la tarjeta plana, con la misma
+  /// tipografía del resto del paso, es lo que lo hace leerse como un botón
+  /// de atrás real.
   Widget _buildStepBackRow() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -410,10 +396,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       onBack: _handleBackRequest,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
-        // AnimatedSwitcher.defaultLayoutBuilder stacks with
-        // Alignment.center, which would float shorter step content in
-        // the middle of whatever height the sheet currently is instead
-        // of pinning it to the top — override just the alignment.
+        // El layoutBuilder por defecto centra verticalmente; acá se fija
+        // arriba para que un paso más corto no quede flotando a mitad del sheet.
         layoutBuilder: (currentChild, previousChildren) => Stack(
           alignment: Alignment.topCenter,
           children: [...previousChildren, ?currentChild],

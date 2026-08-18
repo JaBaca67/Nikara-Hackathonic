@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/auth/domain/models/country_dial_code.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Compact ISO-code badge standing in for a flag — the interface is
-/// emoji-free by rule, and at this size a 2-letter code reads just as
-/// clearly as a tiny flag illustration would, without needing a set of
-/// per-country vector flag assets.
+/// Badge de código ISO en vez de bandera: la interfaz es libre de emojis por regla, y evita necesitar assets vectoriales por país.
 class _IsoBadge extends StatelessWidget {
   const _IsoBadge({required this.iso});
 
@@ -35,8 +32,7 @@ class _IsoBadge extends StatelessWidget {
   }
 }
 
-/// The tappable prefix inside the phone [AuthTextField] — ISO badge, dial
-/// code, `expand_more`, then a vertical divider before the editable number.
+/// Prefijo tappable dentro del [AuthTextField] de teléfono.
 class CountryPrefixBadge extends StatelessWidget {
   const CountryPrefixBadge({
     super.key,
@@ -77,8 +73,7 @@ class CountryPrefixBadge extends StatelessWidget {
   }
 }
 
-/// Bottom-sheet list of [kCountryDialCodes] — returns the picked entry, or
-/// null if dismissed without a selection.
+/// Devuelve el país elegido, o null si se cierra sin seleccionar.
 Future<CountryDialCode?> showCountryDialCodePicker(BuildContext context) {
   return showModalBottomSheet<CountryDialCode>(
     context: context,

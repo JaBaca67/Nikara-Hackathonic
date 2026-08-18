@@ -21,12 +21,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Detail screen for a [BusinessModel] — cover + floating quick-info card +
-/// segmented tabs, all in one continuous scroll (no fixed sheet), per
-/// Claude Design's turn 3 ("Perfil del negocio / lugar — unificación
-/// prototipo + Figma"), Pantalla 3a ("pestaña Información, scroll
-/// completo"). No price, no reservation CTA anywhere on this screen — the
-/// same discovery-first pivot already applied to the Map redesign.
+/// Pantalla de detalle de [BusinessModel], sin precio ni CTA de reserva — mismo pivote "discovery-first" ya aplicado al rediseño del Mapa.
 class BusinessDetailScreen extends StatefulWidget {
   const BusinessDetailScreen({super.key, required this.business});
 
@@ -50,16 +45,12 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   String? _currentAvatarPath;
   Position? _userPosition;
 
-  /// Starts as [widget.business] but gets a new `reviews` list appended
-  /// in-place after a successful submission, so the rating/opinions/photos
-  /// on this screen update immediately without popping and re-pushing.
+  /// Se actualiza in-place al enviar una reseña para reflejar el cambio sin salir y reentrar a la pantalla.
   late BusinessModel _businessState = widget.business;
 
   BusinessModel get _business => _businessState;
 
-  /// Real straight-line distance from the device's last known position —
-  /// `null` (shown as "—") when location isn't available, never a
-  /// fabricated number.
+  /// `null` (se muestra como "—") si no hay ubicación disponible; nunca un número inventado.
   double? get _distanceKm => LocationService.distanceKm(
     _userPosition,
     _business.latitude,
@@ -90,9 +81,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     });
   }
 
-  /// Best-effort, silent on failure — same shared cache as MapScreen via
-  /// [LocationService], so whichever screen asks first is the only one
-  /// that prompts for permission.
+  /// Comparte cache con [LocationService] de MapScreen: solo la primera pantalla que pregunta pide permiso.
   Future<void> _loadUserPosition() async {
     final position = await LocationService().getCurrentPosition();
     if (!mounted || position == null) return;
@@ -119,8 +108,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     ).showSnackBar(const SnackBar(content: Text('Próximamente')));
   }
 
-  /// "Agregar a ruta" — suma este negocio como parada de un itinerario ya
-  /// existente (o de uno nuevo) vía [AddToRouteBottomSheet].
   Future<void> _addToRoute() async {
     await AddToRouteBottomSheet.showForBusiness(context, _business);
   }
@@ -165,15 +152,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
   }
 
-  /// Sends the user to Níkara's own map, focused on this business (pin
-  /// selected + its carousel card centered), instead of handing off to the
-  /// external Google Maps app: the in-app map now draws a real route and
-  /// tracks the trip itself (MapScreen's "Cómo llegar" / Estado 19c), so
-  /// leaving the app here would drop the user out of that flow.
-  ///
-  /// [MapFocusController] carries the business (id, name, lat/lng) and
-  /// switches to the Mapa tab; popping back to `MainLayout` is what makes
-  /// that tab visible from this pushed screen.
+  /// Enfoca el mapa propio de Níkara (no Google Maps externo) porque el mapa in-app ya traza ruta real y sigue el viaje.
   void _openDirections() {
     final lat = _business.latitude;
     final lng = _business.longitude;
@@ -278,10 +257,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 }
 
-/// Bloque inferior de la portada — pill de categoría, rating y nombre del
-/// negocio sobre el degradado, con las medidas de Pantalla 3a. El resto de
-/// la portada (PageView de fotos, scrims, botones, contador "1 / N") vive
-/// en [DetailCoverImage].
+/// Bloque inferior de la portada (categoría, rating, nombre); el resto de la portada vive en [DetailCoverImage].
 class _CoverCaption extends StatelessWidget {
   const _CoverCaption({required this.business});
 
@@ -334,19 +310,14 @@ class _CoverCaption extends StatelessWidget {
   }
 }
 
-/// Tarjeta flotante de datos rápidos del negocio — Ubicación / Distancia /
-/// Hoy sobre el layout compartido [DetailQuickInfoCard]. Vive aquí y no en
-/// el widget compartido porque el valor de "Hoy" sale del horario libre del
-/// negocio, no de un campo estructurado.
+/// Vive aquí y no en [DetailQuickInfoCard] porque el valor de "Hoy" sale del horario libre del negocio, no de un campo estructurado.
 class _QuickInfoCard extends StatelessWidget {
   const _QuickInfoCard({required this.business, required this.distanceKm});
 
   final BusinessModel business;
   final double? distanceKm;
 
-  /// El horario libre que escribió el negocio, solo su primera línea —
-  /// nunca un "Abierto"/"Cerrado" inventado que ningún dato estructurado
-  /// respalda.
+  /// Solo la primera línea del horario libre; nunca un "Abierto/Cerrado" inventado.
   String get _todayValue {
     final schedules = business.schedules.trim();
     if (schedules.isEmpty) return 'No especificado';
@@ -379,10 +350,7 @@ class _QuickInfoCard extends StatelessWidget {
   }
 }
 
-/// "Información" tab body — Descripción, Actividades, Servicios del lugar,
-/// Anfitrión, Horarios, Contacto y redes, Cómo llegar and a report link,
-/// in that order — the exact section list and sequence from Pantalla 3a.
-/// Stateful only to hold the "ver todas las actividades" expand toggle.
+/// Stateful solo para guardar el toggle de "ver todas las actividades".
 class _InformationTab extends StatefulWidget {
   const _InformationTab({
     required this.business,
@@ -516,10 +484,7 @@ class _DescriptionSection extends StatelessWidget {
   }
 }
 
-/// "Mostrar más" sheet — the full write-up behind the truncated description:
-/// El Espacio (reuses [BusinessModel.description]), Acceso de los
-/// visitantes and Otros aspectos a destacar (both dedicated fields, empty
-/// for now since the wizard doesn't collect them yet).
+/// "Acceso de los visitantes" y "Otros aspectos" están vacíos hoy porque el wizard aún no los recolecta.
 class _FullDescriptionSheet extends StatelessWidget {
   const _FullDescriptionSheet({required this.business});
 
@@ -613,9 +578,7 @@ class _FullDescriptionSheet extends StatelessWidget {
   }
 }
 
-/// Actividades — icon rows with an optional "ECO" badge (shown only when
-/// the activity's own text literally mentions it, never guessed), showing
-/// the first 3 with a "Ver las N actividades" expand link, per Pantalla 3a.
+/// El badge "ECO" solo aparece si el texto de la actividad lo menciona literalmente, nunca por inferencia.
 class _ActivitiesSection extends StatelessWidget {
   const _ActivitiesSection({
     required this.activities,
@@ -674,8 +637,7 @@ class _ActivityRow extends StatelessWidget {
 
   final String label;
 
-  /// The business's own Sello ECO opt-in (Pantalla 4c) — applies to every
-  /// activity row, on top of the per-label "eco" text match below.
+  /// El opt-in de Sello ECO del negocio aplica a toda fila, además del match de texto "eco" por actividad.
   final bool ecoSeal;
 
   bool get _isEco =>
@@ -705,8 +667,6 @@ class _ActivityRow extends StatelessWidget {
   }
 }
 
-/// Servicios del lugar — a [Wrap] of hairline-bordered pills, one per
-/// amenity, per Pantalla 3a.
 class _ServicesSection extends StatelessWidget {
   const _ServicesSection({required this.amenities});
 
@@ -754,10 +714,7 @@ class _ServicesSection extends StatelessWidget {
   }
 }
 
-/// Horarios — the business's own free-text hours in a single bordered
-/// card. Pantalla 3a shows a 3-row structured weekly table, but the data
-/// model only has one free-text [BusinessModel.schedules] field — this
-/// shows that real value rather than fabricating per-day hours.
+/// Muestra el texto libre real de [BusinessModel.schedules] en vez de fabricar un horario estructurado por día que el modelo no tiene.
 class _ScheduleSection extends StatelessWidget {
   const _ScheduleSection({required this.business});
 
@@ -812,12 +769,7 @@ class _ContactSection extends StatelessWidget {
   }
 }
 
-/// Anfitrión — [BusinessModel.ownerId] is the account that created the
-/// listing. This app is device-local/single-account (no backend session
-/// sharing), so the only case where that id resolves to a REAL, richer
-/// profile (real photo, real name, a tappable link) is when it matches the
-/// device's own signed-in session. Every other business falls back to the
-/// wizard's free-text [BusinessModel.hostName] with an initials avatar.
+/// Al ser la app local por dispositivo (sin sesión compartida), solo se resuelve a un perfil real cuando [BusinessModel.ownerId] coincide con la sesión actual; el resto cae al [BusinessModel.hostName] de texto libre.
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
@@ -852,10 +804,7 @@ class _HostSection extends StatelessWidget {
   }
 }
 
-/// Compact host card — 48px avatar, name + "VERIFICADO" badge on one row,
-/// a single caption line, per Pantalla 3a's proportions. No invented
-/// "Anfitrión desde 2023 · N lugares" stat — the app has no per-owner
-/// join-date or listing-count data wired into this screen.
+/// Sin stat inventado tipo "Anfitrión desde 2023 · N lugares": no hay dato real de antigüedad ni conteo de negocios por dueño.
 class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
@@ -906,9 +855,7 @@ class _HostRow extends StatelessWidget {
   }
 }
 
-/// Cómo llegar — la tarjeta compartida [DetailMapCard] (ilustración
-/// decorativa de mini-mapa, no un mapa real) con la dirección exacta del
-/// negocio y la pastilla "Abrir mapa" que salta al mapa de Níkara.
+/// [DetailMapCard] muestra una ilustración decorativa, no un mapa real.
 class _DirectionsSection extends StatelessWidget {
   const _DirectionsSection({required this.business, required this.onTap});
 
@@ -1276,11 +1223,7 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-/// Fixed bottom bar — exactly two actions, per Pantalla 3a: a compact
-/// "Cómo llegar" pill and a full-width gold "Escribir por WhatsApp" CTA.
-/// No price, no "Reservar ahora" — the app's reservation flow was removed
-/// entirely (Aug 2026); WhatsApp/directions are this bottom bar's only
-/// actions until a map-based routes/booking system replaces it.
+/// Sin precio ni "Reservar ahora": el flujo de reservas se eliminó por completo (ago 2026); solo quedan WhatsApp y direcciones.
 class _ContactBar extends StatelessWidget {
   const _ContactBar({required this.business, required this.onDirections});
 
@@ -1374,10 +1317,7 @@ class _ContactBar extends StatelessWidget {
   }
 }
 
-/// What [_WriteReviewSheet] hands back — the raw star/comment/media input.
-/// [BusinessDetailScreen] is the one that stamps author identity, an id and
-/// a timestamp onto it to build the real [ReviewModel], since that's real
-/// business logic the sheet itself shouldn't need to know about.
+/// [BusinessDetailScreen] (no el sheet) estampa identidad, id y timestamp para construir el [ReviewModel] real.
 class _ReviewDraft {
   const _ReviewDraft({
     required this.rating,
@@ -1390,10 +1330,7 @@ class _ReviewDraft {
   final List<String> mediaPaths;
 }
 
-/// "Escribir una reseña" bottom sheet — 1-5 star selector, a free-text
-/// comment, and a photo/video picker via `image_picker`'s
-/// `pickMultipleMedia` (a single control for both media types, since
-/// there's no separate video picker in this project).
+/// Usa `pickMultipleMedia` como control único para fotos y videos, ya que no hay un picker de video separado en el proyecto.
 class _WriteReviewSheet extends StatefulWidget {
   const _WriteReviewSheet();
 
@@ -1604,7 +1541,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                             child: Container(
                               padding: const EdgeInsets.all(2),
                               decoration: const BoxDecoration(
-                                color: Colors.black54,
+                                color: AppColors.removeButtonBackground,
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(

@@ -10,13 +10,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dar
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "Registrar / Gestionar Fundación" (Ajustes -> Comunidad ECO) — lista las
-/// fundaciones que ya registró esta cuenta (tocar una abre su perfil
-/// público) y debajo el formulario para dar de alta otra.
-///
-/// `is_verified` no se pide ni se manda: la columna arranca en `true` en
-/// esta fase de prueba (ver supabase/sql/010_organizations.sql), igual que
-/// `businesses.is_verified` nunca se escribe desde el cliente.
+/// `is_verified` no se pide ni se manda: arranca en `true` por default de columna, igual que `businesses.is_verified`.
 class CreateOrganizationScreen extends StatefulWidget {
   const CreateOrganizationScreen({super.key});
 
@@ -224,10 +218,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   }
 }
 
-/// Campo de imagen: una URL escrita a mano o la ruta de una imagen del
-/// dispositivo (el botón la escribe en el mismo campo). Ambas se guardan
-/// como texto plano, igual que las fotos de un negocio, y [LocalImage]
-/// resuelve las dos formas al pintar la vista previa.
+/// URL escrita a mano o ruta local (mismo campo); ambas se guardan como texto plano, igual que las fotos de un negocio.
 class _ImageField extends StatefulWidget {
   const _ImageField({
     required this.controller,
@@ -249,9 +240,7 @@ class _ImageFieldState extends State<_ImageField> {
   @override
   void initState() {
     super.initState();
-    // La vista previa sigue lo que hay en el campo, se haya escrito a mano
-    // o lo haya puesto el selector. El controller es del padre, así que acá
-    // solo se quita el listener, nunca se hace dispose.
+    // El controller es del padre: solo se quita el listener, nunca se hace dispose aquí.
     widget.controller.addListener(_onTextChanged);
   }
 

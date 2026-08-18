@@ -3,13 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Pill "Disponible"/"Participando"/"Completada" — el único badge que usan
-/// la tarjeta del feed y el detalle, así que el diseño de los 3 estados
-/// (Estados 1/2/3 de "fases-pantalla-eco") vive en un solo lugar.
-///
-/// Las tres variantes son pastillas suaves, como en la referencia
-/// "Estado-disponible-tarjeta": el color solo carga el estado, no compite
-/// con el CTA dorado de la pantalla.
+/// Único badge de estado compartido por tarjeta y detalle, para que los 3 estados vivan en un solo lugar.
 class EcoStatusBadge extends StatelessWidget {
   const EcoStatusBadge({super.key, required this.status});
 

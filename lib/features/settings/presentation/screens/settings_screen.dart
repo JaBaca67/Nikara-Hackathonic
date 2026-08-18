@@ -8,9 +8,9 @@ import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Ajustes screen (Figma node 361:323). Notification/privacy toggles and
-/// the account edit / password change flows are local mock state — nothing
-/// is persisted beyond this screen's lifetime.
+/// Pantalla de Ajustes (nodo Figma 361:323). Los toggles de
+/// notificaciones/privacidad y los flujos de editar cuenta / cambiar
+/// contraseña son estado mock local — no se persiste nada.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 

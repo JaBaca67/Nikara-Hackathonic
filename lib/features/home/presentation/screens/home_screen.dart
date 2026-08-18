@@ -21,9 +21,7 @@ const String _kAllCategories = 'Todos';
 
 enum _SortMode { recientes, cercanos }
 
-/// "a N km" from [from] to the business, or `null` when no position is
-/// available (no permission, location services off, or [from] hasn't
-/// resolved yet) — callers fall back to showing just the city in that case.
+/// "a N km" desde [from] al negocio, o `null` si no hay posición disponible (sin permiso, GPS apagado, o [from] aún no resolvió).
 String? _distanceLabel(Position? from, BusinessModel business) {
   final km = LocationService.distanceKm(
     from,
@@ -33,17 +31,13 @@ String? _distanceLabel(Position? from, BusinessModel business) {
   return km == null ? null : 'a ${km.toStringAsFixed(0)} km';
 }
 
-/// "{city} · a N km", or just "{city}" when the distance isn't available.
+/// "{ciudad} · a N km", o solo "{ciudad}" si no hay distancia disponible.
 String _cityWithDistance(Position? from, BusinessModel business) {
   final distance = _distanceLabel(from, business);
   return distance == null ? business.city : '${business.city} · $distance';
 }
 
-/// Home / "Inicio" screen (Figma node 124:37 for the general structure —
-/// header, hero banner, category rows). Everything below the header is
-/// 100% dynamic, sourced from [BusinessStorageService]: a hero carousel of
-/// the most recently registered businesses, real category filter chips,
-/// and a "Destacados" grid — no mock names, prices, or distances.
+/// Pantalla "Inicio" (Figma nodo 124:37). Todo debajo del header es 100% dinámico desde [BusinessStorageService] — sin nombres, precios ni distancias mock.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -67,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedCategory = _kAllCategories;
   _SortMode _sortMode = _SortMode.recientes;
 
-  /// Up to the 5 most recently registered businesses, newest first.
+  /// Hasta 5 negocios, los más recientes primero.
   List<BusinessModel> get _heroBusinesses {
     final businesses = _businesses;
     if (businesses == null || businesses.isEmpty) return const [];
@@ -77,11 +71,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // BusinessStorageService.revision fires on every business write (add,
-    // edit, delete) — same pattern as ProfileScreen's "Mis Negocios". Home
-    // sits alive-but-offstage inside MainLayout's IndexedStack, so without
-    // this listener an edited business (new photos, updated info) never
-    // shows up here until the app restarts.
+    // Home queda vivo pero fuera de pantalla en el IndexedStack de
+    // MainLayout, así que sin este listener un negocio editado no se
+    // refleja aquí hasta reiniciar la app.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
     _loadBusinesses();
     _loadUserName();
@@ -131,8 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Rotates only the *photos of the currently active business* — moving
-  /// between businesses is manual (swipe), never automatic.
+  /// Rota solo las fotos del negocio activo; cambiar de negocio es manual (swipe).
   void _restartPhotoTimer() {
     _photoTimer?.cancel();
     final heroBusinesses = _heroBusinesses;
@@ -270,9 +261,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
-      // Extra clearance (not just 24) because MainLayout's Scaffold uses
-      // extendBody: true so the floating nav bar overlaps the bottom of
-      // this scroll view instead of reserving its own space.
+      // Margen extra porque MainLayout usa extendBody: true y la barra de
+      // navegación flotante se superpone al final del scroll.
       padding: const EdgeInsets.only(bottom: 110),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -445,14 +435,7 @@ class _CategoryChipsRow extends StatelessWidget {
   }
 }
 
-/// Manually swipeable hero banner over the latest registered businesses.
-/// The rounded card frame is a single static [ClipRRect] that never moves —
-/// only the [PageView] living *inside* it changes pages, so a swipe never
-/// looks like a second card sliding in from the edge. Within whichever
-/// business is currently on screen, its own photos rotate automatically
-/// (Timer.periodic every 5s, owned by the parent state) and can also be
-/// picked directly from the thumbnail row overlaid at the bottom of the
-/// card, right next to "Ver detalle →".
+/// Banner destacado deslizable manualmente sobre los negocios más recientes. El marco [ClipRRect] es estático; solo el [PageView] interior cambia de página, para que un swipe nunca parezca una segunda tarjeta entrando desde el borde.
 class _HeroCarousel extends StatelessWidget {
   const _HeroCarousel({
     required this.controller,
@@ -476,9 +459,7 @@ class _HeroCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The parent (_buildFeed) wraps this whole carousel in the padded,
-    // rounded (20) frame the spec calls for — this card itself just fills
-    // that frame edge-to-edge.
+    // El padding/borde redondeado los aplica el padre (_buildFeed); esto solo llena ese marco.
     return SizedBox(
       height: _height,
       width: double.infinity,
@@ -537,8 +518,7 @@ class _HeroCard extends StatelessWidget {
               fallbackIconSize: 40,
             ),
           ),
-          // Dark gradient confined to roughly the bottom 150px of the card,
-          // so the text/thumbnails overlay stays legible.
+          // Degradado oscuro solo en la parte inferior para que el texto/thumbnails sean legibles.
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -916,11 +896,7 @@ class _DestacadoCard extends StatelessWidget {
   }
 }
 
-/// "Cerca de ti" — a vertical list of businesses actually sorted by real
-/// distance from the device. Only rendered when a real GPS position is
-/// available: without one there's nothing honest to call "near you" (no
-/// fabricated placeholder distances), so the whole section just doesn't
-/// exist rather than showing a list that isn't actually distance-sorted.
+/// "Cerca de ti": lista ordenada por distancia real. Solo se renderiza si hay posición GPS; sin ella no existe la sección en vez de mostrar distancias inventadas.
 class _CercaDeTiSection extends StatelessWidget {
   const _CercaDeTiSection({
     required this.businesses,
@@ -1100,17 +1076,13 @@ class _NearbyRow extends StatelessWidget {
   }
 }
 
-/// Heart toggle overlaid on a business photo — gated by [GuestGuard] like
-/// every other favorites entry point in the app, and listens directly to
-/// [FavoritesService.idsNotifier] so it stays in sync if the same business
-/// gets favorited/unfavorited from BusinessDetailScreen instead.
+/// Botón de favorito sobre la foto — protegido por [GuestGuard] y sincronizado vía [FavoritesService.idsNotifier] con otras pantallas.
 class _FavoriteButton extends StatelessWidget {
   const _FavoriteButton({required this.businessId, this.size = 30});
 
   final String businessId;
 
-  /// 30 on the Destacados card, 32 on the Cerca-de-ti row — the two exact
-  /// sizes Pantalla 2a uses for this button in each context.
+  /// 30 en la card de Destacados, 32 en la fila Cerca-de-ti (Pantalla 2a).
   final double size;
 
   @override
@@ -1215,10 +1187,7 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/// Shown instead of the feed when [BusinessStorageService.getBusinesses]
-/// fails — a Supabase connection/network problem, not "no businesses yet"
-/// (that's [_EmptyState]). [message] is the friendly Spanish text the
-/// service already translated the error into.
+/// Se muestra en vez del feed cuando falla la carga (problema de red/Supabase, no "aún sin negocios" — eso es [_EmptyState]). [message] ya viene traducido al español.
 class _LoadErrorState extends StatelessWidget {
   const _LoadErrorState({required this.message, required this.onRetry});
 

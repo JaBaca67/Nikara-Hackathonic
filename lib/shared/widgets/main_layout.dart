@@ -12,9 +12,7 @@ import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// App shell for the 5 main tabs — Inicio(0), Mapa(1), ECO(2), Rutas(3),
-/// Perfil(4). An [IndexedStack] keeps every tab's scroll position and
-/// widget state alive across switches instead of rebuilding on each tap.
+/// Shell de las 5 tabs principales; [IndexedStack] mantiene vivo el estado/scroll de cada una entre cambios de tab.
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key, this.initialIndex = 0});
 
@@ -40,7 +38,6 @@ class _MainLayoutState extends State<MainLayout> {
     super.dispose();
   }
 
-  /// Consumes a pending cross-route tab switch request.
   void _onTabRequested() {
     final index = _tabController.requestedTab.value;
     if (index == null) return;
@@ -52,12 +49,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   bool get _isGuest => !AuthService().isLoggedIn;
 
-  /// Perfil (4) y Rutas (3) leen el id de la sesión para traer datos reales
-  /// — para un invitado eso es null, así que esos dos slots se cambian por
-  /// un placeholder bloqueado en vez de montar la pantalla real (IndexedStack
-  /// construye todos sus hijos, se vean o no). ECO (2) sí lo puede ver
-  /// cualquiera: solo la acción "Unirme" está detrás del guard, dentro de
-  /// EcoMainScreen/EcoDetailScreen (mismo patrón que marcar un favorito).
+  /// Perfil y Rutas necesitan el id de sesión, así que para un invitado se cambian por un placeholder (IndexedStack monta igual todos los hijos); ECO es visible para cualquiera, solo "Unirme" queda tras el guard.
   List<Widget> get _tabs => [
     const HomeScreen(),
     const MapScreen(),
@@ -87,15 +79,10 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // The floating nav bar has margin on every side, so without this the
-      // screens behind it would be sized to stop short of it, leaving a
-      // solid Scaffold-background rectangle showing through the margin
-      // instead of the screen's own content/background.
+      // Sin esto, las pantallas de atrás se detendrían antes del margen de la nav bar flotante, dejando ver el fondo del Scaffold.
       extendBody: true,
       body: IndexedStack(index: _currentIndex, children: _tabs),
-      // Hidden while the map is following a route (Estado 19c) so its
-      // floating navigation panel owns the bottom of the screen — the map
-      // flips that flag itself via [MapFocusController].
+      // Oculta mientras el mapa sigue una ruta (Estado 19c); el mapa mismo cambia esta flag vía [MapFocusController].
       bottomNavigationBar: ValueListenableBuilder<bool>(
         valueListenable: MapFocusController().navigationActive,
         builder: (context, navigating, child) =>
@@ -106,10 +93,7 @@ class _MainLayoutState extends State<MainLayout> {
   }
 }
 
-/// Shown in place of ProfileScreen for a guest — in practice
-/// [_MainLayoutState._onNavTap] intercepts the tap before this is ever
-/// visible, but IndexedStack still builds it offstage, so it has to be
-/// safe (and cheap) to mount without a signed-in user.
+/// Placeholder para un invitado; `_onNavTap` intercepta el tap antes de mostrarlo, pero IndexedStack igual lo monta offstage, así que debe ser seguro sin usuario logueado.
 class _GuestLockedTab extends StatelessWidget {
   const _GuestLockedTab({required this.feature});
 

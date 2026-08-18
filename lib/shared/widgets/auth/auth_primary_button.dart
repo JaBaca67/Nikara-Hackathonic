@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// The one primary CTA style across the whole Auth flow — gold gradient
-/// (`#FDBE02 → #FFD966`), League Spartan Bold label in [AppColors.authInk],
-/// optional trailing arrow. `onPressed: null` renders a dimmed, disabled
-/// state instead of the caller having to remember to fade colors itself.
+/// CTA primario único del flujo de Auth; `onPressed: null` ya renderiza el estado deshabilitado, sin que el caller tenga que apagar colores manualmente.
 class AuthPrimaryButton extends StatelessWidget {
   const AuthPrimaryButton({
     super.key,
@@ -19,8 +16,7 @@ class AuthPrimaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
 
-  /// Set to null to omit the trailing icon entirely (not every button in
-  /// the canvas has one — e.g. the outlined "Verificar código").
+  /// Null omite el ícono por completo.
   final IconData? trailingIcon;
 
   @override
@@ -42,7 +38,7 @@ class AuthPrimaryButton extends StatelessWidget {
         boxShadow: isEnabled
             ? const [
                 BoxShadow(
-                  color: Color(0x59FDBE02),
+                  color: AppColors.authPrimaryButtonGlow,
                   offset: Offset(0, 8),
                   blurRadius: 20,
                 ),
@@ -81,9 +77,7 @@ class AuthPrimaryButton extends StatelessWidget {
   }
 }
 
-/// The secondary/outlined counterpart — transparent fill, a soft inset
-/// ring instead of a hard border, same League Spartan Bold label. Used for
-/// "Verificar código" (outlined, next to the gold "Saltar por ahora").
+/// Contraparte outlined del botón primario (p. ej. "Verificar código" junto al "Saltar por ahora").
 class AuthOutlinedButton extends StatelessWidget {
   const AuthOutlinedButton({
     super.key,

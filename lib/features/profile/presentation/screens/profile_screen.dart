@@ -17,18 +17,11 @@ import 'package:nikara_app/features/settings/presentation/screens/settings_scree
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Perfil screen (Figma nodes 377:483 "Perfil 1" and 421:361 "Perfil 2").
-/// The header name comes from the real Supabase [AuthService] profile; the
-/// 3 stat counters, the level/progress card, the favorites list and the
-/// badge grid are computed live from [FavoritesService] and
-/// [UserStatsService]. There is no mock/fallback data baked in; an empty
-/// state renders instead when there's genuinely nothing to show yet.
+/// Figma nodes 377:483/421:361. Todo se calcula en vivo desde Supabase/[FavoritesService]/[UserStatsService], sin datos mock de respaldo.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onExploreRequested});
 
-  /// Lets the empty-state "Explorar Nicaragua" button switch [MainLayout]
-  /// back to the Home tab. Null when this screen isn't hosted there (e.g.
-  /// in a test harness) — the button just hides itself in that case.
+  /// Null cuando esta pantalla no vive dentro de [MainLayout] (ej. tests); el botón simplemente se oculta.
   final VoidCallback? onExploreRequested;
 
   @override
@@ -59,13 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // FavoritesService.idsNotifier fires whenever ANY screen
-    // (BusinessDetailScreen's AppBar heart included) toggles a favorite;
-    // BusinessStorageService.revision fires on every business write
-    // (including a new review, which changes this screen's points total).
-    // Both keep this screen in sync without a restart or manual refresh,
-    // even while Profile sits inert in the background inside MainLayout's
-    // IndexedStack.
+    // Mantienen la pantalla sincronizada sin refresco manual, incluso mientras Profile está inerte en el IndexedStack de MainLayout.
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
     _loadAll();
@@ -93,13 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final allBusinesses = await _businessStorageService.getBusinesses();
       if (!mounted) return;
 
-      // The bug: favorites can be either a mock DestinationModel id
-      // ('isletas-de-granada', from Home/Map) OR a business uuid (from
-      // BusinessDetailScreen's heart) — both share the same id set in
-      // FavoritesService, so BOTH sources must be cross-referenced here.
-      // Matching only mockDestinations (the old code) silently dropped
-      // every favorited business from this tab even though it was
-      // persisted fine.
+      // Los favoritos mezclan ids de DestinationModel y de BusinessModel en el mismo set: hay que cruzar ambas fuentes o se pierden los negocios favoritos.
       final favoriteDestinations = mockDestinations
           .where((d) => favoriteIds.contains(d.id))
           .toList(growable: false);
@@ -179,8 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _toggleFavorite(String id) async {
-    // No manual _loadAll() here — toggling notifies every listener
-    // (including the one registered above), which reloads this screen.
+    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
     await _favoritesService.toggleFavorite(id);
   }
 
@@ -252,9 +232,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Routes a badge-card tap to the right dialog — the gray "how to
-  /// unlock" one for a still-locked badge, or [_showBadgeUnlocked] (full
-  /// color, celebratory) for one the traveler already earned.
   void _onBadgeTap(BadgeInfo badge) {
     if (badge.unlocked) {
       _showBadgeUnlocked(badge);
@@ -263,9 +240,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  /// Shown for an already-earned badge — same layout as the locked
-  /// requirement dialog, but in the badge's real [BadgeInfo.tint] instead
-  /// of gray, confirming what was achieved rather than what's missing.
   void _showBadgeUnlocked(BadgeInfo badge) {
     showDialog<void>(
       context: context,
@@ -410,11 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: AppColors.settingsBackground,
       body: Column(
         children: [
-          // The status-bar-safe strip SafeArea reserves at the top would
-          // otherwise show the Scaffold's cream background — a hard seam
-          // right where the phone's status bar sits, immediately above
-          // _ProfileHeaderCard's own surface100. Painting it the same
-          // surface100 here makes the two read as one continuous surface.
+          // Sin esto la franja del status bar mostraría el fondo crema del Scaffold en vez de continuar el surface100 de _ProfileHeaderCard.
           Container(
             height: MediaQuery.paddingOf(context).top,
             color: AppColors.surface100,
@@ -425,11 +395,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               bottom: false,
               child: SingleChildScrollView(
                 physics: const ClampingScrollPhysics(),
-                // Extra clearance (not just 24) because MainLayout's
-                // Scaffold uses extendBody: true so the floating nav bar
-                // overlaps the bottom of this scroll view instead of
-                // reserving its own space — without it, "Mis Negocios"
-                // gets cut off behind the nav bar.
+                // Espacio extra porque extendBody: true hace que la nav bar flotante se superponga al scroll en vez de reservar su propio espacio.
                 padding: const EdgeInsets.only(bottom: 110),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -459,10 +425,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      // Favoritos and Insignias are two fully independent tab
-                      // bodies — AnimatedSwitcher cross-fades between them
-                      // instead of an instant swap, keyed by the tab index so it
-                      // actually detects the change.
+                      // Cross-fade en vez de cambio instantáneo; la key por índice es lo que hace que AnimatedSwitcher detecte el cambio de tab.
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 280),
                         switchInCurve: Curves.easeInOutCubic,
@@ -484,14 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                       ),
                     ),
-                    // "Mis Negocios" is a business-owner-only section that only
-                    // makes sense under Favoritos (both are "your saved/owned
-                    // places" lists) — deliberately hidden while Insignias is
-                    // active instead of always showing beneath either tab, since
-                    // it has nothing to do with badges/gamification. The divider
-                    // + extra top gap (vs. the 12px used between the other
-                    // sections) keeps it visually distinct from the tab content
-                    // above it even when it IS shown.
+                    // Solo bajo Favoritos: no tiene relación con insignias/gamificación. El divider + gap extra la distingue visualmente del contenido del tab.
                     if (_activeTab == 0 && _myBusinesses.isNotEmpty) ...[
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
@@ -548,9 +504,6 @@ class _ProfileHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // AppColors.surface100 — the same soft off-white (never pure #FFFFFF)
-    // every other card on this screen (level card, badge cards) already
-    // uses, and what Figma node 377:483 itself specifies for this block.
     return Container(
       color: AppColors.surface100,
       child: Column(
@@ -888,13 +841,7 @@ class _LevelProgressCard extends StatelessWidget {
   }
 }
 
-/// One continuous pill (Figma's "Barra favoritos y medallas") — a single
-/// sliding gradient indicator behind two equal tap zones, not two
-/// independently-rounded buttons with a gap between them. The slide uses a
-/// real (implicit) Flutter animation — [AnimatedAlign] with an
-/// overshoot curve — for a livelier feel than a flat linear cross-fade;
-/// [ClipRRect] keeps that overshoot from poking past the pill's rounded
-/// corners mid-bounce.
+/// Pill continua (Figma "Barra favoritos y medallas"): un indicador deslizante, no dos botones separados; [ClipRRect] evita que el overshoot de [AnimatedAlign] se salga de las esquinas redondeadas.
 class _ProfileTabSelector extends StatelessWidget {
   const _ProfileTabSelector({required this.activeTab, required this.onChanged});
 
@@ -910,11 +857,6 @@ class _ProfileTabSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      // A touch bigger than before (52 vs 48) — a plain Stack child (the
-      // Row below) shrink-wraps to its own content height and then sits
-      // at the Stack's default top-start corner instead of filling it, so
-      // growing this container without also fixing that would have just
-      // pushed the icon/label further off-center instead of "bigger."
       height: 52,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -922,7 +864,7 @@ class _ProfileTabSelector extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0D000000),
+            color: AppColors.profileCardShadow,
             offset: Offset(0, 2),
             blurRadius: 4,
           ),
@@ -953,9 +895,7 @@ class _ProfileTabSelector extends StatelessWidget {
                 ),
               ),
             ),
-            // Positioned.fill (not a bare Row) so the icon+label content
-            // is centered across the *entire* pill height/width, not just
-            // shrink-wrapped and pinned to the top-left corner.
+            // Positioned.fill (no un Row suelto) para centrar el contenido en todo el alto/ancho de la pill.
             Positioned.fill(
               child: Row(
                 children: [
@@ -1022,11 +962,7 @@ class _ProfileTabButton extends StatelessWidget {
   }
 }
 
-/// Favoritos tab — a single list merging both real sources a heart can
-/// favorite: curated [DestinationModel]s (Home/Map cards) and
-/// user-registered [BusinessModel]s (BusinessDetailScreen's AppBar heart).
-/// Both id spaces share the same [FavoritesService] set, so both must be
-/// cross-referenced for a saved business to actually show up here.
+/// Lista única que mezcla [DestinationModel]s curados y [BusinessModel]s del usuario; ambos comparten el mismo set de [FavoritesService].
 class _FavoritesTab extends StatelessWidget {
   const _FavoritesTab({
     super.key,
@@ -1231,8 +1167,7 @@ class _FavoritePlaceCard extends StatelessWidget {
   }
 }
 
-/// Same card language as [_FavoritePlaceCard], sourced from a favorited
-/// [BusinessModel] instead of a curated [DestinationModel].
+/// Mismo lenguaje visual que [_FavoritePlaceCard], pero desde un [BusinessModel] favorito.
 class _FavoriteBusinessCard extends StatelessWidget {
   const _FavoriteBusinessCard({
     required this.business,
@@ -1330,8 +1265,7 @@ class _BadgesTab extends StatelessWidget {
 
   final List<BadgeInfo> badges;
 
-  /// Called for *every* tap, locked or unlocked — the parent decides which
-  /// dialog to show based on [BadgeInfo.unlocked].
+  /// Se llama en todo tap, bloqueada o no; el padre decide el diálogo según [BadgeInfo.unlocked].
   final ValueChanged<BadgeInfo> onBadgeTap;
 
   @override
@@ -1342,13 +1276,7 @@ class _BadgesTab extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
-      // Figma's 112.66×106.80 cell is a single measured instance (a
-      // 1-line title), not a hard constraint — Flutter's GridView forces
-      // every cell to that exact ratio, so a 2-line badge title (very
-      // common here: "Guardián del Bosque", "Viajero Consciente"...) plus
-      // the unlocked status pill genuinely needs more height, which is
-      // exactly what was overflowing. 0.92 gives that real content room
-      // instead of reproducing Figma's one sampled measurement verbatim.
+      // La celda de Figma medía un título de 1 línea; con títulos de 2 líneas + pill de estado, ese ratio desbordaba. 0.92 da el alto real que hace falta.
       childAspectRatio: 0.92,
       children: [
         for (final badge in badges)
@@ -1363,8 +1291,6 @@ class _BadgeCard extends StatelessWidget {
 
   final BadgeInfo badge;
 
-  /// Always tappable now — locked shows the gray requirement dialog,
-  /// unlocked shows the full-color "insignia obtenida" one.
   final VoidCallback onTap;
 
   @override
@@ -1422,10 +1348,7 @@ class _BadgeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              // Same padded box for both states (only the fill color
-              // differs) — mismatched box heights between "✓ Obtenida"
-              // and a bare "Bloqueada" Text was exactly what pushed
-              // unlocked cards past the grid cell's height.
+              // Mismo box con padding en ambos estados: alturas distintas entre "✓ Obtenida" y un Text suelto desbordaban la celda.
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
@@ -1449,11 +1372,7 @@ class _BadgeCard extends StatelessWidget {
   }
 }
 
-/// "Mis Negocios" — only rendered by [ProfileScreen] when the signed-in
-/// account owns at least one [BusinessModel] (matched by
-/// [BusinessModel.ownerId]). Each card lets the owner edit (reopens
-/// [RegisterBusinessWizard] pre-filled) or delete (with confirmation) their
-/// own listing.
+/// Solo se renderiza cuando la cuenta es dueña de al menos un [BusinessModel] ([BusinessModel.ownerId]).
 class _MyBusinessesSection extends StatelessWidget {
   const _MyBusinessesSection({
     required this.businesses,

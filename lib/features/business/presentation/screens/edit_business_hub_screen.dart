@@ -6,18 +6,7 @@ import 'package:nikara_app/features/business/presentation/screens/business_detai
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "Editar negocio publicado" — Pantalla 4e. Reached from Profile's "Mis
-/// negocios" instead of jumping straight into the wizard: shows real
-/// publish/verification status, then deep-links each row into the
-/// specific [RegisterBusinessWizard] step instead of re-walking all 4.
-///
-/// Deliberately does NOT show the wireframe's "Rendimiento del último mes"
-/// (412 visitas / 58 mensajes / 31 guardados) — this app has no analytics
-/// pipeline to back those numbers, and showing fabricated stats to a real
-/// business owner would be actively misleading. "Pausar" is stubbed as
-/// "Próximamente" for the same reason: pausing visibility needs a real
-/// `is_active`-style column this project doesn't have yet, and a
-/// device-local flag wouldn't actually hide the listing from anyone else.
+/// No muestra el "Rendimiento del último mes" del wireframe (no hay pipeline de analítica real) ni activa "Pausar" (falta columna `is_active`) para no mostrar datos o efectos falsos al dueño.
 class EditBusinessHubScreen extends StatefulWidget {
   const EditBusinessHubScreen({super.key, required this.business});
 
@@ -101,9 +90,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
       canPop: true,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop && result == null && _changed) {
-          // Nothing to do — the pushed wizard already persisted every
-          // change immediately; this just makes sure Navigator carries the
-          // freshest copy back to Profile's list.
+          // El wizard ya persistió los cambios; esto solo asegura que Navigator devuelva la copia más reciente.
         }
       },
       child: Scaffold(

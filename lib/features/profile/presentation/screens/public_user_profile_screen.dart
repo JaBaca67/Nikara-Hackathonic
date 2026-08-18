@@ -13,15 +13,7 @@ import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Perfil público de una persona — a donde lleva tocar el bloque
-/// "Organizador" de una jornada publicada a título personal (sin fundación).
-///
-/// Solo muestra lo que realmente existe en el backend: el nombre y el rol de
-/// su fila en `profiles` y las jornadas ECO que esa persona publicó. No hay
-/// correo ni teléfono acá — son datos privados de `profiles` que este perfil
-/// público no tiene por qué exponer. La foto solo aparece cuando el perfil
-/// es el de quien está usando el dispositivo: los avatares se guardan en
-/// local ([LocalProfileExtrasService]), `profiles` no tiene columna de foto.
+/// Sin correo ni teléfono (privados en `profiles`); la foto solo aparece para el propio dispositivo porque los avatares se guardan localmente, no en `profiles`.
 class PublicUserProfileScreen extends StatefulWidget {
   const PublicUserProfileScreen({
     super.key,
@@ -31,10 +23,7 @@ class PublicUserProfileScreen extends StatefulWidget {
 
   final String userId;
 
-  /// Nombre que ya traía quien navegó hasta acá (`organizer_name` de la
-  /// actividad) — se pinta mientras carga el perfil real, y queda como
-  /// respaldo si la fila de `profiles` no es legible (por ejemplo, cuando
-  /// quien mira entró como invitado).
+  /// `organizer_name` de la actividad: se pinta mientras carga y queda como respaldo si `profiles` no es legible (ej. invitado).
   final String? fallbackName;
 
   @override
@@ -61,9 +50,7 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
     try {
       profile = await AuthService().getProfileById(widget.userId);
     } on AuthServiceException {
-      // `profiles` no es legible para quien entró como invitado (RLS solo
-      // deja leerla a cuentas autenticadas). La pantalla se queda con el
-      // nombre que ya traía la actividad en vez de romperse.
+      // RLS solo deja leer `profiles` a cuentas autenticadas; se queda con el nombre que ya traía la actividad.
     }
     final avatarPath = _isCurrentUser
         ? await LocalProfileExtrasService().getAvatarPath()
@@ -74,8 +61,7 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
         widget.userId,
       );
     } on EcoServiceException {
-      // El perfil sigue siendo útil sin el listado — se muestra vacío en
-      // lugar de convertir toda la pantalla en un error.
+      // El perfil sigue siendo útil sin el listado: se muestra vacío en vez de romper toda la pantalla.
     }
     if (!mounted) return;
     setState(() {

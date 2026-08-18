@@ -12,12 +12,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dar
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "Registrar actividad" form, reachable from Perfil/Ajustes — collects
-/// everything [EcoService.createActivity] needs (título, categoría,
-/// descripción, ubicación, fecha/hora, cupo, requisitos) and refreshes the
-/// ECO feed on save via `EcoService.revision` (EcoMainScreen already
-/// listens to it, same pattern `BusinessStorageService.revision` uses for
-/// "Registra tu negocio").
+/// Formulario "Registrar actividad"; al guardar refresca el feed ECO vía `EcoService.revision`, mismo patrón que `BusinessStorageService.revision`.
 class CreateEcoActivityScreen extends StatefulWidget {
   const CreateEcoActivityScreen({super.key});
 
@@ -44,10 +39,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
 
   bool _isSaving = false;
 
-  /// "Publicar como": las fundaciones de esta cuenta y cuál está elegida.
-  /// [_selectedOrganization] en null significa "Mi perfil personal", que es
-  /// como arranca siempre — publicar en nombre de una fundación es una
-  /// decisión explícita, nunca el default.
+  /// [_selectedOrganization] null = "Mi perfil personal" (default siempre); publicar como fundación es decisión explícita.
   List<OrganizationModel> _organizations = const [];
   OrganizationModel? _selectedOrganization;
   String _personalName = 'Mi perfil personal';
@@ -69,8 +61,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         if (name.isNotEmpty) _personalName = name;
       });
     } on OrganizationServiceException {
-      // Sin fundaciones que ofrecer el formulario funciona igual, publicando
-      // a título personal — no vale la pena interrumpir con un error.
+      // Sin fundaciones el formulario sigue funcionando, publicando a título personal.
     }
   }
 
@@ -405,15 +396,7 @@ class _CategoryPicker extends StatelessWidget {
   }
 }
 
-/// Selector "Publicar como" — la primera decisión del formulario cuando la
-/// cuenta tiene fundaciones registradas: la jornada sale a nombre de la
-/// persona (opción por defecto, `organization_id` nulo) o de una de sus
-/// fundaciones.
-///
-/// Es un segmentado de pastillas y no un `SegmentedButton`/`DropdownButton`
-/// de Material porque cada opción lleva su avatar y su nombre completo, y
-/// porque así hereda el mismo lenguaje visual de los chips de categoría de
-/// esta misma pantalla.
+/// Pastillas en vez de `SegmentedButton`/`DropdownButton` porque cada opción lleva avatar y nombre completo, y hereda el estilo de los chips de categoría.
 class _PublishAsPicker extends StatelessWidget {
   const _PublishAsPicker({
     required this.organizations,

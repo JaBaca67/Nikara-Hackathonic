@@ -1,8 +1,6 @@
-/// A country entry for the registration wizard's phone country-code picker
-/// — dial code shown in the picker and the field's prefix pill. No flag
-/// artwork: the interface is emoji-free by rule, and a small ISO-code text
-/// badge reads just as clearly at this size without needing per-country
-/// vector flag assets.
+/// Entrada del selector de código de país del wizard de registro. Sin
+/// banderas: la interfaz no usa emojis por regla, y el badge de texto ISO
+/// se lee igual de claro sin assets vectoriales por país.
 class CountryDialCode {
   const CountryDialCode({
     required this.iso,
@@ -15,10 +13,9 @@ class CountryDialCode {
   final String dialCode;
 }
 
-/// Nicaragua first (this app's home market and the phone formatter's only
-/// supported mask), then the rest of Central America, then other countries
-/// Níkara's tourists most commonly come from. Not an exhaustive ISO list —
-/// extend as real signups show a need for a country that's missing.
+/// Nicaragua primero (mercado local y única máscara que soporta el
+/// formateador telefónico), luego Centroamérica y los países de origen más
+/// comunes de los turistas. Lista no exhaustiva — se extiende según haga falta.
 const List<CountryDialCode> kCountryDialCodes = [
   CountryDialCode(iso: 'NI', name: 'Nicaragua', dialCode: '+505'),
   CountryDialCode(iso: 'CR', name: 'Costa Rica', dialCode: '+506'),
@@ -34,9 +31,9 @@ const List<CountryDialCode> kCountryDialCodes = [
   CountryDialCode(iso: 'ES', name: 'España', dialCode: '+34'),
 ];
 
-/// Default selection — Nicaragua, this app's home market. A standalone
-/// const (not `kCountryDialCodes.first`/`[0]`, neither of which is a valid
-/// const expression in Dart) that happens to equal the list's first entry.
+/// Selección por defecto. Const aparte (no `kCountryDialCodes.first`, que
+/// no es una expresión const válida en Dart) que coincide con el primer
+/// elemento de la lista.
 const CountryDialCode kDefaultCountryDialCode = CountryDialCode(
   iso: 'NI',
   name: 'Nicaragua',

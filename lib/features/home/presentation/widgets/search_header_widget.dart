@@ -9,15 +9,7 @@ String _timeOfDayGreeting() {
   return 'Buenas noches';
 }
 
-/// Top-of-Home header — a full-width white panel with a hairline bottom
-/// border (Pantalla 2a), not a transparent strip: greeting + "¿A dónde
-/// vamos?" heading on the left, the notifications bell on the right, then
-/// the search field + filter button row. Three real greeting states — a
-/// signed-in user with a name ("Buenos días, {nombre}"), a signed-in user
-/// with no name on file ("¡A dónde vamos!"), and [isGuest]
-/// ("¡Hola, Explorador!") — the badge only shows once [notificationCount]
-/// is actually greater than 0 (this app has no real notifications feed
-/// yet, so it stays hidden rather than showing the mock's static "3").
+/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0, ya que no hay feed real de notificaciones aún.
 class SearchHeaderWidget extends StatelessWidget {
   const SearchHeaderWidget({
     super.key,
@@ -175,7 +167,7 @@ class _FilterButton extends StatelessWidget {
   }
 }
 
-/// 38px circle, cream fill, ink bell — Pantalla 2a's notification bell.
+/// Campana de notificaciones, círculo de 38px (Pantalla 2a).
 class _NotificationButton extends StatelessWidget {
   const _NotificationButton({required this.count, this.onTap});
 

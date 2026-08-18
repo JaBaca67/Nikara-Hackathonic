@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
-/// Reusable animated transition screen (Figma node 95:2, "Precarga"), styled
-/// after the sober PedidosYa/Uber-style loading beat. Used after auth today;
-/// any future flow that needs a branded pause between screens can reuse it.
+/// Pantalla de transición animada reutilizable (Figma node 95:2, "Precarga"); hoy se usa tras auth, pero sirve para cualquier pausa de marca entre pantallas.
 class SplashTransitionScreen extends StatefulWidget {
   const SplashTransitionScreen({
     super.key,
@@ -14,16 +12,13 @@ class SplashTransitionScreen extends StatefulWidget {
     this.onLoadingTask,
   });
 
-  /// Screen to land on once [duration] (and [onLoadingTask], if any) finish.
-  /// Left null for a purely decorative pause with no follow-up navigation.
+  /// Null para una pausa puramente decorativa sin navegación de seguimiento.
   final Widget? nextPage;
 
-  /// Minimum time this screen stays up, regardless of how fast
-  /// [onLoadingTask] resolves.
+  /// Tiempo mínimo en pantalla, sin importar qué tan rápido resuelva [onLoadingTask].
   final Duration duration;
 
-  /// Optional async work (token refresh, prefetching, …) to run alongside
-  /// the animation. Navigation waits for both this and [duration].
+  /// Trabajo async opcional que corre junto a la animación; la navegación espera a ambos.
   final Future<void> Function()? onLoadingTask;
 
   @override
@@ -32,10 +27,7 @@ class SplashTransitionScreen extends StatefulWidget {
 
 class _SplashTransitionScreenState extends State<SplashTransitionScreen>
     with TickerProviderStateMixin {
-  /// Entrance beat — fades and scales the logo in once, on cold start, the
-  /// same "arrival" language Airbnb/PedidosYa use instead of just snapping
-  /// the mark on screen. Only after this settles does the continuous pulse
-  /// below take over.
+  /// Animación de entrada del logo; el pulso continuo de abajo solo arranca después de que esta termina.
   late final AnimationController _introController;
   late final Animation<double> _introFade;
   late final Animation<double> _introScale;
@@ -104,7 +96,7 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      // Blocks the back gesture/button while the transition plays out.
+      // Bloquea el gesto/botón de back mientras dura la transición.
       canPop: false,
       child: Scaffold(
         backgroundColor: AppColors.secundario6,

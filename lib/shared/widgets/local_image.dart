@@ -5,15 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Renders an image picked via `image_picker` — a real filesystem path on
-/// mobile/desktop, a `blob:` URL on web — falling back to a soft
-/// placeholder whenever the path is missing, the file no longer exists on
-/// disk, or loading fails for any other reason (e.g. a web session whose
-/// blob URL expired after a refresh).
-///
-/// También acepta una URL `http(s)` y la carga por red en cualquier
-/// plataforma: los campos `logo_url`/`banner_url` de una fundación admiten
-/// tanto una imagen del dispositivo como una URL pegada a mano.
+/// Renderiza una imagen de `image_picker` (path real en mobile/desktop, `blob:` en web) o una URL http(s), con fallback si falta/falla la carga.
 class LocalImage extends StatelessWidget {
   const LocalImage({
     super.key,

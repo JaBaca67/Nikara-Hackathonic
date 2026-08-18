@@ -3,19 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
-/// Wraps `flutter_tts` for [MapScreen]'s live turn-by-turn voice guidance —
-/// singleton like every other service in this app (see
-/// `lib/core/services/auth_service.dart`'s canonical pattern). Every call
-/// is best-effort and swallows its own errors: a device/platform without a
-/// working TTS voice should never crash or interrupt navigation, it should
-/// just stay silent.
+/// Envoltorio de `flutter_tts` para la navegación de voz de [MapScreen]; cada llamada traga sus propios errores, un dispositivo sin voz TTS no debe interrumpir la navegación.
 class TtsService {
   factory TtsService() => instance;
 
   TtsService._internal() {
-    // es-419 (Latin American Spanish) isn't a guaranteed-installed voice on
-    // every Android/iOS/web/desktop TTS engine, so es-US is the safer,
-    // broadly-available default for Spanish speech across platforms.
+    // es-419 no está garantizado en todos los motores TTS; es-US es más ampliamente disponible.
     unawaited(_tts.setLanguage('es-US'));
     unawaited(_tts.setSpeechRate(0.5));
     unawaited(_tts.setVolume(1.0));
@@ -26,10 +19,7 @@ class TtsService {
 
   final FlutterTts _tts = FlutterTts();
 
-  /// Speaks [text] out loud, cutting off whatever utterance is already
-  /// in-flight — a new maneuver instruction always takes priority over
-  /// finishing the previous one, since Directions steps can arrive faster
-  /// than a sentence takes to read.
+  /// Corta cualquier frase en curso: una nueva instrucción de maniobra siempre tiene prioridad.
   Future<void> speak(String text) async {
     try {
       await _tts.stop();

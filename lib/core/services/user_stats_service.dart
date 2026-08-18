@@ -3,8 +3,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 
-/// Computes the current user's real [UserStats] from the app's actual
-/// persisted state — no field here is a fixed/mock number.
+/// Calcula las [UserStats] reales del usuario a partir del estado persistido de la app; ningún campo es un número fijo/mock.
 class UserStatsService {
   UserStatsService({
     FavoritesService? favoritesService,
@@ -23,8 +22,7 @@ class UserStatsService {
     final favorites = await _favoritesService.getFavoriteIds();
     final userId = _authService.currentAuthUser?.id;
 
-    // Count real reviews the signed-in account wrote — across EVERY
-    // business, not just their own — matched by ReviewModel.authorId.
+    // Cuenta reseñas reales del usuario en TODOS los negocios, no solo el propio.
     final myReviewsCount = userId == null
         ? 0
         : (await _businessStorageService.getBusinesses())
@@ -33,18 +31,14 @@ class UserStatsService {
               .length;
 
     return UserStats(
-      // There is no trip/visit-completion flow in the app yet — so this is
-      // genuinely zero, not a placeholder, until that exists.
+      // Aún no existe flujo de viaje/visita completada, por eso es 0 real, no placeholder.
       tripsCount: 0,
       savedPlacesCount: favorites.length,
       reviewsCount: myReviewsCount,
     );
   }
 
-  /// Points formula: every real action earns a fixed amount — 100 pts per
-  /// completed trip, 15 pts per saved place, 20 pts per review written
-  /// (matches "Escribir una reseña"'s +20 reward). Documented here rather
-  /// than user-configurable, but always computed live.
+  /// 100 pts por viaje, 15 por lugar guardado, 20 por reseña (coincide con la recompensa de "Escribir una reseña").
   int computePoints(UserStats stats) {
     return stats.tripsCount * 100 +
         stats.savedPlacesCount * 15 +

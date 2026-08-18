@@ -4,11 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 
-/// One or more businesses grouped into a single map marker — a plain group
-/// of 1 (render as the normal pin) once [clusterBusinesses] separates
-/// nearby points wide enough apart, or several (render as a numbered
-/// cluster badge) when they're closer together than [MapScreen] can show
-/// as distinct pins at the current zoom.
+/// Uno o más negocios agrupados en un mismo marcador: grupo de 1 se dibuja como pin normal, varios como badge numerado.
 class MapCluster {
   const MapCluster({required this.position, required this.businesses});
 
@@ -19,18 +15,9 @@ class MapCluster {
   int get count => businesses.length;
 }
 
-/// Grid-based clustering: buckets [businesses] into cells sized in real
-/// meters-per-pixel at the given [zoom]/[referenceLatitude] (the same
-/// Web Mercator formula Google Maps itself uses to convert zoom level to
-/// ground resolution), so cells shrink automatically as the user zooms in
-/// and pins naturally "split apart" instead of needing a second algorithm
-/// for that. A cluster's marker sits at its members' centroid.
+/// Agrupa [businesses] en una grilla dimensionada con la fórmula Web Mercator de Google Maps (metros por píxel según [zoom]/[referenceLatitude]), así las celdas encogen solas al hacer zoom sin un algoritmo aparte para "separar" pines.
 ///
-/// This is a plain degrees-per-pixel grid rather than the more precise
-/// (and much more expensive) screen-space distance clustering real mapping
-/// SDKs use — acceptable here since Nikara's business count is nowhere
-/// near the scale where the grid's boundary artifacts (two points just
-/// across a cell edge staying unclustered) would be visible or matter.
+/// Es una grilla simple en grados por píxel, no clustering por distancia en pantalla como los SDKs reales, porque el volumen de negocios de Nikara no llega a hacer visibles sus artefactos de borde.
 List<MapCluster> clusterBusinesses({
   required List<BusinessModel> businesses,
   required double zoom,

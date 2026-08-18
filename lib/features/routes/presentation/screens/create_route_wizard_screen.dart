@@ -784,7 +784,7 @@ class _CoverPhotoTile extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: const BoxDecoration(
-                  color: Colors.black54,
+                  color: AppColors.removeButtonBackground,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

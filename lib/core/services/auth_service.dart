@@ -10,19 +10,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/supabase/supabase_config.dart';
 
-/// Explicit lifecycle of an Auth screen's in-flight action — kept as a
-/// plain enum on purpose (no Bloc/Cubit/state-management package): this
-/// project deliberately uses singleton services + local widget state (see
-/// CLAUDE.md), so each screen just holds its own `AuthStatus` field the
-/// same way it already held a `bool _isSubmitting`, and reacts to it in
-/// `build()`. [invalid] is for the screen's own Form-validation failure —
-/// [AuthService] never returns it, since it never sees a request that
-/// didn't already pass local validation.
+/// Enum simple a propósito (sin Bloc/Cubit): el proyecto usa servicios singleton + estado local (ver CLAUDE.md). [invalid] es solo del Form de la pantalla; [AuthService] nunca lo devuelve.
 enum AuthStatus { idle, loading, success, error, invalid }
 
-/// What a sign-up/sign-in attempt handed back — a friendly Spanish
-/// [message] on failure, ready to drop straight into a SnackBar, instead of
-/// callers having to interpret a raw [AuthException].
+/// Resultado de un intento de sign-up/sign-in con [message] ya en español listo para un SnackBar.
 class AuthResult {
   const AuthResult._({required this.status, this.message});
 
@@ -31,11 +22,7 @@ class AuthResult {
   const AuthResult.failure(String message)
     : this._(status: AuthStatus.error, message: message);
 
-  /// The user closed the Google account picker / backed out of the OS
-  /// consent screen — not a real failure, so [status] resolves back to
-  /// [AuthStatus.idle] and [message] stays null. Callers check
-  /// `message == null` to skip showing an error SnackBar for an action the
-  /// user chose themselves.
+  /// El usuario cerró el selector de cuenta/consentimiento sin completar — no es un error real, por eso vuelve a [AuthStatus.idle] con `message` null.
   const AuthResult.cancelled() : this._(status: AuthStatus.idle, message: null);
 
   final AuthStatus status;
@@ -53,10 +40,7 @@ class AuthServiceException implements Exception {
   String toString() => message;
 }
 
-/// Real Supabase Auth + `profiles` table — replaces the earlier local/mock
-/// session system entirely. A thin singleton wrapper: Supabase's own
-/// [GoTrueClient] already persists the session across app restarts, so
-/// there's nothing else for this class to store.
+/// Wrapper singleton sobre Supabase Auth + tabla `profiles`; no guarda nada más porque [GoTrueClient] ya persiste la sesión.
 class AuthService {
   factory AuthService() => instance;
 
@@ -70,9 +54,7 @@ class AuthService {
 
   bool get isLoggedIn => currentAuthUser != null;
 
-  /// Fires on sign-in, sign-out, and token refresh — screens that need to
-  /// react to auth state changing while mounted can listen to this instead
-  /// of polling [currentAuthUser].
+  /// Dispara en sign-in/sign-out/refresh de token; para reaccionar sin hacer polling de [currentAuthUser].
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
   Future<UserModel?> getCurrentProfile() async {
@@ -81,8 +63,7 @@ class AuthService {
     return getProfileById(user.id);
   }
 
-  /// Looks up any user's profile by id — e.g. to show a business's real
-  /// owner, not just the signed-in viewer's own profile.
+  /// Busca el perfil de cualquier usuario por id (p. ej. el dueño real de un negocio, no solo el viewer actual).
   Future<UserModel?> getProfileById(String id) async {
     try {
       final row = await _client
@@ -100,15 +81,7 @@ class AuthService {
     }
   }
 
-  /// Creates the `auth.users` row via Supabase Auth — the matching
-  /// `profiles` row is created server-side by the `on_auth_user_created`
-  /// trigger (see `supabase/sql/001_profiles_trigger_and_rls.sql`), not by
-  /// this method. `fullName`/`phone` ride along as user metadata so the
-  /// trigger can read them; `role` is deliberately NOT sent — the trigger
-  /// always creates new accounts as 'turista' regardless of what's in
-  /// metadata, so a crafted signUp payload can never grant itself a
-  /// different role. A single round trip, and no "auth user exists but
-  /// profile doesn't" half-created account if a second call had failed.
+  /// La fila `profiles` la crea el trigger `on_auth_user_created` server-side, no este método; `role` deliberadamente no se envía para que un payload manipulado no pueda auto-asignarse otro rol.
   Future<AuthResult> signUp({
     required String fullName,
     required String email,
@@ -152,21 +125,7 @@ class AuthService {
     }
   }
 
-  /// Google Sign-In → Supabase, via the native ID-token exchange
-  /// (`signInWithIdToken`) rather than a browser OAuth redirect — no
-  /// extra deep-link/redirect-URL plumbing needed on mobile.
-  ///
-  /// Requires a Google OAuth **Web** client (its client ID goes in
-  /// [GoogleSignIn.serverClientId] below) plus the matching platform
-  /// client(s) registered with the same project, and the Google provider
-  /// turned on in the Supabase dashboard with that same Web client ID/
-  /// secret. That one-time console setup is outside this codebase — see
-  /// `SupabaseConfig`'s doc comment for where the project's credentials
-  /// live.
-  ///
-  /// Returns [AuthResult.cancelled] (no message) if the user backs out of
-  /// the account picker — callers should skip showing an error SnackBar
-  /// for that case specifically.
+  /// Google Sign-In → Supabase vía intercambio nativo de ID-token, sin redirect de navegador; requiere un cliente OAuth Web configurado (ver `SupabaseConfig`).
   Future<AuthResult> signInWithGoogle() async {
     try {
       final googleSignIn = GoogleSignIn(
@@ -189,12 +148,7 @@ class AuthService {
         idToken: idToken,
         accessToken: googleAuth.accessToken,
       );
-      // No manual `profiles` insert here — the `on_auth_user_created`
-      // trigger (supabase/sql/001_profiles_trigger_and_rls.sql) creates it
-      // server-side the first time this Google account signs in, reading
-      // full_name straight from the ID token's own claims. Every provider
-      // (Google/Apple/Facebook) shares that one trigger instead of each
-      // duplicating this insert-if-missing logic.
+      // El trigger on_auth_user_created crea `profiles` server-side; lo comparten Google/Apple/Facebook sin duplicar lógica.
       return const AuthResult.success();
     } on AuthException catch (e) {
       return AuthResult.failure(_friendlyAuthError(e));
@@ -205,30 +159,10 @@ class AuthService {
     }
   }
 
-  /// Whether this device can offer native "Sign in with Apple" — iOS only
-  /// for now. `sign_in_with_apple` technically supports Android too, but
-  /// only via a web-redirect flow (a Services ID web configuration plus a
-  /// deep link back into the app) this project hasn't set up; scoping to
-  /// iOS keeps the button honest instead of shipping one that silently
-  /// fails on Android. Callers (e.g. [SocialLoginRow]) should check this
-  /// before even showing the Apple button on non-iOS.
+  /// Solo iOS: Android soportaría Apple Sign-In vía redirect web, pero ese flujo no está configurado en el proyecto.
   bool get isAppleSignInSupported => !kIsWeb && Platform.isIOS;
 
-  /// Apple Sign-In → Supabase, via the native ID-token exchange —
-  /// structurally the same as [signInWithGoogle]. Requires the "Sign in
-  /// with Apple" capability added in Xcode (Runner target → Signing &
-  /// Capabilities) and the Services ID configured in both Apple Developer
-  /// and the Supabase dashboard — see [SupabaseConfig.appleServiceId]'s
-  /// doc comment for the manual setup.
-  ///
-  /// The nonce dance below (raw nonce sent to Apple pre-hashed, the same
-  /// raw nonce then sent to Supabase) is Supabase's own documented pattern
-  /// for this exchange — it's what lets Supabase verify the ID token it
-  /// receives is the exact one Apple issued for this specific sign-in
-  /// attempt, not a replayed one.
-  ///
-  /// Returns [AuthResult.cancelled] if the user backs out of the Apple
-  /// sheet.
+  /// Apple Sign-In → Supabase, estructuralmente igual a [signInWithGoogle]; requiere capability en Xcode y Services ID (ver [SupabaseConfig.appleServiceId]).
   Future<AuthResult> signInWithApple() async {
     if (!isAppleSignInSupported) {
       return const AuthResult.failure(
@@ -236,6 +170,7 @@ class AuthService {
       );
     }
     try {
+      // Nonce en texto plano a Apple (hasheado) y luego a Supabase (sin hashear): así Supabase verifica que el ID token es de este intento, no uno reusado.
       final rawNonce = _client.auth.generateRawNonce();
       final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
 
@@ -260,12 +195,7 @@ class AuthService {
         nonce: rawNonce,
       );
 
-      // Apple hands over givenName/familyName only on the very FIRST
-      // authorization ever for this account — they're fields on this
-      // native credential response, not part of the identityToken JWT, so
-      // the on_auth_user_created trigger can never see them. Backfill
-      // full_name here, this one time, while we still have them; every
-      // sign-in after the first has both fields null and this is a no-op.
+      // Apple solo entrega givenName/familyName en la PRIMERA autorización; se hace backfill aquí porque el trigger no los ve.
       final fullName = [
         credential.givenName,
         credential.familyName,
@@ -295,33 +225,13 @@ class AuthService {
     }
   }
 
-  /// Facebook Login → Supabase. Unlike Google/Apple, this goes through the
-  /// browser-redirect `signInWithOAuth` instead of a native ID-token
-  /// exchange — Facebook's native Login SDK only returns a plain OAuth
-  /// access token on Android (not an OIDC-signed ID token Supabase can
-  /// verify client-side), and bridging that would need a server-side
-  /// component this project doesn't have. See
-  /// [SupabaseConfig.oauthRedirectUrl]'s doc comment for the deep-link
-  /// setup this requires on both platforms.
-  ///
-  /// Opens a browser/custom-tab and suspends here — [AuthResult.success]
-  /// only reflects that the flow *launched*, not that it finished; the
-  /// actual sign-in completes asynchronously when the OS redirects back
-  /// into the app and Supabase's [authStateChanges] fires. Callers should
-  /// react to that stream (or [isLoggedIn] once resumed) rather than
-  /// treating this method's return value as the final word — this mirrors
-  /// how every other browser-based OAuth flow works, not a shortcut taken
-  /// here specifically.
+  /// Facebook usa redirect de navegador (no ID-token nativo) porque su SDK Android no da un token OIDC verificable; [AuthResult.success] solo indica que el flujo se lanzó, no que terminó — el sign-in real llega después vía [authStateChanges].
   Future<AuthResult> signInWithFacebook() async {
     try {
       final launched = await _client.auth.signInWithOAuth(
         OAuthProvider.facebook,
         redirectTo: '${SupabaseConfig.oauthRedirectUrl}/',
-        // Facebook otherwise remembers a previously denied/errored
-        // permission grant and silently re-shows the same error instead
-        // of the consent dialog on the next attempt — 'rerequest' forces
-        // Meta to prompt again so a user who backed out or hit a
-        // permissions error can actually retry.
+        // 'rerequest' fuerza a Meta a mostrar el diálogo de nuevo; si no, recuerda un permiso denegado y no deja reintentar.
         queryParams: const {'auth_type': 'rerequest'},
       );
       if (!launched) {
@@ -343,17 +253,7 @@ class AuthService {
     await _client.auth.signOut();
   }
 
-  /// Promotes the signed-in user's `profiles.role` to 'emprendedor' — called
-  /// right after they successfully register their first business. Goes
-  /// through the `promote_to_emprendedor` RPC (see
-  /// `supabase/sql/001_profiles_trigger_and_rls.sql`) instead of a direct
-  /// `UPDATE profiles SET role=...` — `role` isn't client-writable at the DB
-  /// level anymore, and the RPC only ever flips turista->emprendedor
-  /// server-side, so there's no client code path that can set any other
-  /// role. The local read here is just to skip a pointless round trip for
-  /// accounts that aren't 'turista' (an 'admin'/'auditor' registering a
-  /// business keeps its elevated role) — the RPC re-checks the same
-  /// condition itself regardless.
+  /// Promueve a 'emprendedor' vía RPC `promote_to_emprendedor` (no UPDATE directo: `role` ya no es escribible por el cliente); el chequeo local solo evita un round-trip innecesario, el RPC revalida igual.
   Future<void> markAsEmprendedor() async {
     final user = currentAuthUser;
     if (user == null) return;
@@ -372,16 +272,7 @@ class AuthService {
     }
   }
 
-  /// Permanently deletes the signed-in user's account via the
-  /// `delete_own_user` RPC (see `supabase/sql/002_delete_own_user.sql`) —
-  /// that function deletes `public.profiles` and the `auth.users` row
-  /// server-side (`security definer`, since removing a row from
-  /// `auth.users` needs privileges no client role has). Signs out locally
-  /// afterward so no access/refresh token for the now-deleted account
-  /// survives in local storage — [GoTrueClient.signOut] clears that local
-  /// state before it even attempts the server-side `/logout` call, and
-  /// silently ignores that call failing with 401/403/404 (expected here,
-  /// since the user it would look up no longer exists).
+  /// Borra la cuenta vía RPC `delete_own_user` (`security definer`, requiere privilegios que el cliente no tiene) y hace signOut local para no dejar tokens de una cuenta ya eliminada.
   Future<void> deleteAccount() async {
     try {
       await _client.rpc('delete_own_user');

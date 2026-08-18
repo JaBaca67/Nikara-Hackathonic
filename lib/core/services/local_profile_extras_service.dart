@@ -2,19 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Purely local, per-device profile data that has no column in Supabase's
-/// `profiles` table — kept in SharedPreferences instead of lost. Same
-/// honesty as before: null/empty/false until the user actually sets a
-/// value, never a default/mock placeholder.
-///
-/// Covers: avatar photo, username, interest categories (from the
-/// registration wizard's Paso 4) and `isPhoneVerified` (Paso 3's OTP step
-/// — there's no SMS/email OTP provider configured in Supabase, so this is
-/// always `false` unless a real verification flow gets wired up later;
-/// "Saltar por ahora" is the expected, fully-supported path).
-///
-/// Replaces the old `UserSessionService`, which used to also own local
-/// mock login/registration — that's now real, via `AuthService`.
+/// Datos de perfil sin columna en `profiles` de Supabase (avatar, username, categorías de interés, verificación de teléfono), guardados en SharedPreferences. `isPhoneVerified` siempre es `false` porque no hay proveedor de OTP configurado; "Saltar por ahora" es el camino esperado.
 class LocalProfileExtrasService {
   static const _keyAvatarPath = 'local_avatar_path';
   static const _keyUsername = 'local_username';

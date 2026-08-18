@@ -13,18 +13,7 @@ import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "o continúa con" divider + 3 circular vector provider buttons (Google,
-/// Apple, Facebook) — self-contained, each owns its own per-button loading
-/// state and navigates to [MainLayout] on success.
-///
-/// Google and Apple use native id-token exchanges ([AuthService.
-/// signInWithGoogle]/[signInWithApple]) — synchronous from this widget's
-/// point of view, same as a plain button press. Facebook goes through a
-/// browser redirect ([AuthService.signInWithFacebook]): tapping it only
-/// *launches* the flow, so the loading spinner stays up and this widget
-/// listens for [AuthService.authStateChanges] to actually complete the
-/// navigation once the OS redirects back into the app — see
-/// [_handleAuthStateChange].
+/// Divisor "o continúa con" + 3 botones de provider social; Google/Apple resuelven de inmediato, Facebook solo lanza el flujo y este widget espera [AuthService.authStateChanges] para completar la navegación.
 class SocialLoginRow extends StatefulWidget {
   const SocialLoginRow({super.key});
 
@@ -38,8 +27,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
   SocialAuthKind? _loadingKind;
   StreamSubscription<AuthState>? _authSub;
 
-  /// Grace period started on app-resume before assuming the Facebook
-  /// browser flow was abandoned — see [didChangeAppLifecycleState].
+  /// Período de gracia al volver del navegador de Facebook antes de asumir que el flujo se abandonó.
   Timer? _facebookResumeGiveUpTimer;
 
   @override
@@ -64,17 +52,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
         _loadingKind != SocialAuthKind.facebook) {
       return;
     }
-    // The app resumes as soon as the OS hands control back after the
-    // Facebook browser tab closes — but GoTrue's own deep-link listener
-    // (which exchanges the redirect's `?code=` for a session and fires
-    // _handleAuthStateChange) runs asynchronously and can still be a beat
-    // behind at this exact instant, especially when linking onto an
-    // existing account. Resetting the spinner immediately on resume used
-    // to win that race and wipe `_loadingKind` right before the real
-    // signedIn/tokenRefreshed event arrived, so a *successful* login
-    // looked identical to backing out and bounced back to this screen.
-    // Give the listener a short grace window to finish first; only give
-    // up and let the user retry if nothing arrived by then.
+    // El listener de deep-link de GoTrue puede llegar un instante después del resume; resetear el spinner de inmediato ganaba esa carrera y hacía ver un login exitoso como cancelado. Se da un margen antes de rendirse.
     _facebookResumeGiveUpTimer?.cancel();
     _facebookResumeGiveUpTimer = Timer(const Duration(seconds: 4), () {
       if (!mounted || _loadingKind != SocialAuthKind.facebook) return;
@@ -91,14 +69,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
       );
     }
     if (_loadingKind != SocialAuthKind.facebook) return;
-    // A Facebook redirect whose email already matches an existing account
-    // (e.g. the same person previously signed up with Google) links the
-    // Facebook identity onto that existing `auth.users` row instead of
-    // minting a brand new one — GoTrue then emits `tokenRefreshed` or
-    // `userUpdated` for that, not `signedIn`. Reacting only to `signedIn`
-    // left linked accounts stuck on this screen despite already having a
-    // live session, so check the session itself instead of one specific
-    // event name.
+    // Un email ya existente en otra cuenta (p. ej. Google) hace que Facebook se vincule y GoTrue emita tokenRefreshed/userUpdated en vez de signedIn; por eso se chequea la sesión en sí, no un evento específico.
     if (const {
           AuthChangeEvent.signedIn,
           AuthChangeEvent.tokenRefreshed,
@@ -133,11 +104,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
         SocialAuthKind.facebook => await _authService.signInWithFacebook(),
       };
     } catch (_) {
-      // AuthService already translates Supabase/network failures into a
-      // failure AuthResult internally — this only guards against
-      // something escaping that (e.g. a platform exception launching the
-      // OAuth URL itself), so a failure there can't leave the button
-      // stuck showing its spinner with no way to retry.
+      // AuthService ya traduce fallas de Supabase/red a un AuthResult; esto solo cubre algo que se escape (p. ej. al lanzar la URL de OAuth) para que el spinner no quede atascado.
       if (!mounted) return;
       setState(() => _loadingKind = null);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,10 +129,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
       return;
     }
 
-    // Facebook's "success" here only means the browser flow launched — the
-    // spinner stays up until _handleAuthStateChange sees the real
-    // signedIn event land. Google/Apple already have a real session at
-    // this point, so finish immediately.
+    // Para Facebook, "success" solo significa que el flujo se lanzó; el spinner sigue hasta que _handleAuthStateChange vea el signedIn real.
     if (provider.kind == SocialAuthKind.facebook) return;
     await _completeSignIn();
   }

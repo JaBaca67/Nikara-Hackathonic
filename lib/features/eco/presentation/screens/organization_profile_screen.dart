@@ -12,15 +12,7 @@ import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Perfil público de una fundación — a donde lleva tocar el bloque
-/// "Organizador" de una jornada publicada en nombre de una organización.
-/// Banner + logo + @handle + badge de verificación, sus números reales
-/// (jornadas publicadas y voluntarios sumados) y el listado de próximas
-/// jornadas.
-///
-/// Acepta la [organization] ya cargada cuando quien navega la tiene a mano
-/// (pantalla de gestión), o solo el [organizationId] cuando viene del feed,
-/// que es todo lo que la actividad conoce.
+/// Acepta [organization] ya cargada (pantalla de gestión) o solo [organizationId] (feed, que no tiene el objeto completo).
 class OrganizationProfileScreen extends StatefulWidget {
   const OrganizationProfileScreen({
     super.key,

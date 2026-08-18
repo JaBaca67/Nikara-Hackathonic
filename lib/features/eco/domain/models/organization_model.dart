@@ -1,7 +1,4 @@
-/// Una fila de `public.organizations` (ver supabase/sql/010_organizations.sql)
-/// — la fundación/organización en cuyo nombre se puede publicar una jornada
-/// ECO. Su dueño es una persona (`owner_id` -> `profiles.id`); una misma
-/// persona puede tener varias.
+/// Fila de `public.organizations` (supabase/sql/010_organizations.sql); una persona (`owner_id`) puede tener varias.
 class OrganizationModel {
   const OrganizationModel({
     required this.id,
@@ -18,39 +15,31 @@ class OrganizationModel {
   final String id;
   final String name;
 
-  /// Sin arroba y en minúsculas tal como se guarda ("cocibolcavive") —
-  /// [handleTag] es la versión que se muestra.
+  /// Se guarda sin arroba y en minúsculas; [handleTag] es la versión mostrada.
   final String handle;
 
   final String description;
 
-  /// URL http(s) o ruta local de `image_picker`, indistintamente — ver el
-  /// comentario de la columna en la migración.
+  /// Puede ser URL http(s) o ruta local de `image_picker` indistintamente.
   final String? logoUrl;
   final String? bannerUrl;
 
   final String ownerId;
 
-  /// `organizations.is_verified` — hoy siempre `true` por el default de la
-  /// tabla (fase de prueba, sin flujo de auditoría todavía). El cliente
-  /// nunca lo escribe: solo lo lee para pintar el badge "VERIFICADO".
+  /// Siempre `true` hoy por el default de la tabla (sin flujo de auditoría aún); el cliente solo lo lee, nunca lo escribe.
   final bool isVerified;
 
   final DateTime createdAt;
 
   String get handleTag => '@$handle';
 
-  /// Iniciales para el avatar cuando la fundación no subió logo — mismo
-  /// recurso que usa `UserModel.initials`.
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
     final letters = parts.map((p) => p[0]).take(2).join().toUpperCase();
     return letters.isEmpty ? '?' : letters;
   }
 
-  /// Normaliza lo que la persona escribió en el campo "Handle" a lo que
-  /// guarda la columna: sin arroba, en minúsculas y sin espacios ni
-  /// caracteres raros ("@Cocibolca Vive!" -> "cocibolcavive").
+  /// Ej: "@Cocibolca Vive!" -> "cocibolcavive".
   static String normalizeHandle(String raw) {
     return raw
         .trim()

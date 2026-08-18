@@ -6,26 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Bloques visuales compartidos por las pantallas de detalle de la app
-/// (`BusinessDetailScreen` y `EcoDetailScreen`): portada con botones
-/// flotantes, tarjeta flotante de datos rápidos, selector de pestañas,
-/// secciones con título, filas con ícono, tarjeta de perfil, tarjeta
-/// "Cómo llegar" y barra de acción inferior.
-///
-/// Las dos pantallas describían exactamente la misma jerarquía con widgets
-/// privados duplicados; aquí vive una sola vez y cada feature aporta nada
-/// más su contenido (Pantalla 3a del Figma "UI-NÍKARA" sigue siendo la
-/// fuente de verdad de medidas y colores).
+/// Bloques visuales compartidos por las pantallas de detalle (`BusinessDetailScreen`, `EcoDetailScreen`), que antes duplicaban la misma jerarquía con widgets privados (Pantalla 3a de Figma sigue siendo la fuente de verdad de medidas/colores).
 
-/// Portada de una pantalla de detalle: [PageView] sobre las fotos
-/// disponibles (marco placeholder cuando no hay ninguna), los dos degradados
-/// de scrim, la fila de botones flotantes y el contador "1 / N".
-///
-/// [caption] es el bloque inferior izquierdo sobre el degradado — cada
-/// pantalla mete lo suyo ahí (negocio: pill de categoría + rating + nombre;
-/// ECO: pill de categoría + título + lugar). Se envuelve en [IgnorePointer]
-/// porque es puramente informativo y no debe robarle el arrastre al
-/// [PageView] de abajo.
+/// Portada con [PageView] de fotos, degradados, botones flotantes y contador "1 / N".
 class DetailCoverImage extends StatefulWidget {
   const DetailCoverImage({
     super.key,
@@ -42,7 +25,6 @@ class DetailCoverImage extends StatefulWidget {
   final VoidCallback onBack;
   final Widget caption;
 
-  /// Botones a la derecha del de "volver" (favorito, compartir…).
   final List<Widget> actions;
 
   final IconData fallbackIcon;
@@ -87,9 +69,7 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                     fallbackIconSize: 48,
                   ),
                 ),
-          // Un Container decorado hace hit-test opaco en todo su rectángulo
-          // (incluso donde el degradado es transparente), así que sin
-          // IgnorePointer se comía cada arrastre antes de llegar al PageView.
+          // Un Container decorado hace hit-test opaco en todo su rectángulo; sin IgnorePointer se comía el arrastre del PageView.
           const IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -188,9 +168,7 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
   }
 }
 
-/// Círculo esmerilado de 40px — relleno blanco translúcido, borde de un
-/// pelo y desenfoque de fondo — de los botones volver/compartir/favorito
-/// de la portada (Pantalla 3a).
+/// Botón circular esmerilado (volver/compartir/favorito) de la portada.
 class DetailCoverIconButton extends StatelessWidget {
   const DetailCoverIconButton({
     super.key,
@@ -258,8 +236,7 @@ class DetailCoverTagPill extends StatelessWidget {
   }
 }
 
-/// Tarjeta flotante de datos rápidos — columnas de texto centrado separadas
-/// por divisores de un pelo, montada medio superpuesta a la portada.
+/// Tarjeta flotante de datos rápidos, montada medio superpuesta a la portada.
 class DetailQuickInfoCard extends StatelessWidget {
   const DetailQuickInfoCard({super.key, required this.items});
 
@@ -333,8 +310,7 @@ class DetailQuickInfoItem extends StatelessWidget {
   }
 }
 
-/// Selector de pestañas de las pantallas de detalle — pastilla dorada sobre
-/// riel crema, tantos segmentos como etiquetas reciba.
+/// Selector de pestañas de las pantallas de detalle.
 class DetailSegmentedTabs extends StatelessWidget {
   const DetailSegmentedTabs({
     super.key,
@@ -420,8 +396,7 @@ class _SegmentButton extends StatelessWidget {
   }
 }
 
-/// Título de sección + contenido, con el espaciado de Pantalla 3a
-/// ("Actividades", "Anfitrión", "Requisitos y qué llevar"…).
+/// Título de sección + contenido, con el espaciado de Pantalla 3a.
 class DetailSection extends StatelessWidget {
   const DetailSection({super.key, required this.title, required this.child});
 
@@ -441,9 +416,7 @@ class DetailSection extends StatelessWidget {
   }
 }
 
-/// Fila con chip de ícono + etiqueta dentro de una tarjeta con borde de un
-/// pelo — las "Actividades" del negocio y los "Requisitos y qué llevar" de
-/// una actividad ECO son la misma fila con distinto contenido.
+/// Fila con chip de ícono + etiqueta; compartida entre "Actividades" del negocio y "Requisitos y qué llevar" de ECO.
 class DetailIconRow extends StatelessWidget {
   const DetailIconRow({
     super.key,
@@ -497,10 +470,7 @@ class DetailIconRow extends StatelessWidget {
   }
 }
 
-/// Tarjeta de perfil — avatar de 48px, nombre con badge "VERIFICADO"
-/// opcional y una línea de pie. La usa el "Anfitrión" del negocio y el
-/// "Organizador" de una actividad ECO; [accent] cambia el acento dorado por
-/// el olivo del módulo ECO.
+/// Tarjeta de perfil compartida entre "Anfitrión" del negocio y "Organizador" de ECO; [accent] cambia el dorado por el olivo del módulo ECO.
 class DetailProfileCard extends StatelessWidget {
   const DetailProfileCard({
     super.key,
@@ -613,9 +583,7 @@ class DetailProfileCard extends StatelessWidget {
   }
 }
 
-/// "Cómo llegar" — la ilustración decorativa de mini-mapa (no un mapa real:
-/// el mismo adorno cálido "calle + área verde + pin" de Pantalla 3a), la
-/// dirección exacta y la pastilla que salta al mapa de Níkara.
+/// "Cómo llegar": ilustración decorativa de mini-mapa (no un mapa real), dirección y pastilla que salta al mapa de Níkara.
 class DetailMapCard extends StatelessWidget {
   const DetailMapCard({
     super.key,
@@ -779,9 +747,7 @@ class _MiniMapIllustration extends StatelessWidget {
   }
 }
 
-/// Barra de acción inferior fija — superficie blanca, borde superior de un
-/// pelo y sombra hacia arriba. El contenido lo pone cada pantalla (el
-/// negocio mete dos botones, ECO uno solo).
+/// Barra de acción inferior fija; el contenido lo pone cada pantalla.
 class DetailBottomBar extends StatelessWidget {
   const DetailBottomBar({super.key, required this.child});
 

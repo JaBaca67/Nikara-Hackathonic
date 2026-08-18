@@ -12,17 +12,13 @@ class ReviewModel {
   final String id;
   final String authorName;
 
-  /// [UserSessionService]'s account email at the moment this review was
-  /// submitted — lets [UserStatsService] count "reviews I wrote" for real
-  /// across every business, instead of guessing from [authorName]. Empty
-  /// for reviews saved before this field existed.
+  /// Email de cuenta al momento de escribir la reseña; permite a [UserStatsService] contar reseñas reales en vez de adivinar por [authorName]. Vacío en reseñas previas a este campo.
   final String authorId;
   final double rating;
   final String comment;
   final DateTime date;
 
-  /// On-device paths to photos/videos attached via "Escribir una reseña"'s
-  /// media picker — empty for reviews that didn't attach anything.
+  /// Rutas locales de fotos/videos adjuntos en "Escribir una reseña".
   final List<String> mediaPaths;
 
   Map<String, dynamic> toJson() => {

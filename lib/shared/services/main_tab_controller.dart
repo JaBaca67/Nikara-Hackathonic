@@ -1,9 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// Lets any screen — even one pushed on top of `MainLayout` via
-/// `Navigator.push` (like `BusinessDetailScreen`), not just its 4 direct
-/// tab children — request a bottom-nav tab switch without needing a
-/// `BuildContext`/callback reference back to `MainLayout`'s State.
+/// Permite pedir un cambio de tab del bottom-nav desde cualquier pantalla (incluso una pushed sobre `MainLayout`) sin un `BuildContext` de vuelta a su State.
 class MainTabController {
   factory MainTabController() => instance;
 
@@ -11,8 +8,7 @@ class MainTabController {
 
   static final MainTabController instance = MainTabController._internal();
 
-  /// `MainLayout` listens to this and resets it back to null once
-  /// consumed — null means "no pending request".
+  /// `MainLayout` lo resetea a null una vez consumido.
   final ValueNotifier<int?> requestedTab = ValueNotifier(null);
 
   void switchTo(int index) => requestedTab.value = index;

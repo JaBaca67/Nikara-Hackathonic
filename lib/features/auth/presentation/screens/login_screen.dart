@@ -15,9 +15,8 @@ import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Pantalla 9a — "Login v3" (Claude Design canvas "Nikara Inicio y Mapa",
-/// turn 9): sunset-gradient shell via [AuthBottomSheetLayout], no back
-/// button (this is the app's root screen).
+/// Pantalla de login: shell con degradado atardecer vía
+/// [AuthBottomSheetLayout], sin botón de atrás (es la raíz de la app).
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -74,7 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
-  /// Flags strings like '123456', 'abcdef', 'fedcba' or 'aaaaaa'.
+  /// Ej: '123456', 'abcdef', 'fedcba', 'aaaaaa'.
   bool _isSequentialOrRepeated(String value) {
     var ascending = true;
     var descending = true;
@@ -110,9 +109,8 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _status = AuthStatus.success);
       await GuestSessionService().exitGuestMode();
       if (!mounted) return;
-      // Signals iOS/Android's autofill service that this "autofill
-      // context" finished successfully, so it actually offers to save the
-      // credentials just entered.
+      // Avisa al autofill del sistema que terminó con éxito, para que
+      // ofrezca guardar las credenciales recién ingresadas.
       TextInput.finishAutofillContext();
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(

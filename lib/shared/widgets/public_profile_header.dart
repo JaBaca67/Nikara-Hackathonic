@@ -3,14 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Cabecera de un perfil público (persona o fundación), según la referencia
-/// de perfiles públicos: banner, avatar cuadrado-redondeado montado sobre
-/// él con su insignia de tipo, nombre + check verificado, @handle, una
-/// línea de contexto con pin y una pastilla de credencial.
-///
-/// La comparten `OrganizationProfileScreen` y `PublicUserProfileScreen`
-/// para que un perfil de fundación y uno de persona se lean como la misma
-/// pantalla con distinto contenido.
+/// Cabecera de perfil público, compartida por `OrganizationProfileScreen` y `PublicUserProfileScreen` para que ambos se lean como la misma pantalla con distinto contenido.
 class PublicProfileHeader extends StatelessWidget {
   const PublicProfileHeader({
     super.key,
@@ -29,25 +22,21 @@ class PublicProfileHeader extends StatelessWidget {
 
   final String name;
 
-  /// Contenido del avatar — logo de la fundación o iniciales de la persona.
   final Widget avatar;
 
-  /// Color de la insignia del avatar, del check y de la pastilla — olivo
-  /// para fundaciones, dorado para personas.
+  /// Olivo para fundaciones, dorado para personas.
   final Color accent;
 
   final VoidCallback onBack;
   final String? bannerPath;
   final String? handle;
 
-  /// "Lago Cocibolca, Nicaragua" o "Se unió en 2026" — se muestra con pin.
   final String? contextLine;
 
   final IconData? badgeIcon;
   final String? badgeLabel;
   final bool verified;
 
-  /// Acción principal a la derecha del nombre ("Ver jornadas", "Seguir").
   final Widget? action;
 
   @override
@@ -287,8 +276,7 @@ class _CircleButton extends StatelessWidget {
   }
 }
 
-/// Fila de estadísticas del perfil ("28 Jornadas · 1.2k Voluntarios"),
-/// valor arriba y etiqueta abajo, separadas por divisores de un pelo.
+/// Fila de estadísticas del perfil, valor arriba y etiqueta abajo.
 class PublicProfileStats extends StatelessWidget {
   const PublicProfileStats({super.key, required this.items});
 

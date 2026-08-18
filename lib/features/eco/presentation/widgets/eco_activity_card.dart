@@ -9,11 +9,7 @@ import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Tarjeta extendida de una actividad en el feed ECO, según la referencia
-/// "Estado-disponible-tarjeta": miniatura redondeada a la izquierda,
-/// insignia de categoría, título completo, dirección con pin, fecha/hora
-/// con calendario y, abajo, la pila de participantes junto al pill de
-/// estado.
+/// Tarjeta extendida del feed ECO, según la referencia "Estado-disponible-tarjeta".
 class EcoActivityCard extends StatelessWidget {
   const EcoActivityCard({
     super.key,
@@ -25,9 +21,7 @@ class EcoActivityCard extends StatelessWidget {
   final EcoActivityModel activity;
   final VoidCallback onTap;
 
-  /// Se apaga en el perfil público del organizador: ahí toda la pantalla ya
-  /// es de esa fundación o persona, y la fila solo llevaría de vuelta al
-  /// mismo perfil.
+  /// Se apaga en el perfil del organizador: ahí la fila solo llevaría de vuelta al mismo perfil.
   final bool showOrganizer;
 
   @override
@@ -103,10 +97,7 @@ class EcoActivityCard extends StatelessWidget {
                     text: formatEcoDateTimeLong(activity.startTime),
                   ),
                   const SizedBox(height: 11),
-                  // Wrap y no Row: en pantallas angostas con muchos
-                  // participantes la pila de avatares y el pill no caben en
-                  // la misma línea, y el pill baja a un segundo renglón en
-                  // vez de desbordar.
+                  // Wrap y no Row: en pantallas angostas el pill baja a un segundo renglón en vez de desbordar.
                   Wrap(
                     alignment: WrapAlignment.spaceBetween,
                     crossAxisAlignment: WrapCrossAlignment.center,
@@ -130,7 +121,6 @@ class EcoActivityCard extends StatelessWidget {
   }
 }
 
-/// "REFORESTACIÓN" — insignia olivo sobre la tarjeta.
 class _CategoryBadge extends StatelessWidget {
   const _CategoryBadge({required this.label});
 
@@ -158,7 +148,6 @@ class _CategoryBadge extends StatelessWidget {
   }
 }
 
-/// Fila de metadato con ícono — dirección y fecha de la tarjeta.
 class _MetaRow extends StatelessWidget {
   const _MetaRow({required this.icon, required this.text});
 

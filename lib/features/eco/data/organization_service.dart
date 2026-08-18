@@ -13,10 +13,7 @@ class OrganizationServiceException implements Exception {
   String toString() => message;
 }
 
-/// Lee y escribe `public.organizations` (ver
-/// supabase/sql/010_organizations.sql) — las fundaciones que una persona
-/// registra y en cuyo nombre puede publicar jornadas ECO. Mismo patrón de
-/// servicio singleton que [EcoService]/[AuthService].
+/// Lee y escribe `public.organizations` (supabase/sql/010_organizations.sql); mismo patrón singleton que [EcoService]/[AuthService].
 class OrganizationService {
   factory OrganizationService() => OrganizationService.instance;
 
@@ -24,17 +21,12 @@ class OrganizationService {
 
   static final OrganizationService instance = OrganizationService._internal();
 
-  /// Sube en cada escritura de este dispositivo — las pantallas la escuchan
-  /// igual que a `EcoService.revision` para refrescarse sin pull-to-refresh.
+  /// Sube en cada escritura local, igual que `EcoService.revision`, para refrescar sin pull-to-refresh.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   SupabaseClient get _client => Supabase.instance.client;
 
-  /// Las fundaciones de la persona con sesión iniciada — lo que
-  /// [CreateEcoActivityScreen] consulta para decidir si muestra el selector
-  /// "Publicar como". Lista vacía si no hay sesión (un invitado no tiene
-  /// `owner_id` posible) o si la tabla todavía no existe porque la
-  /// migración 010 no se ha corrido.
+  /// Lista vacía si no hay sesión o si la migración 010 no se ha corrido (la tabla no existe aún).
   Future<List<OrganizationModel>> getMyOrganizations() async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) return const [];
@@ -55,10 +47,7 @@ class OrganizationService {
           .map(OrganizationModel.fromRow)
           .toList(growable: false);
     } on PostgrestException catch (e) {
-      // 42P01 = la tabla no existe todavía (migración 010 sin correr). No
-      // es un error que la persona pueda resolver desde la app y bloquearía
-      // el formulario de crear actividad, así que se degrada a "no tienes
-      // fundaciones" — el resto del módulo sigue funcionando igual.
+      // 42P01 = migración 010 sin correr; se degrada a "no tienes fundaciones" en vez de bloquear el formulario.
       if (e.code == '42P01') return const [];
       throw OrganizationServiceException(
         'No se pudieron cargar tus fundaciones: ${e.message}',
@@ -89,9 +78,7 @@ class OrganizationService {
     }
   }
 
-  /// Alta desde [CreateOrganizationScreen]. `is_verified` se deja en el
-  /// default de la columna (`true` en esta fase de prueba) — el cliente
-  /// nunca manda ese campo, igual que con `businesses.is_verified`.
+  /// `is_verified` queda en su default de columna; el cliente nunca lo envía, igual que `businesses.is_verified`.
   Future<OrganizationModel> createOrganization({
     required String name,
     required String handle,

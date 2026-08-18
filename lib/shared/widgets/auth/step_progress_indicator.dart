@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// 3-segment progress bar + "Paso X de 3 · {label}" caption for the
-/// registration wizard (Identidad → Perfil → Verificación) — per the
-/// Claude Design canvas "Nikara Inicio y Mapa" (turn 10, "Registro en 3
-/// pasos"). Filled segments use [AppColors.coral500]; unreached ones sit at
-/// low alpha instead of a separate flat color.
+/// Barra de progreso de 3 segmentos + caption "Paso X de 3" del wizard de registro.
 class StepProgressIndicator extends StatelessWidget {
   const StepProgressIndicator({
     super.key,
@@ -14,7 +10,7 @@ class StepProgressIndicator extends StatelessWidget {
     required this.labels,
   });
 
-  /// 0-based current step index.
+  /// Índice del paso actual, base 0.
   final int step;
 
   final List<String> labels;

@@ -1,5 +1,4 @@
-/// One rung of the level ladder — a name plus the minimum points required
-/// to reach it.
+/// Un escalón de la escala de niveles: nombre y puntos mínimos para alcanzarlo.
 class _LevelThreshold {
   const _LevelThreshold(this.minPoints, this.name);
 
@@ -7,7 +6,7 @@ class _LevelThreshold {
   final String name;
 }
 
-/// Computed progression snapshot for a given point total.
+/// Snapshot de progreso calculado para un total de puntos dado.
 class LevelInfo {
   const LevelInfo({
     required this.points,
@@ -23,20 +22,18 @@ class LevelInfo {
   final int points;
   final String currentLevelName;
 
-  /// Null once [isMaxLevel] is true — there's nothing further to reach.
+  /// Null cuando [isMaxLevel] es true — no hay nada más que alcanzar.
   final String? nextLevelName;
   final int levelMinPoints;
   final int? nextLevelMinPoints;
 
-  /// 0.0–1.0 progress towards [nextLevelName].
+  /// Progreso 0.0–1.0 hacia [nextLevelName].
   final double progress;
   final int pointsToNext;
   final bool isMaxLevel;
 }
 
-/// Turns a raw point total into a level name, progress percentage and
-/// points-remaining figure — the single source of truth for Níkara's
-/// gamification ladder.
+/// Convierte un total de puntos en nombre de nivel, progreso y puntos restantes — fuente única de verdad de la escala de gamificación.
 abstract class GamificationEngine {
   static const List<_LevelThreshold> _levels = [
     _LevelThreshold(0, 'Explorador Novato'),

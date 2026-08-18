@@ -1,18 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Global, device-persisted set of "favorite" destination/business ids for
-/// the current user — the single source of truth for every heart/favorite
-/// toggle in the app (Profile's Favoritos tab, BusinessDetailScreen's
-/// AppBar heart).
-///
-/// A singleton: every screen that calls `FavoritesService()` gets the exact
-/// same instance and the exact same [idsNotifier]. Screens listen to that
-/// notifier (a [ValueNotifier] is itself a [Listenable]/[ChangeNotifier]),
-/// so toggling a favorite in one screen (e.g. [BusinessDetailScreen])
-/// updates it and any other screen listening (e.g. `ProfileScreen`, kept
-/// alive in [MainLayout]'s `IndexedStack`) reacts immediately — no app
-/// restart or manual pull-to-refresh required.
+/// Set de ids favoritos persistido en el dispositivo; singleton con [idsNotifier] compartido para que togglear un favorito en una pantalla se refleje al instante en las demás.
 class FavoritesService {
   factory FavoritesService() => instance;
 
@@ -22,8 +11,7 @@ class FavoritesService {
 
   static const _key = 'favorite_destination_ids';
 
-  /// Always-current snapshot of favorite ids, kept in memory so listeners
-  /// don't have to re-read SharedPreferences on every notification.
+  /// Snapshot en memoria para que los listeners no relean SharedPreferences en cada notificación.
   final ValueNotifier<Set<String>> idsNotifier = ValueNotifier<Set<String>>(
     <String>{},
   );
@@ -47,10 +35,7 @@ class FavoritesService {
     return ids.contains(id);
   }
 
-  /// Adds/removes [id], persists the change and updates [idsNotifier] —
-  /// returns the new favorite state. [id] is always compared/stored as a
-  /// plain [String] (both mock destination ids and business uuids already
-  /// are strings) so there's no int/String mismatch to worry about.
+  /// Agrega/quita [id], persiste y actualiza [idsNotifier]; devuelve el nuevo estado.
   Future<bool> toggleFavorite(String id) async {
     await _ensureHydrated();
     final updated = Set<String>.of(idsNotifier.value);

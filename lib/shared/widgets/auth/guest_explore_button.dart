@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "Explorar como invitado" pill CTA on Login — a muted-olive gradient
-/// pill with a filled icon-circle, per the Claude Design canvas "Nikara
-/// Inicio y Mapa" (turn 9, "Login v3"). A step up from a plain text
-/// button: guest browsing is a first-class path here, not an
-/// afterthought.
+/// CTA "Explorar como invitado" del Login; la navegación como invitado es un camino de primera clase, no un extra.
 class GuestExploreButton extends StatelessWidget {
   const GuestExploreButton({super.key, required this.onTap});
 

@@ -2,12 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Live password-strength card shown under the password field on Paso 1 —
-/// 4 criteria (min. 8 chars, upper+lowercase, digit, symbol), a 4-segment
-/// score bar and a "Débil/Media/Fuerte/Muy fuerte" label. Purely
-/// informational: the actual submit gate is each screen's own validator
-/// (typically a lower, honest minimum), so this never silently tightens
-/// the account-creation policy underneath the user.
+/// Card de fuerza de contraseña puramente informativo: el gate real de envío es el validator de cada pantalla, así que esto nunca endurece la política de creación de cuenta por debajo.
 class PasswordStrengthChecker extends StatelessWidget {
   const PasswordStrengthChecker({super.key, required this.password});
 

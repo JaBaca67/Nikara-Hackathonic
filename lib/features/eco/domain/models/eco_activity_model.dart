@@ -1,33 +1,19 @@
-/// The three visual/behavioral states a card or detail screen renders —
-/// Estados 1/2/3 of the "fases-pantalla-eco" reference. Derived, never
-/// stored: [EcoActivityModel.status] computes it from [EcoActivityModel
-/// .startTime] (past = completed) and whether the current user is among
-/// [EcoActivityModel.isJoinedByCurrentUser].
+/// Estados 1/2/3 de "fases-pantalla-eco"; derivado siempre desde [EcoActivityModel.status], nunca almacenado.
 enum EcoActivityStatus {
-  /// Estado 1 — upcoming, current user hasn't joined. "Unirme" (gold).
+  /// Estado 1 — próxima, sin unirse. "Unirme" (dorado).
   available,
 
-  /// Estado 2 — upcoming, current user already joined. "Abandonar
-  /// actividad" (outline) + "Participando" indicator.
+  /// Estado 2 — próxima, ya unido. "Abandonar actividad" + indicador "Participando".
   joined,
 
-  /// Estado 3 — start time has passed. Inactive badge, final participant
-  /// count shown instead of a join/leave action.
+  /// Estado 3 — ya pasó. Badge inactivo, se muestra el conteo final de participantes.
   completed,
 }
 
-/// Fixed category set for the filter chips ("Todas, Reforestación, Fauna,
-/// Limpieza") and [CreateEcoActivityScreen]'s picker — `eco_activities
-/// .category` is still a free-text column (same convention as
-/// `businesses.category`), this is just the known/curated set the UI
-/// offers instead of a Postgres enum that would need a migration for
-/// every new category.
+/// `eco_activities.category` sigue siendo texto libre (igual que `businesses.category`); este set es solo el curado que ofrece la UI, para no requerir migración por cada categoría nueva.
 const List<String> kEcoCategories = ['Reforestación', 'Fauna', 'Limpieza'];
 
-/// A row from Supabase's `eco_activities` table, plus the two fields
-/// [EcoService] computes alongside it via the embedded `eco_participants`
-/// join — [participantCount] and [isJoinedByCurrentUser] — rather than
-/// separate round-trips per activity.
+/// Fila de `eco_activities` más [participantCount]/[isJoinedByCurrentUser], calculados por [EcoService] desde el embed `eco_participants` en vez de un round-trip aparte.
 class EcoActivityModel {
   const EcoActivityModel({
     required this.id,
@@ -58,26 +44,20 @@ class EcoActivityModel {
   final String description;
   final String category;
 
-  /// Short display label ("Cerro Apante, Managua") — same role as
-  /// `BusinessModel.city`, not a full address.
+  /// Etiqueta corta ("Cerro Apante, Managua"), no una dirección completa — mismo rol que `BusinessModel.city`.
   final String location;
   final double? latitude;
   final double? longitude;
   final DateTime startTime;
 
-  /// Null means "no cap" — [spotsAvailable]/[isFull] both read that as
-  /// always-open rather than always-full.
+  /// Null significa "sin cupo límite" — [spotsAvailable]/[isFull] lo leen como siempre-abierto.
   final int? maxCapacity;
 
   final String? organizerId;
   final String? organizerName;
   final bool organizerVerified;
 
-  /// `eco_activities.organization_id` — nulo cuando la jornada la publicó
-  /// una persona a título personal; con valor, la publicó esa fundación en
-  /// su nombre. Los cuatro campos que siguen vienen del embed
-  /// `organizations(...)` de [EcoService], no de columnas propias de la
-  /// fila, y quedan nulos si la migración 010 todavía no corrió.
+  /// Nulo si la jornada la publicó una persona a título personal; los cuatro campos siguientes vienen del embed `organizations(...)`, no de columnas propias.
   final String? organizationId;
   final String? organizationName;
   final String? organizationHandle;
@@ -87,9 +67,6 @@ class EcoActivityModel {
   bool get isFromOrganization =>
       organizationId != null && organizationId!.isNotEmpty;
 
-  /// "Ropa cómoda y botas cerradas", "Botella de agua...", the detail
-  /// screen's "Requisitos y qué llevar" checklist and
-  /// [CreateEcoActivityScreen]'s requirements field.
   final List<String> requirements;
   final DateTime createdAt;
 
@@ -107,7 +84,7 @@ class EcoActivityModel {
         : EcoActivityStatus.available;
   }
 
-  /// "Empieza pronto" hero tag — upcoming and starting within a week.
+  /// "Empieza pronto": próxima y dentro de una semana.
   bool get startsSoon =>
       !isPast && startTime.difference(DateTime.now()).inDays < 7;
 
@@ -120,9 +97,7 @@ class EcoActivityModel {
 
   bool get isFull => spotsAvailable == 0;
 
-  /// Quién firma la jornada: el nombre de la fundación cuando se publicó en
-  /// su nombre, si no el de la persona que la creó, y un genérico como
-  /// último recurso.
+  /// Nombre de la fundación si publicó en su nombre, si no el de quien la creó, y un genérico como último recurso.
   String get organizerDisplayName {
     final organization = organizationName;
     if (isFromOrganization &&
@@ -135,13 +110,11 @@ class EcoActivityModel {
         : organizerName!;
   }
 
-  /// El badge "VERIFICADO" del bloque Organizador — de la fundación cuando
-  /// la jornada es suya, si no el flag propio de la fila.
+  /// Badge "VERIFICADO": de la fundación si es suya, si no el flag propio de la fila.
   bool get organizerIsVerified =>
       isFromOrganization ? organizationVerified : organizerVerified;
 
-  /// "@cocibolcavive" cuando publica una fundación; nulo en las personales
-  /// (`profiles` no tiene handle).
+  /// Nulo en publicaciones personales (`profiles` no tiene handle).
   String? get organizerHandle {
     final handle = organizationHandle;
     if (!isFromOrganization || handle == null || handle.trim().isEmpty) {
@@ -150,7 +123,6 @@ class EcoActivityModel {
     return '@$handle';
   }
 
-  /// Iniciales del organizador para el avatar cuando no hay logo ni foto.
   String get organizerInitials {
     final parts = organizerDisplayName
         .trim()
@@ -160,10 +132,7 @@ class EcoActivityModel {
     return letters.isEmpty ? '?' : letters;
   }
 
-  /// Purpose-built instead of a full `copyWith` (nothing else in this app
-  /// mutates an already-loaded [EcoActivityModel] locally) — lets
-  /// EcoMainScreen/EcoDetailScreen reflect a join/leave in the UI the
-  /// instant the tap happens, instead of waiting on a full re-fetch.
+  /// En vez de un `copyWith` completo: refleja join/leave al instante sin esperar un re-fetch.
   EcoActivityModel withParticipation({
     required bool isJoined,
     required int participantCount,
@@ -197,15 +166,10 @@ class EcoActivityModel {
     Map<String, dynamic> row, {
     String? currentUserId,
   }) {
-    // eco_participants is embedded via Postgrest's nested-select syntax
-    // (see EcoService._select) as a list of {user_id, joined_at} maps —
-    // computing both derived fields from that one embedded list instead
-    // of a second round-trip per activity.
+    // Embed to-many: lista de {user_id, joined_at}, usada para derivar ambos campos sin un round-trip aparte.
     final participants = (row['eco_participants'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
-    // `organizations(...)` es un embed to-one: un mapa cuando la jornada
-    // tiene organization_id, null cuando no, y ausente por completo si la
-    // consulta corrió sin el embed (migración 010 sin aplicar).
+    // Embed to-one: mapa si la jornada tiene organization_id, null si no, ausente si la consulta corrió sin el embed.
     final organization = row['organizations'] as Map<String, dynamic>?;
     return EcoActivityModel(
       id: row['id'] as String,

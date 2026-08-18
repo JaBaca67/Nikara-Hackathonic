@@ -1,510 +1,430 @@
 import 'package:flutter/material.dart';
 
-/// Color tokens extracted from the Figma file "UI-NÍKARA" (node 157:2).
-/// Names mirror the Local Variable scale defined in the Figma file.
-///
-/// No pure white (`#FFFFFF`) or pure black (`#000000`) token lives here —
-/// [neutral1100] (primary "ink" text/icon color) and [surface100]/
-/// [backgroundCream] (surfaces) are all deliberately off-white/near-black
-/// for a softer, non-flat premium finish, per the design system audit.
+/// Tokens de color extraídos del archivo Figma "UI-NÍKARA" (nodo 157:2).
+/// [neutral1100] y [surface100]/[backgroundCream] son blanco/negro
+/// suavizados a propósito — el sistema de diseño no usa negro/blanco puro.
 abstract class AppColors {
-  /// Variable "100" — near-white surface used for input fields.
+  /// Superficie casi blanca de los campos de entrada.
   static const surface100 = Color(0xFFFDFDFD);
 
-  /// Variable "300" — olive green used for links and accents.
+  /// Verde oliva de links y acentos.
   static const accent300 = Color(0xFF8B922A);
 
-  /// Variable "400" — orange-red, gradient end stop.
+  /// Naranja-rojo, punto final de gradiente.
   static const primary400 = Color(0xFFFF600F);
 
-  /// Variable "500" — main brand gold.
+  /// Dorado principal de marca.
   static const primary500 = Color(0xFFFDBE02);
 
-  /// Variable "600" — muted brown-gray for secondary text and borders.
+  /// Gris-marrón apagado para texto secundario y bordes.
   static const neutral600 = Color(0xFF8C7373);
 
-  /// Variable "700" — light gold, gradient end stop.
+  /// Dorado claro, punto final de gradiente.
   static const primary700 = Color(0xFFFFD866);
 
-  /// Variable "1100" — primary text/icon "ink". Originally a literal pure
-  /// black (`#000000`) in the Figma file; deliberately softened to a near
-  /// -black here (design system audit: no pure black/white anywhere in the
-  /// app) — visually indistinguishable from black at normal text sizes,
-  /// but avoids the harsh, flat look pure `#000` gives on an off-white/cream
-  /// background.
+  /// "Tinta" principal de texto/íconos — negro suavizado, no `#000000` puro.
   static const neutral1100 = Color(0xFF121212);
 
-  /// Raw fill (not a bound variable in Figma) — cream card/app background.
+  /// Fondo crema de tarjetas y app (no es variable ligada en Figma).
   static const backgroundCream = Color(0xFFFFF9F0);
 
-  // --- Home screen tokens (Figma node 124:37, "Inicio") ---
-  // Same Local Variable collection as the login screen, but this frame
-  // binds a wider slice of the neutral/brown scale plus its own accents.
+  // --- Pantalla Inicio (Figma nodo 124:37) ---
 
-  /// Variable "200" — light gray, used for the "Por región" divider rail.
+  /// Gris claro del divisor "Por región".
   static const surface200 = Color(0xFFE6E5E5);
 
-  /// Variable "400" — muted gray, status-bar time text.
+  /// Gris apagado del texto de la barra de estado.
   static const neutral400 = Color(0xFFB7AEAE);
 
-  /// Variable "700" — secondary/caption text (card location, "Ver Mas").
+  /// Texto secundario/caption (ubicación en tarjeta, "Ver Mas").
   static const neutral700 = Color(0xFF725E5A);
 
-  /// Variable "800" — dark brown, price text and thumbnail-selector borders.
+  /// Marrón oscuro — precio y bordes del selector de miniaturas.
   static const neutral800 = Color(0xFF564343);
 
-  /// Variable "900" — near-black brown.
+  /// Marrón casi negro.
   static const neutral900 = Color(0xFF3A2C2C);
 
-  /// Variable "500" (accent collection) — olive-lime ECO badge fill.
+  /// Verde oliva-lima del relleno del badge ECO.
   static const ecoGreen500 = Color(0xFFC2CA5B);
 
-  /// Variable "600" (gold collection — distinct from neutral600) — the
-  /// featured-card descriptive tag pill ("Laguna Volcánica").
+  /// Pill de etiqueta descriptiva en tarjeta destacada ("Laguna Volcánica").
   static const tagGold600 = Color(0xFFFFCC33);
 
-  /// Variable "600" (lime collection) — notification-bell pill fill.
+  /// Relleno del pill de la campana de notificaciones.
   static const notificationPill = Color(0xFFD1D77E);
 
-  /// Raw fill — notification badge counter circle.
+  /// Círculo contador del badge de notificaciones.
   static const notificationBadge = Color(0xFF404413);
 
-  // --- Splash/transition screen tokens (Figma node 95:2, "Precarga") ---
+  // --- Splash/precarga (Figma nodo 95:2) ---
 
-  /// Variable "500" (coral collection) — gradient's bottom-right stop.
+  /// Punto inferior-derecho del gradiente de precarga.
   static const coral500 = Color(0xFFFF8243);
 
-  // --- Profile screen tokens (Figma node 259:224, "Perfil") ---
+  // --- Perfil (Figma nodo 259:224) ---
 
-  /// Variable "500" (a second, lighter neutral scale used on this screen) —
-  /// muted taupe for captions ("Granada", "520 puntos").
+  /// Taupe apagado para captions ("Granada", "520 puntos").
   static const neutral500 = Color(0xFFA19191);
 
-  /// Header gradient top stop — pale gold.
+  /// Punto superior del gradiente de encabezado — dorado pálido.
   static const profileHeaderGoldPale = Color(0xFFFFE599);
 
-  /// Header gradient third stop — soft coral (distinct from [coral500]).
+  /// Tercer punto del gradiente de encabezado — coral suave.
   static const profileHeaderCoral = Color(0xFFFFA375);
 
-  // --- Settings screen tokens (Figma node 361:323, "Ajustes") ---
-  // This frame binds a separate warm-neutral palette from the rest of the
-  // app rather than the shared brown/gold scale above.
+  // --- Ajustes (Figma nodo 361:323) — paleta neutro-cálida propia ---
 
-  /// Screen background.
+  /// Fondo de la pantalla.
   static const settingsBackground = Color(0xFFF7F3EC);
 
-  /// Gold accent — row icon tint, "on" toggle fill.
+  /// Acento dorado — tinte de ícono de fila, relleno de toggle activo.
   static const settingsAccent = Color(0xFFF0B500);
 
-  /// Primary row/heading text.
+  /// Texto principal de filas/títulos.
   static const settingsTextDark = Color(0xFF261D0C);
 
-  /// Secondary text — section labels, row values, captions.
+  /// Texto secundario — labels de sección, valores de fila, captions.
   static const settingsTextMuted = Color(0xFF8A7A65);
 
-  /// Destructive-action tint — the app's ONE canonical "danger" color.
-  /// Use this (not an ad-hoc red) for every delete/cancel/log-out
-  /// confirmation, per the semantic-button-color pass: destructive actions
-  /// get this soft red-orange, the primary gold ([primary500]) stays
-  /// reserved for the one main/confirming action in any given screen.
+  /// Color "peligro" canónico de la app: usar en toda confirmación
+  /// destructiva (eliminar/cancelar/cerrar sesión), nunca un rojo ad-hoc.
   static const settingsDanger = Color(0xFFCC5510);
 
-  /// "Off" toggle track fill.
+  /// Relleno del track de toggle en estado "off".
   static const settingsToggleOff = Color(0xFFC8BDB0);
 
-  /// Variable "200" (olive collection) — generic "success/confirmed" status
-  /// tint (password-strength "Fuerte" label, etc.). Named for the semantic
-  /// meaning, not the screen it first appeared on — the reservations
-  /// feature that originally introduced it was removed Aug 2026.
+  /// Tinte genérico de estado "éxito/confirmado" (ej. fuerza de contraseña).
   static const statusSuccess = Color(0xFF656B1F);
 
-  /// Raw fill — placeholder thumbnail background (also used in Perfil).
+  /// Fondo de miniatura placeholder (también usado en Perfil).
   static const placeholderTan = Color(0xFFE5DFD2);
 
-  // --- Paleta maestra (Figma node 125:2, "Paleta de colores") ---
-  // This board is a raw canvas of swatches (not a component the
-  // design-context tool can traverse), so these hex values were extracted
-  // by pixel-sampling the rendered board instead of reading bound variable
-  // names directly. Several swatches already had a confirmed name elsewhere
-  // in this file (cross-checked by exact hex match) — those are reused
-  // as-is and just annotated here; only the genuinely new swatches get a
-  // fresh constant. Names below are positional (left-to-right on the
-  // board) since the official Figma variable numbers weren't resolvable
-  // for this specific node.
+  // --- Paleta maestra (Figma nodo 125:2) ---
+  // Extraída por muestreo de píxeles del tablero (no son variables Figma
+  // ligadas); los duplicados exactos reusan el token ya existente.
 
-  /// Primario 1/9 — palest gold.
+  /// Primario 1/9 — dorado pálido.
   static const primario1 = Color(0xFFFFF2CC);
-  // Primario 2/9 == profileHeaderGoldPale (#FFE599).
-  // Primario 3/9 == primary700 (#FFD866).
-  // Primario 4/9 == tagGold600 (#FFCC33).
-  // Primario 5/9 == primary500 (#FDBE02).
-  /// Primario 6/9 — muted amber.
+  // Primario 2/9 == profileHeaderGoldPale. Primario 3/9 == primary700.
+  // Primario 4/9 == tagGold600. Primario 5/9 == primary500.
+  /// Primario 6/9 — ámbar apagado.
   static const primario6 = Color(0xFFCC9900);
 
-  /// Primario 7/9 — deep amber.
+  /// Primario 7/9 — ámbar profundo.
   static const primario7 = Color(0xFF997300);
 
-  /// Primario 8/9 — dark brown-gold.
+  /// Primario 8/9 — marrón-dorado oscuro.
   static const primario8 = Color(0xFF664C00);
 
-  /// Primario 9/9 — near-black gold shadow.
+  /// Primario 9/9 — sombra dorada casi negra.
   static const primario9 = Color(0xFF332600);
 
-  /// Secundario 1/9 — palest olive.
+  /// Secundario 1/9 — oliva pálido.
   static const secundario1 = Color(0xFFF3F5DB);
 
-  /// Secundario 2/9 — pale olive.
+  /// Secundario 2/9 — oliva claro.
   static const secundario2 = Color(0xFFEDEFCC);
 
-  /// Secundario 3/9 — light olive.
+  /// Secundario 3/9 — oliva claro medio.
   static const secundario3 = Color(0xFFDFE3A5);
-  // Secundario 4/9 == notificationPill (#D1D77E).
-  // Secundario 5/9 == ecoGreen500 (#C2CA5B).
-  /// Secundario 6/9 — mid olive.
+  // Secundario 4/9 == notificationPill. Secundario 5/9 == ecoGreen500.
+  /// Secundario 6/9 — oliva medio.
   static const secundario6 = Color(0xFFAEB738);
-  // Secundario 7/9 == accent300 (#8B922A).
-  // Secundario 8/9 == bookingConfirmed (#656B1F).
-  // Secundario 9/9 == notificationBadge (#404413).
+  // Secundario 7/9 == accent300. Secundario 8/9 == statusSuccess.
+  // Secundario 9/9 == notificationBadge.
 
-  /// Complementario 1/9 — palest coral.
+  /// Complementario 1/9 — coral pálido.
   static const complementario1 = Color(0xFFFFEEE6);
 
-  /// Complementario 2/9 — pale coral.
+  /// Complementario 2/9 — coral claro.
   static const complementario2 = Color(0xFFFFE7DB);
 
-  /// Complementario 3/9 — light coral.
+  /// Complementario 3/9 — coral claro medio.
   static const complementario3 = Color(0xFFFFC5A8);
-  // Complementario 4/9 == profileHeaderCoral (#FFA375).
-  // Complementario 5/9 == coral500 (#FF8243).
-  // Complementario 6/9 == primary400 (#FF600F).
-  // Complementario 7/9 == bookingPending (#DB4900).
-  /// Complementario 8/9 — deep rust.
+  // Complementario 4/9 == profileHeaderCoral. Complementario 5/9 == coral500.
+  // Complementario 6/9 == primary400.
+  /// Complementario 8/9 — óxido profundo.
   static const complementario8 = Color(0xFFA83800);
 
-  /// Complementario 9/9 — near-black rust shadow.
+  /// Complementario 9/9 — sombra óxido casi negra.
   static const complementario9 = Color(0xFF752700);
 
-  /// Neutro 100 — off-white (originally a literal pure `#FFFFFF` in the
-  /// Figma file; softened for the same reason as [neutral1100]). Not
-  /// actually drawn anywhere today ([surface100]/[backgroundCream] are the
-  /// app's real surface tokens), kept for palette completeness.
+  /// Neutro 100 — casi blanco (no se usa hoy, se mantiene por completitud).
   static const neutral100 = Color(0xFFF8F9FA);
-  // Neutro 200 == surface200 (#E6E5E5).
-  /// Neutro 300 — light warm gray.
+  // Neutro 200 == surface200.
+  /// Neutro 300 — gris cálido claro.
   static const neutral300 = Color(0xFFCECACA);
-  // Neutro 400..900 and 1100 == neutral400..neutral900 and neutral1100
-  // above, confirmed by exact hex match at their expected board position.
-  /// Neutro 1000 — near-black warm gray.
+
+  /// Neutro 1000 — gris cálido casi negro.
   static const neutral1000 = Color(0xFF1E1515);
-  // Neutro 1100 == neutral1100 (near-black — see its own doc comment).
 
-  // --- Business detail screen tokens (Figma nodes 284:2256, 233:437) ---
+  // --- Detalle de negocio (Figma nodos 284:2256, 233:437) ---
 
-  /// Forest green — eco activity icons/tags and review-avatar fill. Distinct
-  /// from the brand's [ecoGreen500] (olive), this is a separate accent used
-  /// only on this screen.
+  /// Verde bosque de íconos/tags eco y avatar de reseña — distinto del
+  /// [ecoGreen500] de marca, exclusivo de esta pantalla.
   static const ecoForest = Color(0xFF3A7D3A);
 
-  /// Segmented-control track background ("Información" / "Reseñas & Fotos") —
-  /// per Claude Design's turn 3 ("Perfil del negocio / lugar — unificación
-  /// prototipo + Figma"), Pantalla 3a: exact hex, supersedes the earlier
-  /// Figma-only value.
+  /// Fondo del track del control segmentado ("Información" / "Reseñas").
   static const segmentedTrackBg = Color(0xFFEDE9E1);
 
-  /// Solid near-black ink used for text on gold buttons/pills throughout
-  /// the app (previously inlined as a literal hex in several screens).
+  /// Tinta casi negra para texto sobre botones/pills dorados.
   static const textInk = Color(0xFF1A1510);
 
-  /// Inline form-field validation-error text (Login/Register). Distinct
-  /// from [settingsDanger], which is the destructive-*action* tint
-  /// (delete/cancel/log-out) — this is purely "this field is invalid".
-  /// Previously inlined as a literal hex in three separate Auth screens.
+  /// Texto de error de validación inline (Login/Registro) — distinto de
+  /// [settingsDanger], que es para acciones destructivas, no validación.
   static const formError = Color(0xFFD64545);
 
-  // --- Profile screen full redesign (Figma nodes 377:483, 421:361) ---
+  // --- Rediseño de Perfil (Figma nodos 377:483, 421:361) ---
 
-  /// Muted taupe — "9:41" mock status text, location caption, locked-badge
-  /// title/status text. Distinct from [neutral500] (#A19191).
+  /// Taupe apagado — hora mock, caption de ubicación, badge bloqueado.
   static const profileMuted = Color(0xFFB8AA98);
 
-  /// Hairline dividers and the edit/settings/share button fill.
+  /// Divisores finos y relleno de botones editar/ajustes/compartir.
   static const profileDivider = Color(0xFFF2EBE0);
 
-  /// Level progress bar track + locked-badge card fill.
+  /// Track de la barra de progreso de nivel y tarjeta de badge bloqueado.
   static const progressTrack = Color(0xFFEDE6D8);
 
-  /// "Guardián del Bosque" badge tint.
+  /// Tinte del badge "Guardián del Bosque".
   static const badgeForest = Color(0xFF7A8C28);
 
-  /// "Protector del Lago" badge tint.
+  /// Tinte del badge "Protector del Lago".
   static const badgeLake = Color(0xFF5A6B1A);
 
-  // --- Business detail: warm amenities/actividades palette (replaces the
-  // earlier green ecoForest/primary500 chip styling) ---
+  // --- Detalle de negocio: paleta cálida de amenidades/actividades ---
 
-  /// Comodidades chip fill.
+  /// Relleno de chip de Comodidades.
   static const warmChipBackground = Color(0xFFFFF8E1);
 
-  /// Actividades chip fill — a shade warmer than [warmChipBackground] so
-  /// the two chip sections stay visually distinct.
+  /// Relleno de chip de Actividades — un tono más cálido que el anterior
+  /// para diferenciar visualmente ambas secciones.
   static const warmChipBackgroundAlt = Color(0xFFFFF3E0);
 
-  /// Chip border for both Comodidades and Actividades.
+  /// Borde de chip para Comodidades y Actividades.
   static const warmChipBorder = Color(0xFFFDE68A);
 
-  /// Comodidades/Actividades chip icon + text color — solid dark, replacing
-  /// the earlier amber/deep-orange tinted text for legibility.
+  /// Color de ícono/texto de esos chips — oscuro sólido por legibilidad.
   static const chipContentDark = Color(0xFF111827);
 
-  /// Registration wizard's focus/accent color (inputs, stepper, primary
-  /// actions) — warmer than the brand's [primary500] gold, per the
-  /// Perfil-matching redesign.
+  /// Color de foco/acento del wizard de registro (inputs, stepper, CTA).
   static const wizardFocus = Color(0xFFF59E0B);
 
-  // --- Depth system (UI/UX audit pass) ---
-  // Flat cards/sheets throughout the app used to rely on color contrast
-  // alone; these two tokens are the standard "give it depth" pairing —
-  // a hairline border plus a soft, low-opacity shadow — used together
-  // wherever a surface needs to read as raised instead of flat.
+  // --- Sistema de profundidad ---
+  // Par estándar borde + sombra suave para que una superficie se lea
+  // "elevada" en vez de plana, usados juntos en tarjetas/hojas/botones.
 
-  /// Subtle 1px card/input border — barely visible, just enough to define
-  /// an edge against a same-toned background.
-  static const cardBorder = Color(0x1F000000); // black @ ~12% alpha
+  /// Borde de 1px casi imperceptible para tarjetas/inputs.
+  static const cardBorder = Color(0x1F000000); // negro @ ~12% alpha
 
-  /// Soft ambient shadow color for [cardShadow] — near-black at very low
-  /// opacity, warmer than a default Material shadow so it reads as part of
-  /// the brand's warm palette instead of a generic gray drop shadow.
+  /// Color de sombra ambiental suave para [cardShadow].
   static const shadowAmbient = Color(0x14261D0C); // settingsTextDark @ ~8%
 
-  /// Standard soft card elevation — pair with a rounded [BoxDecoration] for
-  /// any surface that should read as "raised" (cards, sheets, buttons)
-  /// instead of flat-against-background.
+  /// Elevación estándar de tarjeta — combinar con un [BoxDecoration] redondeado.
   static const List<BoxShadow> cardShadow = [
     BoxShadow(color: shadowAmbient, offset: Offset(0, 4), blurRadius: 10),
   ];
 
-  // --- Map screen redesign (Claude Design project "Rediseño de Níkara
-  // Home y Mapa", Pantalla 2b) ---
-  // This screen layers many soft ink-tinted (not pure black) hairline
-  // borders/shadows directly over the map instead of the black-based
-  // [cardBorder]/[shadowAmbient] pair above — kept as their own small scale
-  // (all derived from [settingsTextDark] at the exact alpha the design
-  // uses) rather than overloading those general-purpose tokens.
+  // --- Rediseño de Mapa (Pantalla 2b) ---
+  // Bordes/sombras propios tintados con settingsTextDark en vez de negro
+  // puro, para no sobrecargar cardBorder/shadowAmbient con otro alpha.
 
-  /// Hairline border on every floating map control (search bar, filter
-  /// button, category chips, recenter button) — settingsTextDark @ 6%.
+  /// Borde de los controles flotantes del mapa — settingsTextDark @ 6%.
   static const mapControlBorder = Color(0x0F261D0C);
 
-  /// Shadow under the search bar and filter button — settingsTextDark @ 12%.
+  /// Sombra bajo la barra de búsqueda y botón de filtro — @ 12%.
   static const mapControlShadow = Color(0x1F261D0C);
 
-  /// Stronger shadow for the active category chip and the recenter button —
-  /// settingsTextDark @ 14%.
+  /// Sombra del chip de categoría activo y botón de recentrar — @ 14%.
   static const mapControlShadowStrong = Color(0x24261D0C);
 
-  /// Lighter shadow for inactive category chips — settingsTextDark @ 10%.
+  /// Sombra de chips de categoría inactivos — @ 10%.
   static const mapControlShadowSoft = Color(0x1A261D0C);
 
-  /// Shadow under the floating business-preview card — settingsTextDark @ 16%.
+  /// Sombra bajo la tarjeta flotante de vista previa de negocio — @ 16%.
   static const mapCardShadow = Color(0x29261D0C);
 
-  /// Drop shadow under an active (selected) map pin — black @ 22%.
+  /// Sombra de un pin de mapa activo/seleccionado — negro @ 22%.
   static const mapPinShadowActive = Color(0x38000000);
 
-  /// Drop shadow under an inactive map pin — black @ 18%.
+  /// Sombra de un pin de mapa inactivo — negro @ 18%.
   static const mapPinShadowInactive = Color(0x2E000000);
 
-  /// Favorite-heart fill on the map preview card — a pink distinct from
-  /// [primary400]/[coral500], called out by exact hex in the Map redesign.
+  /// Corazón de favorito en la tarjeta de vista previa del mapa.
   static const favoriteActive = Color(0xFFE8798F);
 
-  /// Water fill for the custom Google Maps JSON style (`mapStyleJson` in
-  /// `map_screen.dart`) — not a Figma-bound variable (Maps styling takes
-  /// literal hex, no equivalent design token existed), a soft blue picked
-  /// to sit next to [backgroundCream]/[profileDivider] the way the "Mapa —
-  /// evolución" prototype's water circles do.
+  /// Relleno de agua del estilo JSON personalizado de Google Maps
+  /// (`mapStyleJson` en `map_screen.dart`) — Maps solo acepta hex literal,
+  /// no hay variable Figma equivalente.
   static const mapStyleWater = Color(0xFFCFE3EA);
 
-  /// Road fill for the same custom map style — a shade between
-  /// [profileDivider] and [backgroundCream] so roads stay legible without
-  /// competing with the cream/sand landscape base.
+  /// Relleno de carreteras del mismo estilo de mapa personalizado.
   static const mapStyleRoad = Color(0xFFF5E9D6);
 
-  /// Pale-pink circle background behind the favorite heart on the map's
-  /// business carousel card (Pantalla 2a) — [favoriteActive] blended ~15%
-  /// over white, not a Figma-bound variable (same pragmatic-literal
-  /// reasoning as the other `map*` tokens above).
+  /// Fondo circular pálido tras el corazón de favorito en el carrusel del mapa.
   static const mapFavoriteBackground = Color(0xFFFCEBEE);
 
-  /// Pin ring/icon tint for water/nature categories (lagunas, playas, ríos)
-  /// in the per-category marker set — see [mapPinCategoryFor] in
-  /// `business_icons.dart`. The one genuinely new hue in this otherwise
-  /// warm gold/brown palette: every other category bucket reuses an
-  /// existing token ([coral500] for comida, [ecoGreen500] for eco,
-  /// [accent300] for tours, [complementario8] for artesanías/cultura,
-  /// [primario7] for hospedaje, [neutral800] for transporte), but nothing
-  /// blue already existed to stand in for water. Not a Figma-bound
-  /// variable, same pragmatic-literal reasoning as [mapStyleWater] above —
-  /// just saturated enough to read as a small marker glyph instead of a
-  /// soft map-fill tint.
+  /// Tinte de pin para categorías de agua/naturaleza (lagunas, playas, ríos)
+  /// — el único tono azul nuevo en la paleta; el resto de categorías
+  /// reusa tokens existentes (ver [mapPinCategoryFor] en `business_icons.dart`).
   static const mapPinWater = Color(0xFF3E8FB0);
 
-  // --- Business detail redesign (Claude Design turn 3, "Perfil del
-  // negocio / lugar — unificación prototipo + Figma", Pantalla 3a) ---
+  // --- Rediseño de detalle de negocio (Pantalla 3a) ---
 
-  /// Actividad row icon-chip background — pale olive, distinct from
-  /// [warmChipBackground]'s amber tone.
+  /// Fondo del chip-ícono de fila de Actividad — oliva pálido.
   static const detailActivityIconBg = Color(0xFFEFF2DF);
 
-  /// Warm dark-brown body copy — description paragraph, address line,
-  /// contact-pill label. Distinct from [neutral900]/[settingsTextDark].
+  /// Marrón oscuro cálido — párrafo de descripción, dirección, pill de contacto.
   static const detailBodyBrown = Color(0xFF4A3D2A);
 
-  /// Muted secondary row text (non-today schedule rows, map caption).
+  /// Texto secundario apagado de fila (horarios no-hoy, caption de mapa).
   static const detailMutedRow = Color(0xFF6B5B45);
 
-  /// WhatsApp contact row — icon-circle fill.
+  /// Fondo del círculo-ícono de la fila de contacto WhatsApp.
   static const detailWhatsappIconBg = Color(0xFFE7F0E4);
 
-  /// WhatsApp contact row — icon tint.
+  /// Tinte del ícono de WhatsApp.
   static const detailWhatsappIcon = Color(0xFF4E8A50);
 
-  /// Instagram contact row — icon-circle fill ([favoriteActive] is the icon
-  /// tint itself, reused as-is since it's an exact hex match).
+  /// Fondo del círculo-ícono de la fila de contacto Instagram.
   static const detailInstagramIconBg = Color(0xFFFBECEF);
 
-  /// "Cómo llegar" mini-map illustration — base fill, road stripe, green
-  /// area, in that layering order, plus the drop shadow under its pin.
+  /// Ilustración mini-mapa "Cómo llegar": fondo base, franja de carretera,
+  /// área verde (en ese orden de capas) y sombra bajo su pin.
   static const detailMapBg = Color(0xFFE9E5DC);
   static const detailMapRoad = Color(0xFFDCD6C8);
   static const detailMapGreen = Color(0xFFDDE7DC);
   static const detailMapPinShadow = Color(0x38261D0C);
 
-  /// Cover scrim gradients over the hero photo — top stop, bottom stop and
-  /// the fully-transparent end both fade into. Named here (instead of
-  /// inlined hexes) now that the cover is a component shared by the
-  /// business and ECO detail screens (`shared/widgets/detail_sections.dart`).
+  /// Scrim degradado sobre la foto de portada — punto superior, inferior
+  /// y el extremo totalmente transparente. Compartido por negocio y ECO.
   static const detailCoverScrimTop = Color(0x6B1A1510);
   static const detailCoverScrimBottom = Color(0xCC1A1510);
   static const detailCoverScrimClear = Color(0x001A1510);
 
-  /// "1 / N" photo-counter pill on the cover — fill and hairline border.
+  /// Pill contador "1 / N" sobre la portada — fondo y borde fino.
   static const detailCoverCounterBg = Color(0x801A1510);
   static const detailCoverCounterBorder = Color(0x40FDFDFD);
 
-  /// Gold glow under the selected segmented tab — [primary500] @ 28%.
+  /// Resplandor dorado bajo la pestaña segmentada seleccionada — primary500 @ 28%.
   static const detailSegmentGlow = Color(0x47F0B500);
 
-  /// Barely-there gold lift under the host/organizer card — [primary500]
-  /// @ 8%.
+  /// Realce dorado sutil bajo la tarjeta de organizador — primary500 @ 8%.
   static const detailCardGlow = Color(0x14F0B500);
 
-  /// Upward shadow of the fixed bottom action bar — [settingsTextDark]
-  /// @ 8%.
+  /// Sombra hacia arriba de la barra de acciones inferior fija — @ 8%.
   static const detailBottomBarShadow = Color(0x14261D0C);
 
-  /// Gold halo under a primary CTA in a detail screen's bottom bar —
-  /// [primary500] @ 32%.
+  /// Halo dorado bajo el CTA primario de la barra inferior — primary500 @ 32%.
   static const detailPrimaryButtonGlow = Color(0x52F0B500);
 
-  /// Gold glow under cards/badges on Home, Perfil and Ajustes — sits
-  /// between [detailCardGlow] (8%) and [detailSegmentGlow] (28%).
-  /// Standardization pass: previously inlined identically as a literal hex
-  /// across 7 call sites in those three screens.
+  /// Resplandor dorado bajo tarjetas/badges en Inicio, Perfil y Ajustes.
   static const cardGlowSoft = Color(0x1AF0B500);
 
-  // --- Wizard redesign (Claude Design turn 4, "Creación y edición de
-  // negocio local — flujo en 4 pasos", Pantallas 4a-4e) ---
+  // --- Wizard de creación/edición de negocio (Pantallas 4a-4e) ---
 
-  /// Un-reached step-circle ring in the progress stepper.
+  /// Anillo del círculo-paso no alcanzado en el stepper de progreso.
   static const wizardStepInactiveBorder = Color(0xFFF0DFAE);
 
-  /// "REVISIÓN" pill / incomplete-gallery warning row — fill and text.
+  /// Pill "REVISIÓN" / fila de advertencia de galería incompleta.
   static const wizardReviewBadgeBg = Color(0xFFFFF6DC);
   static const wizardReviewBadgeText = Color(0xFF8A6A00);
 
-  /// Facebook contact row — icon-circle fill and icon tint.
+  /// Fila de contacto Facebook — fondo de círculo y tinte de ícono.
   static const wizardFacebookIconBg = Color(0xFFE7EDF7);
   static const wizardFacebookIcon = Color(0xFF5B7FB5);
 
-  /// Dashed cover-photo drop zone fill.
+  /// Fondo de la zona de arrastre (drop zone) de foto de portada.
   static const wizardUploadZoneBg = Color(0xFFFFFBEF);
 
-  /// "Eliminar este negocio" link — distinct from [settingsDanger], exact
-  /// hex from Pantalla 4e.
+  /// Link "Eliminar este negocio" — distinto de [settingsDanger].
   static const wizardDangerLink = Color(0xFFC4756A);
 
-  /// Verification/pin-confirm icon amber — the solid-color sibling of the
-  /// `rgba(240,181,0,…)` shadow tint already inlined elsewhere in this app.
+  /// Ámbar de ícono de verificación/confirmación de pin.
   static const wizardAmber = Color(0xFFF0B500);
 
-  // --- Auth flow redesign (Claude Design canvas "Nikara Inicio y Mapa",
-  // turns 9/10 — Login v3 + Registro en 3 pasos) ---
+  // --- Flujo de Auth (Login v3 + Registro en 3 pasos) ---
 
-  /// Sunset gradient, stop 1/4 — top.
+  /// Gradiente atardecer, punto 1/4 — superior.
   static const sunsetStart = Color(0xFFFFD028);
 
-  /// Sunset gradient, stop 2/4.
+  /// Gradiente atardecer, punto 2/4.
   static const sunsetMid1 = Color(0xFFFDB828);
 
-  /// Sunset gradient, stop 3/4.
+  /// Gradiente atardecer, punto 3/4.
   static const sunsetMid2 = Color(0xFFFF8A35);
 
-  /// Sunset gradient, stop 4/4 — bottom.
+  /// Gradiente atardecer, punto 4/4 — inferior.
   static const sunsetEnd = Color(0xFFF97316);
 
-  /// Auth card fill — the warm off-white behind every Login/Register form,
-  /// distinct from [backgroundCream] (this is warmer/lighter).
+  /// Fondo de tarjeta en Login/Registro — distinto de [backgroundCream]
+  /// (más cálido/claro).
   static const authCardBackground = Color(0xFFFFFDF8);
 
-  /// Deep olive used for every text link in the Auth flow ("Inicia
-  /// sesión", "Regístrate aquí", the guest-CTA icon/text) — distinct from
-  /// [accent300], a lighter olive used elsewhere in the app.
+  /// Oliva profundo de todo link de texto en Auth — distinto de [accent300].
   static const authLink = Color(0xFF6E7522);
 
-  /// "Explorar como invitado" pill — gradient fill and icon-circle tint,
-  /// a muted sibling of [authLink].
+  /// Pill "Explorar como invitado" — gradiente y tinte del ícono circular.
   static const authGuestPillStart = Color(0xFFEFF2DF);
   static const authGuestPillEnd = Color(0xFFE4EAC0);
   static const authGuestIconText = Color(0xFF4C5218);
 
-  /// Password-strength "Débil" (weak) label/bar tint.
+  /// Tinte de la etiqueta/barra "Débil" de fuerza de contraseña.
   static const strengthWeak = Color(0xFFD2691E);
 
-  /// Auth flow's "ink" — headings, primary-button text, primary icons
-  /// (mail/lock/arrow_back). Distinct from [textInk]: this redesign turn's
-  /// source gave an explicit, lighter warm-brown value, not the app's
-  /// older near-black ink.
+  /// "Tinta" de Auth — encabezados, texto de botón primario, íconos
+  /// principales. Distinto de [textInk] (valor propio de este flujo).
   static const authInk = Color(0xFF3D2110);
 
-  /// Auth field labels ("CORREO ELECTRÓNICO"), muted trailing icons
-  /// (`visibility_off`), and — at 35% alpha — every field's inset border.
+  /// Labels de campo, íconos secundarios y borde de campo (@ 35% alpha).
   static const authMuted = Color(0xFF9A8A82);
 
-  /// Auth subtitle/body copy under a heading ("Empecemos con lo básico").
+  /// Texto de subtítulo/cuerpo bajo un encabezado en Auth.
   static const authBodyMuted = Color(0xFF6B5B45);
 
-  /// Auth field placeholder text.
+  /// Texto placeholder de campos en Auth.
   static const authPlaceholder = Color(0xFFB7A9A0);
 
-  // --- ECO module ("Actividades Ambientales" tab + detail/create flows) ---
+  // --- Módulo ECO ("Actividades Ambientales") ---
 
-  /// Brand olive — the ECO tab's active nav-bar pill (replacing the gold
-  /// every other tab uses) and the "Unido"/organizer-verified accents
-  /// across the ECO feature. Distinct from [ecoGreen500] (lighter,
-  /// yellow-olive ECO *badge* fill used elsewhere) and [ecoForest] (a
-  /// separate dark green reserved for the business-detail screen) — this
-  /// exact hex is this module's own design spec.
+  /// Oliva de marca — pill activo del tab ECO y acentos de "Unido"/verificado.
+  /// Distinto de [ecoGreen500] (badge) y [ecoForest] (detalle de negocio).
   static const ecoActive = Color(0xFF76882A);
 
-  /// Participant avatar stack ("+18") on the ECO cards and detail screen.
-  /// `eco_participants` carries no photo, so the stack is drawn with these
-  /// warm neutral fills cycled in order — enough variation to read as
-  /// several distinct people without faking identities.
+  /// Colores del stack de avatares de participantes ("+18") — `eco_participants`
+  /// no trae foto, se ciclan estos tonos neutros para simular variedad.
   static const ecoAvatarStack = <Color>[
     Color(0xFFD9C9A8),
     Color(0xFFCEC1A1),
     Color(0xFFB6AFAE),
     Color(0xFFE4DCCB),
   ];
+
+  // --- Tokens de saneamiento (pase final: colores antes hardcodeados) ---
+
+  /// Sombra sutil de tarjeta de perfil — negro @ 5%.
+  static const profileCardShadow = Color(0x0D000000);
+
+  /// Overlay de carga sobre el mapa — backgroundCream @ 35%.
+  static const mapLoadingOverlay = Color(0x59FFF9F0);
+
+  /// Fondo del botón circular "eliminar" sobre una miniatura de foto —
+  /// textInk @ 55%. Compartido por el wizard de negocio, el detalle de
+  /// negocio y el wizard de rutas.
+  static const removeButtonBackground = Color(0x8C1A1510);
+
+  /// Sombra bajo la foto de portada/avatar del wizard de negocio —
+  /// settingsTextDark @ 26%.
+  static const wizardPhotoShadow = Color(0x42261D0C);
+
+  /// Resplandor bajo el botón primario de Auth — primary500 @ 35%.
+  static const authPrimaryButtonGlow = Color(0x59FDBE02);
+
+  /// Punto final del gradiente del ícono de éxito de registro de negocio —
+  /// variante más profunda de [primary500].
+  static const successBadgeGradientEnd = Color(0xFFF5A800);
+
+  /// Resplandor bajo el ícono de éxito de registro de negocio —
+  /// primary500 @ 40%.
+  static const successBadgeGlow = Color(0x66FDBE02);
 }

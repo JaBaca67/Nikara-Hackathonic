@@ -4,21 +4,8 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Full-bleed animated "aurora/olas" background — 3 soft radial-gradient
-/// blobs drifting in slow sine/cosine orbits over the brand gradient.
-///
-/// PERFORMANCE CONTRACT: the animation ticks entirely inside its own
-/// [AnimationController], isolated in a [RepaintBoundary] around only the
-/// [CustomPaint] layer. [child] sits as a sibling in the same [Stack], one
-/// layer above — it is never inside the [AnimatedBuilder]'s `builder`, so
-/// a screen putting a whole login/register form in [child] gets zero
-/// extra rebuilds from the background animation; the ticker never touches
-/// `setState` on anything outside this widget.
-///
-/// No [MaskFilter.blur] is used for the blob "glow" — that's a real
-/// per-frame GPU/CPU cost. The soft edge comes from [RadialGradient]'s
-/// built-in fade-to-transparent instead, which is effectively free (a
-/// plain shader), keeping this smooth even on low-end devices.
+/// Fondo animado "aurora/olas" con 3 blobs de gradiente radial en órbitas sinusoidales sobre el gradiente de marca.
+/// Contrato de performance: el ticker vive aislado en un [RepaintBoundary] alrededor de [CustomPaint] únicamente, así [child] nunca se rebuildea por la animación; el "glow" usa el fade nativo de [RadialGradient] en vez de [MaskFilter.blur] (costoso por frame) para rendir bien en gama baja.
 class AuroraBackgroundWidget extends StatefulWidget {
   const AuroraBackgroundWidget({super.key, this.child});
 
@@ -46,9 +33,7 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Base brand gradient — painted once, never touched by the ticker.
-        // Figma node 636:912 ("UI-NÍKARA"), reused unmodified across
-        // Splash/Login/Register — see [AppGradients.authBackgroundColors].
+        // Gradiente base, pintado una sola vez, nunca tocado por el ticker (Figma node 636:912).
         const DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -59,9 +44,7 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
             ),
           ),
         ),
-        // The ONLY layer that repaints every tick. RepaintBoundary keeps
-        // that continuous repaint from propagating to the base gradient
-        // below or to `child` above.
+        // Única capa que repinta cada tick; el RepaintBoundary evita que eso se propague al gradiente base o a `child`.
         RepaintBoundary(
           child: AnimatedBuilder(
             animation: _controller,
@@ -87,14 +70,7 @@ class _AuroraPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final t = progress * 2 * math.pi;
 
-    // Every oscillator below uses an INTEGER multiple of `t` (1, 2, or 3).
-    // That's not a style choice — it's what makes the loop seamless.
-    // `progress` wraps 1→0 every cycle, so `t` wraps 2π→0; sin/cos of an
-    // integer multiple of `t` land on the exact same value at both ends
-    // (sin(2π·k) == sin(0) for integer k), so nothing jumps. A non-integer
-    // multiplier (the previous 0.85/1.3/1.6/breathe-ratio-2.8) does NOT
-    // return to its starting phase at the wrap, which is exactly what
-    // produced the visible "cut" each loop.
+    // Cada oscilador usa un múltiplo ENTERO de `t` a propósito: así sin/cos coinciden en ambos extremos del ciclo y el loop no se corta visiblemente (un múltiplo no entero sí producía un salto).
     _blob(
       canvas,
       color: AppColors.accent300,
@@ -136,7 +112,7 @@ class _AuroraPainter extends CustomPainter {
       radius: size.width * 0.55,
     );
 
-    // Ambient "breathing" glow, top-right — 3 pulses per loop.
+    // Glow ambiental "respirando" arriba a la derecha, 3 pulsos por loop.
     final breathe = 0.5 + 0.5 * (0.5 + 0.5 * math.sin(t * 3));
     _blob(
       canvas,

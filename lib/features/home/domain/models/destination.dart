@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// A travel destination shown across the Home screen (featured hero,
-/// "Más visitados" and "Por región" sections).
+/// Destino turístico mostrado en Home (hero destacado, "Más visitados", "Por región").
 ///
-/// [imageAsset] is nullable on purpose: until real photography/CDN URLs are
-/// available, cards fall back to [imagePlaceholderColor] so the UI never has
-/// to change once real assets are wired in.
+/// [imageAsset] es nullable a propósito: mientras no haya fotos/CDN reales, las cards usan [imagePlaceholderColor] sin necesitar cambios cuando se conecten assets reales.
 @immutable
 class DestinationModel {
   const DestinationModel({
@@ -25,28 +22,27 @@ class DestinationModel {
   final String id;
   final String title;
 
-  /// Short place name shown on cards (e.g. "San Juan del Sur") or the
-  /// richer "City · Country" line used by the featured hero card.
+  /// Nombre corto para cards (ej. "San Juan del Sur") o "Ciudad · País" en el hero destacado.
   final String location;
 
-  /// Groups destinations for the "Por región" section (e.g. "Caribe").
+  /// Agrupa destinos para la sección "Por región" (ej. "Caribe").
   final String region;
 
-  /// Price in Nicaraguan córdobas per person.
+  /// Precio en córdobas por persona.
   final double price;
 
   final double rating;
 
-  /// Pill label, e.g. 'ECO' or a descriptive tag like 'Laguna Volcánica'.
+  /// Etiqueta tipo pill, ej. 'ECO' o 'Laguna Volcánica'.
   final String? tag;
 
   final Color imagePlaceholderColor;
   final String? imageAsset;
 
-  /// Shown as the hero card at the top of Home.
+  /// Se muestra como hero destacado en la parte superior de Home.
   final bool isFeatured;
 
-  /// Included in the "Más visitados" horizontal list.
+  /// Incluido en la lista horizontal "Más visitados".
   final bool isPopular;
 
   String get formattedPrice => 'C\$${price.toStringAsFixed(0)}';

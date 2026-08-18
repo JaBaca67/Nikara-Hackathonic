@@ -12,9 +12,7 @@ class _NavItem {
   final IconData icon;
   final String label;
 
-  /// Pill fill color while this tab is selected — every tab uses the
-  /// brand gold except ECO, whose active bubble is the module's own olive
-  /// (see [AppColors.ecoActive]'s doc comment).
+  /// Color de la píldora activa — dorado de marca en todas las tabs excepto ECO, que usa su propio olivo ([AppColors.ecoActive]).
   final Color activeColor;
 }
 
@@ -29,11 +27,7 @@ const List<_NavItem> _kNavItems = [
 const _kPillSize = Size(40, 32);
 const _kPillTopInset = 4.0;
 
-/// Floating bottom navigation bar — rounded pill card, off-white/cream
-/// background, soft shadow — with a single pill that slides between tabs
-/// instead of each icon owning its own static highlight box. Fully
-/// controlled by the parent (typically `MainLayout` driving an
-/// `IndexedStack`) — this widget holds no selection state of its own.
+/// Barra de navegación inferior flotante con una sola píldora que se desliza entre tabs. No mantiene estado de selección propio; lo controla el padre (`MainLayout`).
 class MainNavigationBar extends StatelessWidget {
   const MainNavigationBar({
     super.key,

@@ -5,9 +5,9 @@ import 'package:nikara_app/theme/app_colors.dart';
 
 export 'package:nikara_app/theme/app_colors.dart';
 
-/// Text styles extracted from the Figma "Text Styles".
+/// Estilos de texto extraídos de "Text Styles" en Figma "UI-NÍKARA".
 abstract class AppTextStyles {
-  /// Figma style "HL4": League Spartan Bold 24/36.
+  /// Figma "HL4".
   static TextStyle get heading => GoogleFonts.leagueSpartan(
     color: AppColors.neutral1100,
     fontSize: 24,
@@ -15,7 +15,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Figma style "Boton Lg": Nunito Bold 15/26.
+  /// Figma "Boton Lg".
   static TextStyle get buttonLarge => GoogleFonts.nunito(
     color: const Color(0xFF1A1510),
     fontSize: 15,
@@ -23,7 +23,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Logo wordmark "NÍKARA" — Quintessential Regular 40.
+  /// Wordmark del logo "NÍKARA".
   static TextStyle get logoWordmark => GoogleFonts.quintessential(
     color: Colors.white,
     fontSize: 40,
@@ -73,9 +73,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  // --- Home screen styles (Figma node 124:37) ---
+  // --- Pantalla Inicio (Figma nodo 124:37) ---
 
-  /// Figma style "HL3": League Spartan Bold 32/48 — the "Níkara" wordmark.
+  /// Figma "HL3" — wordmark "Níkara".
   static TextStyle get headingXL => GoogleFonts.leagueSpartan(
     color: AppColors.neutral1100,
     fontSize: 32,
@@ -83,7 +83,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// League Spartan ExtraBold 16/24 — section titles ("Más visitados").
+  /// Títulos de sección ("Más visitados").
   static TextStyle get sectionTitle => GoogleFonts.leagueSpartan(
     color: AppColors.neutral1100,
     fontSize: 16,
@@ -91,7 +91,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Figma style "Leyenda": Nunito Regular 12/18 — search placeholder.
+  /// Figma "Leyenda" — placeholder de búsqueda.
   static TextStyle get caption => GoogleFonts.nunito(
     color: AppColors.neutral700,
     fontSize: 12,
@@ -183,17 +183,16 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Bottom-nav label. Color is intentionally omitted — callers pick the
-  /// active (primary500) or inactive (neutral700) tint.
+  /// Sin color: el caller elige el tinte activo (primary500) o inactivo (neutral700).
   static TextStyle get navLabel => GoogleFonts.leagueSpartan(
     fontSize: 10,
     height: 15 / 10,
     fontWeight: FontWeight.w700,
   );
 
-  // --- Profile screen styles (Figma node 259:224 legacy + 377:483 redesign) ---
+  // --- Pantalla Perfil (Figma nodo 259:224 + rediseño 377:483) ---
 
-  /// Figma style "HL5": League Spartan Bold 20/30 — profile name.
+  /// Figma "HL5" — nombre de perfil.
   static TextStyle get profileName => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 20,
@@ -201,7 +200,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Figma style "Subtitulo 1": Nunito SemiBold 16/24 — "lv 4/12".
+  /// Figma "Subtitulo 1" — "lv 4/12".
   static TextStyle get profileLevel => GoogleFonts.nunito(
     color: AppColors.neutral1100,
     fontSize: 16,
@@ -209,7 +208,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// Nunito Regular 12/18, [AppColors.profileMuted] — "León, Nicaragua".
+  /// "León, Nicaragua".
   static TextStyle get profileLocation => GoogleFonts.nunito(
     color: AppColors.profileMuted,
     fontSize: 12,
@@ -217,7 +216,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// "Perfil" header title: League Spartan Black 24/36.
+  /// Título del header "Perfil".
   static TextStyle get profileScreenTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 24,
@@ -225,7 +224,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Stat counter value ("6" / "3" / "520"): League Spartan Black 20/20.
+  /// Valor del contador de stats ("6" / "3" / "520").
   static TextStyle get profileStatValue => GoogleFonts.leagueSpartan(
     color: AppColors.settingsAccent,
     fontSize: 20,
@@ -233,7 +232,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Stat counter label ("Viajes" / "Insignias" / "Puntos").
+  /// Label del contador de stats ("Viajes" / "Insignias" / "Puntos").
   static TextStyle get profileStatLabel => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 12,
@@ -241,7 +240,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// "Próximo: Guardián del Territorio" caption.
+  /// Caption "Próximo: Guardián del Territorio".
   static TextStyle get profileLevelNext => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 12,
@@ -249,7 +248,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Circular progress ring percentage ("52%").
+  /// Porcentaje del anillo de progreso circular ("52%").
   static TextStyle get profileProgressPercent => GoogleFonts.leagueSpartan(
     color: AppColors.tagGold600,
     fontSize: 11,
@@ -257,8 +256,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Shared 10px caption — progress bar footer and favorite-card price
-  /// suffix ("520 puntos" / "Meta: 1,000 pts" / "/persona").
+  /// Caption de 10px compartida — footer de progreso y sufijo de precio en tarjeta favorita.
   static TextStyle get profileCaption10 => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 10,
@@ -266,7 +264,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Favorite-card title: League Spartan ExtraBold 13/15.6.
+  /// Título de tarjeta favorita.
   static TextStyle get favoriteCardTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 13,
@@ -274,7 +272,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Favorite-card location caption.
+  /// Caption de ubicación en tarjeta favorita.
   static TextStyle get favoriteCardCaption => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 11,
@@ -282,7 +280,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Favorite-card price ("C$480").
+  /// Precio en tarjeta favorita ("C$480").
   static TextStyle get favoriteCardPrice => GoogleFonts.nunito(
     color: AppColors.neutral1100,
     fontSize: 13,
@@ -290,7 +288,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Badge grid card title: League Spartan ExtraBold 9/10.8.
+  /// Título de tarjeta de badge en la grilla.
   static TextStyle get badgeCardTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 9,
@@ -298,9 +296,8 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Badge grid status pill ("✓ Obtenida" / "Bloqueada"). Color is
-  /// intentionally omitted — callers use the badge's own tint or
-  /// [AppColors.profileMuted] when locked.
+  /// Pill de estado de badge ("✓ Obtenida" / "Bloqueada") — sin color: el
+  /// caller usa el tinte propio del badge o [AppColors.profileMuted] si está bloqueado.
   static TextStyle get badgeStatusPill => GoogleFonts.nunito(
     fontSize: 8,
     height: 12 / 8,
@@ -355,7 +352,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  // --- Settings screen styles (Figma node 361:323) ---
+  // --- Pantalla Ajustes (Figma nodo 361:323) ---
 
   static TextStyle get settingsTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
@@ -400,7 +397,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w500,
   );
 
-  // --- Map screen styles (Figma node 167:1849) ---
+  // --- Pantalla Mapa (Figma nodo 167:1849) ---
 
   static TextStyle get headerTitleMd => GoogleFonts.leagueSpartan(
     color: AppColors.neutral1100,
@@ -445,36 +442,28 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  // --- Form feedback (typography audit, Aug 2026) ---
-  // Was duplicated ad hoc via three separate raw `GoogleFonts.nunito(...)`
-  // calls in Login/Register before this token existed — see `errorStyle`/
-  // `helperText` call sites across the Auth screens.
+  // --- Feedback de formularios (auditoría de tipografía) ---
 
-  /// Inline field validation-error text — Nunito SemiBold 11,
-  /// [AppColors.formError].
+  /// Texto de error de validación inline, [AppColors.formError].
   static TextStyle get errorText => GoogleFonts.nunito(
     color: AppColors.formError,
     fontSize: 11,
     fontWeight: FontWeight.w600,
   );
 
-  /// Inline field helper/hint text (below a field, not an error) — Nunito
-  /// Regular 11, [AppColors.neutral600].
+  /// Texto de ayuda/hint bajo un campo (no es error).
   static TextStyle get helperText => GoogleFonts.nunito(
     color: AppColors.neutral600,
     fontSize: 11,
     fontWeight: FontWeight.w400,
   );
 
-  // --- Text links (typography audit, Aug 2026) ---
-  // Consolidates what used to be 6 near-duplicate one-off link styles
-  // (`link`, `registerLink`, `homeSeeMore`, `seeMore`, `detailInlineLink`,
-  // the wizard footer pair) spread across screens into one named scale.
-  // `link`/`registerLink` themselves stay put — kept for now to avoid a
-  // sweeping cross-screen rename outside this pass's scope — but any new
-  // link should reach for one of these three first.
+  // --- Links de texto ---
+  // Consolida lo que antes eran 6 estilos de link casi duplicados dispersos
+  // por varias pantallas. `link`/`registerLink` siguen existiendo por
+  // compatibilidad, pero todo link nuevo debería usar uno de estos tres.
 
-  /// League Spartan Bold 12 — smallest text link.
+  /// League Spartan Bold 12 — link más pequeño.
   static TextStyle get linkSm => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 12,
@@ -482,7 +471,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// League Spartan Bold 14 — default text link.
+  /// League Spartan Bold 14 — link por defecto.
   static TextStyle get linkMd => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 14,
@@ -490,7 +479,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// League Spartan Bold 15 — largest/most prominent text link.
+  /// League Spartan Bold 15 — link más prominente.
   static TextStyle get linkLg => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 15,
@@ -498,10 +487,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  // --- Auth flow redesign (Claude Design canvas "Nikara Inicio y Mapa",
-  // turns 9/10 — Login v3 + Registro en 3 pasos) ---
+  // --- Rediseño de Auth (Login v3 + Registro en 3 pasos) ---
 
-  /// Uppercase field label ("CORREO ELECTRÓNICO"): League Spartan Bold 10.
+  /// Label de campo en mayúsculas ("CORREO ELECTRÓNICO").
   static TextStyle get authFieldLabel => GoogleFonts.leagueSpartan(
     color: AppColors.authMuted,
     fontSize: 10,
@@ -510,7 +498,7 @@ abstract class AppTextStyles {
     letterSpacing: 0.6,
   );
 
-  /// Step-progress caption ("Paso 1 de 3 · Identidad"): Nunito SemiBold 12.
+  /// Caption de paso ("Paso 1 de 3 · Identidad").
   static TextStyle get authStepCaption => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 12,
@@ -518,10 +506,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// Primary-button label ("Siguiente", "Crear mi cuenta"): League Spartan
-  /// Bold 15, [AppColors.authInk] — the button text family/color this
-  /// redesign turn moved off Nunito onto, replacing [buttonLarge] for the
-  /// Auth flow specifically.
+  /// Label del botón primario ("Siguiente", "Crear mi cuenta") — este
+  /// rediseño cambió la familia de Nunito ([buttonLarge]) a League Spartan
+  /// solo para el flujo de Auth.
   static TextStyle get authButtonLabel => GoogleFonts.leagueSpartan(
     color: AppColors.authInk,
     fontSize: 15,
@@ -529,7 +516,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// "o continúa con" divider label: Nunito SemiBold 12.
+  /// Label del divisor "o continúa con".
   static TextStyle get authDividerLabel => GoogleFonts.nunito(
     color: AppColors.authMuted,
     fontSize: 12,
@@ -537,7 +524,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// "Explorar como invitado" pill label: League Spartan ExtraBold 13.5.
+  /// Label del pill "Explorar como invitado".
   static TextStyle get authGuestPillLabel => GoogleFonts.leagueSpartan(
     color: AppColors.authGuestIconText,
     fontSize: 13.5,
@@ -545,9 +532,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  // --- Register screen styles (Figma nodes 157:96, 113:95) ---
+  // --- Pantalla Registro (Figma nodos 157:96, 113:95) ---
 
-  /// League Spartan Bold 22/28 — "Crea una cuenta".
+  /// "Crea una cuenta".
   static TextStyle get registerHeading => GoogleFonts.leagueSpartan(
     color: AppColors.neutral1100,
     fontSize: 22,
@@ -555,7 +542,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Nunito Regular 14 — the step-indicator digit inside each circle.
+  /// Dígito dentro del círculo indicador de paso.
   static TextStyle get stepIndicatorNumber => GoogleFonts.nunito(
     color: AppColors.neutral1100,
     fontSize: 14,
@@ -563,7 +550,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Nunito Regular 12 — the step-indicator caption ("Datos Personales").
+  /// Caption del indicador de paso ("Datos Personales").
   static TextStyle get stepIndicatorCaption => GoogleFonts.nunito(
     color: AppColors.neutral1100,
     fontSize: 12,
@@ -571,126 +558,117 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  // --- Escala tipográfica base (Figma node 134:25, "TIpografias") ---
-  // The board's own specimen colors (#212B36/#637381/#919EAB) come from a
-  // generic starter-kit palette that never actually appears in any built
-  // screen, so these getters intentionally leave color unset — callers
-  // apply one of the app's own neutral tokens instead. Sizes/weights were
-  // cross-validated: "Boton Lg" here matches [buttonLarge] byte-for-byte.
-  //
-  // `h1`/`h2`/`h3`/`overline`/`bodyText1` were removed (typography audit,
-  // Aug 2026) — zero real usages anywhere in the app; keeping them exported
-  // dead tokens would have shipped phantom entries into the Figma-facing
-  // style guide.
+  // --- Escala tipográfica base (Figma nodo 134:25, "Tipografias") ---
+  // Los colores del tablero (#212B36/#637381/#919EAB) vienen de una paleta
+  // genérica de starter-kit que nunca aparece en pantalla real, por eso
+  // estos getters no fijan color — el caller aplica un token propio.
+  // `h1`/`h2`/`h3`/`overline`/`bodyText1` se removieron (auditoría de
+  // tipografía) por no tener ningún uso real en la app.
 
-  /// Text style "H4": Nunito Bold 24/36.
+  /// Figma "H4".
   static TextStyle get h4 => GoogleFonts.nunito(
     fontSize: 24,
     height: 36 / 24,
     fontWeight: FontWeight.w700,
   );
 
-  /// Text style "H5": Nunito Bold 20/30.
+  /// Figma "H5".
   static TextStyle get h5 => GoogleFonts.nunito(
     fontSize: 20,
     height: 30 / 20,
     fontWeight: FontWeight.w700,
   );
 
-  /// Text style "H6": Nunito Bold 18/28.
+  /// Figma "H6".
   static TextStyle get h6 => GoogleFonts.nunito(
     fontSize: 18,
     height: 28 / 18,
     fontWeight: FontWeight.w700,
   );
 
-  /// Text style "Subtitulo 1": Nunito SemiBold 16/24.
+  /// Figma "Subtitulo 1".
   static TextStyle get subtitle1 => GoogleFonts.nunito(
     fontSize: 16,
     height: 24 / 16,
     fontWeight: FontWeight.w600,
   );
 
-  /// Text style "Subtitulo 2": Nunito SemiBold 14/22.
+  /// Figma "Subtitulo 2".
   static TextStyle get subtitle2 => GoogleFonts.nunito(
     fontSize: 14,
     height: 22 / 14,
     fontWeight: FontWeight.w600,
   );
 
-  /// Text style "Cuerpo 1": Nunito Regular 16/24.
+  /// Figma "Cuerpo 1".
   static TextStyle get bodyText1 => GoogleFonts.nunito(
     fontSize: 16,
     height: 24 / 16,
     fontWeight: FontWeight.w400,
   );
 
-  /// Text style "Cuerpo 2": Nunito Regular 14/22.
+  /// Figma "Cuerpo 2".
   static TextStyle get bodyText2 => GoogleFonts.nunito(
     fontSize: 14,
     height: 22 / 14,
     fontWeight: FontWeight.w400,
   );
 
-  /// Text style "Leyenda": Nunito Regular 12/18.
+  /// Figma "Leyenda".
   static TextStyle get legend => GoogleFonts.nunito(
     fontSize: 12,
     height: 18 / 12,
     fontWeight: FontWeight.w400,
   );
 
-  /// Text style "Boton Lg" — identical to [buttonLarge] (Nunito Bold 15/26).
+  /// Figma "Boton Lg" — idéntico a [buttonLarge].
   static TextStyle get buttonLg => buttonLarge;
 
-  /// Text style "Boton Md": Nunito Bold 14/24.
+  /// Figma "Boton Md".
   static TextStyle get buttonMd => GoogleFonts.nunito(
     fontSize: 14,
     height: 24 / 14,
     fontWeight: FontWeight.w700,
   );
 
-  /// Text style "Boton pq" (small): Nunito Bold 13/22.
+  /// Figma "Boton pq".
   static TextStyle get buttonSm => GoogleFonts.nunito(
     fontSize: 13,
     height: 22 / 13,
     fontWeight: FontWeight.w700,
   );
 
-  // --- Business detail screen styles (Figma nodes 284:2256, 233:437) ---
+  // --- Pantalla detalle de negocio (Figma nodos 284:2256, 233:437) ---
 
-  /// Cover title ("Laguna de Apoyo"): League Spartan Black 26/1.15, per
-  /// Claude Design Pantalla 3a.
+  /// Título de portada ("Laguna de Apoyo").
   static TextStyle get detailTitle => GoogleFonts.leagueSpartan(
     fontSize: 26,
     height: 1.15,
     fontWeight: FontWeight.w900,
   );
 
-  /// Category tag pill: League Spartan ExtraBold 11/15, per Pantalla 3a.
+  /// Pill de categoría.
   static TextStyle get detailTagPill => GoogleFonts.leagueSpartan(
     fontSize: 11,
     height: 15 / 11,
     fontWeight: FontWeight.w800,
   );
 
-  /// Cover rating value ("4.9"): League Spartan ExtraBold 13/16, per
-  /// Pantalla 3a.
+  /// Valor de calificación en portada ("4.9").
   static TextStyle get detailRatingValue => GoogleFonts.leagueSpartan(
     fontSize: 13,
     height: 16 / 13,
     fontWeight: FontWeight.w800,
   );
 
-  /// Cover rating count ("(203 reseñas)"): Nunito Regular 12/18, per
-  /// Pantalla 3a (the cover's rating row is Nunito, not League Spartan).
+  /// Conteo de reseñas en portada ("(203 reseñas)") — Nunito, no League Spartan.
   static TextStyle get detailRatingCount => GoogleFonts.nunito(
     fontSize: 12,
     height: 18 / 12,
     fontWeight: FontWeight.w400,
   );
 
-  /// Floating quick-info label ("Ubicación"/"Distancia"/"Hoy") — Nunito
-  /// Regular 10/15, per Claude Design Pantalla 3a.
+  /// Label de info rápida flotante ("Ubicación"/"Distancia"/"Hoy").
   static TextStyle get quickInfoLabel => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 10,
@@ -698,8 +676,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Floating quick-info value ("Masaya, NI") — League Spartan ExtraBold
-  /// 12.5, per Claude Design Pantalla 3a.
+  /// Valor de info rápida flotante ("Masaya, NI").
   static TextStyle get quickInfoValue => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 12.5,
@@ -707,15 +684,14 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Segmented-control tab label ("Información" / "Reseñas & Fotos").
+  /// Label de pestaña del control segmentado ("Información" / "Reseñas & Fotos").
   static TextStyle get segmentedTabLabel => GoogleFonts.leagueSpartan(
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w700,
   );
 
-  /// Section heading ("Actividades", "Servicios del lugar", "Anfitrión"...):
-  /// League Spartan ExtraBold 15, per Claude Design Pantalla 3a.
+  /// Encabezado de sección ("Actividades", "Servicios del lugar", "Anfitrión"...).
   static TextStyle get detailSectionTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 15,
@@ -723,7 +699,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Row label inside a detail card (amenity/activity name).
+  /// Label de fila dentro de una tarjeta de detalle (amenidad/actividad).
   static TextStyle get detailRowText => GoogleFonts.leagueSpartan(
     color: AppColors.textInk,
     fontSize: 14,
@@ -731,7 +707,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Small "Eco" tag chip inside an amenity row.
+  /// Chip pequeño "Eco" dentro de una fila de amenidad.
   static TextStyle get ecoTagChip => GoogleFonts.leagueSpartan(
     color: AppColors.ecoForest,
     fontSize: 10,
@@ -739,7 +715,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Review author name.
+  /// Nombre del autor de una reseña.
   static TextStyle get reviewAuthor => GoogleFonts.leagueSpartan(
     color: AppColors.textInk,
     fontSize: 12,
@@ -747,7 +723,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Review relative-date caption ("hace 2 días").
+  /// Caption de fecha relativa de reseña ("hace 2 días").
   static TextStyle get reviewMeta => GoogleFonts.leagueSpartan(
     color: AppColors.neutral600,
     fontSize: 9,
@@ -755,7 +731,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Review comment body.
+  /// Cuerpo de comentario de reseña.
   static TextStyle get reviewComment => GoogleFonts.leagueSpartan(
     color: AppColors.neutral800,
     fontSize: 12,
@@ -763,7 +739,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Big rating summary number ("4.9"): League Spartan Black 36/36.
+  /// Número grande de calificación resumen ("4.9").
   static TextStyle get ratingBig => GoogleFonts.leagueSpartan(
     color: AppColors.textInk,
     fontSize: 36,
@@ -771,7 +747,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// "Reservar Ahora — C$350" button label.
+  /// Label del botón "Reservar Ahora — C$350".
   static TextStyle get reserveButtonLabel => GoogleFonts.leagueSpartan(
     color: AppColors.textInk,
     fontSize: 16,
@@ -779,7 +755,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// "Cancela gratis hasta 48 horas antes" caption.
+  /// Caption "Cancela gratis hasta 48 horas antes".
   static TextStyle get reserveCaption => GoogleFonts.leagueSpartan(
     color: AppColors.neutral600,
     fontSize: 11,
@@ -787,9 +763,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  // --- Business detail redesign (Claude Design turn 3, Pantalla 3a) ---
+  // --- Rediseño de detalle de negocio ---
 
-  /// Description paragraph body: Nunito Regular 12.5/1.65.
+  /// Párrafo de descripción.
   static TextStyle get detailDescriptionText => GoogleFonts.nunito(
     color: AppColors.detailBodyBrown,
     fontSize: 12.5,
@@ -797,8 +773,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Inline expand link ("Mostrar más" / "Ver las N actividades"): League
-  /// Spartan Bold 11.5, [AppColors.accent300].
+  /// Link de expandir inline ("Mostrar más" / "Ver las N actividades").
   static TextStyle get detailInlineLink => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 11.5,
@@ -806,7 +781,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Actividad/servicio row label: Nunito SemiBold 12.5.
+  /// Label de fila de actividad/servicio.
   static TextStyle get detailActivityLabel => GoogleFonts.nunito(
     color: AppColors.settingsTextDark,
     fontSize: 12.5,
@@ -814,7 +789,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// "ECO" badge on an activity row: League Spartan ExtraBold 9.5.
+  /// Badge "ECO" en una fila de actividad.
   static TextStyle get detailEcoBadge => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 9.5,
@@ -822,7 +797,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// "Servicios del lugar" pill label: Nunito SemiBold 11.5.
+  /// Label de pill de "Servicios del lugar".
   static TextStyle get detailServicePill => GoogleFonts.nunito(
     color: AppColors.detailBodyBrown,
     fontSize: 11.5,
@@ -830,7 +805,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// Host name ("Aníbal Ortega"): League Spartan ExtraBold 13.5.
+  /// Nombre del anfitrión ("Aníbal Ortega").
   static TextStyle get detailHostName => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 13.5,
@@ -838,7 +813,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// "VERIFICADO" badge on the host row: League Spartan ExtraBold 9.
+  /// Badge "VERIFICADO" en la fila del anfitrión.
   static TextStyle get detailVerifiedBadge => GoogleFonts.leagueSpartan(
     color: AppColors.accent300,
     fontSize: 9,
@@ -846,7 +821,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Horario card's bold day/value label: League Spartan ExtraBold 12.
+  /// Label día/valor en la tarjeta de horario.
   static TextStyle get detailScheduleLabel => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 12,
@@ -854,7 +829,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// A contact/pill action label ("Abrir"): League Spartan Bold 11.
+  /// Label de acción de pill de contacto ("Abrir").
   static TextStyle get detailPillAction => GoogleFonts.leagueSpartan(
     color: AppColors.detailBodyBrown,
     fontSize: 11,
@@ -862,7 +837,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// "Cómo llegar" mini-map address line: Nunito SemiBold 12.
+  /// Línea de dirección del mini-mapa "Cómo llegar".
   static TextStyle get detailMapAddress => GoogleFonts.nunito(
     color: AppColors.settingsTextDark,
     fontSize: 12,
@@ -870,9 +845,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// The sticky bottom bar's two action labels: League Spartan ExtraBold,
-  /// [AppColors.settingsTextDark] — 12.5 for the secondary ("Cómo llegar"),
-  /// 13 for the primary ("Escribir por WhatsApp").
+  /// Barra inferior fija — label secundario ("Cómo llegar").
   static TextStyle get detailBottomBarSecondary => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 12.5,
@@ -880,6 +853,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
+  /// Barra inferior fija — label primario ("Escribir por WhatsApp").
   static TextStyle get detailBottomBarPrimary => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 13,
@@ -887,9 +861,9 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  // --- Wizard redesign (Claude Design turn 4, Pantallas 4a-4e) ---
+  // --- Rediseño del wizard de registro de negocio ---
 
-  /// App bar title ("Registra tu negocio" / "Editar negocio").
+  /// Título de la app bar ("Registra tu negocio" / "Editar negocio").
   static TextStyle get wizardAppBarTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 16,
@@ -897,7 +871,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Step heading ("Datos generales", "¿Dónde te encuentran?"...).
+  /// Encabezado de paso ("Datos generales", "¿Dónde te encuentran?"...).
   static TextStyle get wizardStepHeading => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 19,
@@ -905,7 +879,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Step subheading, right under [wizardStepHeading].
+  /// Subtítulo de paso, debajo de [wizardStepHeading].
   static TextStyle get wizardStepSubtitle => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 12,
@@ -913,7 +887,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Uppercase field label ("NOMBRE DEL NEGOCIO", "CATEGORÍA"...).
+  /// Label de campo en mayúsculas ("NOMBRE DEL NEGOCIO", "CATEGORÍA"...).
   static TextStyle get wizardFieldLabel => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextMuted,
     fontSize: 10,
@@ -922,7 +896,7 @@ abstract class AppTextStyles {
     letterSpacing: 0.9,
   );
 
-  /// Card section title ("Contacto", "Horarios de atención"...).
+  /// Título de sección de tarjeta ("Contacto", "Horarios de atención"...).
   static TextStyle get wizardCardTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 13,
@@ -930,7 +904,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Filled-field display text ("Finca El Ceibo", "Masaya"...).
+  /// Texto de un campo lleno ("Finca El Ceibo", "Masaya"...).
   static TextStyle get wizardFieldValue => GoogleFonts.nunito(
     color: AppColors.settingsTextDark,
     fontSize: 12.5,
@@ -938,8 +912,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w600,
   );
 
-  /// Placeholder/hint text inside a wizard field — same size as
-  /// [wizardFieldValue], muted and regular-weight.
+  /// Placeholder de un campo del wizard.
   static TextStyle get wizardFieldHint => GoogleFonts.nunito(
     color: AppColors.profileMuted,
     fontSize: 12.5,
@@ -947,8 +920,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Helper caption under a field or card ("Aparece solo en 'Cómo
-  /// llegar'..."). 10.5/400 Nunito, muted.
+  /// Caption de ayuda bajo un campo o tarjeta.
   static TextStyle get wizardCaption => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 10.5,
@@ -956,29 +928,25 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Selected/emphasized chip label (category, activity, amenity):
-  /// League Spartan ExtraBold 11.5 — callers pick the ink ([settingsTextDark]
-  /// selected) or brown ([detailBodyBrown] unselected) tint themselves.
+  /// Label de chip seleccionado/enfatizado (categoría, actividad, amenidad)
+  /// — sin color: el caller elige tinta ([AppColors.settingsTextDark]
+  /// seleccionado) o marrón ([AppColors.detailBodyBrown] no seleccionado).
   static TextStyle get wizardChipLabel => GoogleFonts.leagueSpartan(
     fontSize: 11.5,
     height: 15 / 11.5,
     fontWeight: FontWeight.w800,
   );
 
-  /// Sticky-footer secondary/primary action label — same family/weight as
-  /// [detailBottomBarSecondary]/[detailBottomBarPrimary] (12.5 / 13),
-  /// reused verbatim since the wizard's sticky footer is the same
-  /// component.
+  /// Footer fijo del wizard — mismo componente que la barra inferior de detalle.
   static TextStyle get wizardFooterSecondary => detailBottomBarSecondary;
   static TextStyle get wizardFooterPrimary => detailBottomBarPrimary;
 
-  // --- Home redesign (Claude Design turn 2, Pantalla 2a "Inicio") ---
-  // Dedicated getters (not reusing sectionTitle/caption/cardTitle/etc. —
-  // those are shared with Bookings/Map/legacy destination cards, and this
-  // pass is scoped to matching 2a's Home exactly without touching those
-  // other screens).
+  // --- Rediseño de Inicio ---
+  // Getters propios (no reusan sectionTitle/caption/cardTitle/etc., que se
+  // comparten con Reservas/Mapa/tarjetas legacy) para no tocar esas otras
+  // pantallas al ajustar el detalle visual de Inicio.
 
-  /// "Buen día, Ana": Nunito Regular 11.
+  /// "Buen día, Ana".
   static TextStyle get homeGreeting => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 11,
@@ -986,7 +954,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// "¿A dónde vamos?": League Spartan Black 22/1.2.
+  /// "¿A dónde vamos?".
   static TextStyle get homeHeading => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 22,
@@ -994,7 +962,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Search field hint/placeholder: Nunito Regular 12.5.
+  /// Placeholder del campo de búsqueda.
   static TextStyle get homeSearchHint => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 12.5,
@@ -1002,16 +970,15 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Hero card's category/ECO pill: League Spartan ExtraBold 11 — callers
-  /// pick the tint ([AppColors.settingsTextDark] on the gold category
-  /// pill, [AppColors.surface100] on the green ECO pill).
+  /// Pill de categoría/ECO en la tarjeta hero — sin color: el caller elige
+  /// [AppColors.settingsTextDark] (pill dorado) o [AppColors.surface100] (pill verde ECO).
   static TextStyle get homeHeroPill => GoogleFonts.leagueSpartan(
     fontSize: 11,
     height: 15 / 11,
     fontWeight: FontWeight.w800,
   );
 
-  /// Hero card title ("Laguna de Apoyo"): League Spartan Bold 20/1.2, white.
+  /// Título de la tarjeta hero ("Laguna de Apoyo").
   static TextStyle get homeHeroTitle => GoogleFonts.leagueSpartan(
     color: Colors.white,
     fontSize: 20,
@@ -1019,7 +986,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Hero card location line: Nunito Regular 12, white @88%.
+  /// Línea de ubicación de la tarjeta hero.
   static TextStyle get homeHeroLocation => GoogleFonts.nunito(
     color: Colors.white.withValues(alpha: 0.88),
     fontSize: 12,
@@ -1027,7 +994,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// "Ver detalle →" pill on the hero card: League Spartan Bold 11, white.
+  /// Pill "Ver detalle →" en la tarjeta hero.
   static TextStyle get homeCtaPill => GoogleFonts.leagueSpartan(
     color: Colors.white,
     fontSize: 11,
@@ -1035,17 +1002,15 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Category filter chip label: League Spartan Bold 12 — callers pick
-  /// [AppColors.settingsTextDark] (selected) or [AppColors.settingsTextMuted]
-  /// (unselected).
+  /// Label de chip de filtro por categoría — sin color: el caller elige
+  /// [AppColors.settingsTextDark] (seleccionado) o [AppColors.settingsTextMuted] (no seleccionado).
   static TextStyle get homeChipLabel => GoogleFonts.leagueSpartan(
     fontSize: 12,
     height: 15 / 12,
     fontWeight: FontWeight.w700,
   );
 
-  /// "Destacados" / "Cerca de ti" section heading: League Spartan
-  /// ExtraBold 15.
+  /// Encabezado de sección "Destacados" / "Cerca de ti".
   static TextStyle get homeSectionTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 15,
@@ -1053,7 +1018,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// "Ver todos": Nunito Bold 11.
+  /// "Ver todos".
   static TextStyle get homeSeeMore => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 11,
@@ -1061,7 +1026,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w700,
   );
 
-  /// Destacados/Cerca-de-ti card title: League Spartan ExtraBold 13.
+  /// Título de tarjeta en Destacados/Cerca de ti.
   static TextStyle get homeCardTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
     fontSize: 13,
@@ -1069,8 +1034,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Destacados/Cerca-de-ti card location line: Nunito Regular 10.5 — no
-  /// leading pin icon in Pantalla 2a, unlike the hero card's location line.
+  /// Línea de ubicación de tarjeta en Destacados/Cerca de ti (sin ícono de pin).
   static TextStyle get homeCardLocation => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 10.5,
@@ -1078,7 +1042,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Small "ECO" badge text on a card thumbnail: League Spartan ExtraBold 9.
+  /// Badge "ECO" pequeño sobre una miniatura de tarjeta.
   static TextStyle get homeMiniBadge => GoogleFonts.leagueSpartan(
     fontSize: 9,
     height: 12 / 9,
@@ -1086,17 +1050,9 @@ abstract class AppTextStyles {
   );
 }
 
-/// Shared background gradient for the Auth flow (Splash → Login → Register),
-/// extracted verbatim from Figma node 636:912 ("UI-NÍKARA") so the three
-/// screens read as one continuous surface instead of three near-misses.
-/// `linear-gradient(141.77deg, secundario6 8.49%, tagGold600 23.26%,
-/// coral500 91.51%)` — the begin/end [Alignment] pair below is that same
-/// 141.77° direction converted into Flutter's alignment space.
-/// Shared background gradient for the Auth flow (Splash → Login →
-/// Register), from the Claude Design canvas "Nikara Inicio y Mapa" (turns
-/// 9/10, "Login v3" + "Registro en 3 pasos") — `linear-gradient(180deg,
-/// #FFD028 0%, #FDB828 32%, #FF8A35 68%, #F97316 100%)`. Supersedes the
-/// earlier Figma-node-636:912 diagonal 3-stop version.
+/// Gradiente de fondo compartido por el flujo de Auth (Splash → Login →
+/// Registro), para que las tres pantallas se lean como una sola superficie
+/// continua — `linear-gradient(180deg, #FFD028 0%, #FDB828 32%, #FF8A35 68%, #F97316 100%)`.
 abstract class AppGradients {
   static const authBackgroundBegin = Alignment.topCenter;
   static const authBackgroundEnd = Alignment.bottomCenter;
@@ -1122,13 +1078,12 @@ abstract class AppTheme {
         secondary: AppColors.accent300,
         surface: AppColors.backgroundCream,
       ),
-      // Every slot filled — not just the 3 this app happens to reach via
-      // Theme.of(context).textTheme — so ANY widget that falls back to
-      // Material's default typography (AppBar/Dialog/SnackBar/TextField
-      // titles, a bare Text() with no style, etc.) still lands on one of
-      // the two official brand fonts instead of the generic Roboto
-      // default. Sizes follow Material 3's standard type scale; only the
-      // family, weight and color are swapped to match the brand.
+      // Se llena cada slot (no solo los 3 que la app usa vía
+      // Theme.of(context).textTheme) para que cualquier widget que caiga en
+      // la tipografía default de Material (AppBar/Dialog/SnackBar/TextField,
+      // un Text() sin estilo) use igual una de las dos fuentes de marca en
+      // vez del Roboto genérico. Los tamaños siguen la escala estándar de
+      // Material 3; solo se cambia familia, peso y color.
       textTheme: TextTheme(
         // Encabezados y títulos — League Spartan.
         displayLarge: GoogleFonts.leagueSpartan(

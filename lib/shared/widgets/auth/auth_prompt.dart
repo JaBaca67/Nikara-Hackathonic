@@ -2,12 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// "¿No tienes cuenta? Regístrate aquí" / "¿Ya tienes cuenta? Inicia
-/// sesión" — the one shared implementation both Login and Register reach
-/// for, so the two can't drift into different sizes again (they briefly
-/// did: 12px vs 13px, and neither matched the surrounding body text).
-/// `Wrap` centers cleanly even if either string wraps to a second line on
-/// a narrow device.
+/// Implementación única compartida por Login/Register para que no vuelvan a divergir en tamaño (ya pasó: 12px vs 13px).
 class AuthPrompt extends StatelessWidget {
   const AuthPrompt({
     super.key,
@@ -22,12 +17,7 @@ class AuthPrompt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Center wraps this to full width first: every call site sits inside a
-    // `Column` with `crossAxisAlignment.start` (so the fields/labels above
-    // it stay left-aligned), which would otherwise shrink-wrap the `Wrap`
-    // to its own content width and strand it against the left edge —
-    // `WrapAlignment.center` only centers *within* that shrunk box, it
-    // can't widen the box itself.
+    // El Center exterior es necesario porque el `Column` padre usa crossAxisAlignment.start, que si no encogería el Wrap a su contenido y lo pegaría a la izquierda.
     return Center(
       child: Wrap(
         alignment: WrapAlignment.center,

@@ -15,28 +15,19 @@ class DirectionsServiceException implements Exception {
   String toString() => message;
 }
 
-/// Driving vs. walking — sent as the Directions API's `mode` query
-/// parameter (see [DirectionsService.getRoute]) and offered as the two
-/// icons in [MapScreen]'s route-preview mode selector (Fase 1). Icon
-/// mapping lives in the presentation layer (`map_screen.dart`), not here —
-/// this is a plain data/service-layer enum.
+/// Auto vs. a pie — valor enviado como `mode` a la Directions API; el mapeo a íconos vive en la capa de presentación.
 enum TravelMode {
   driving('driving', 'Auto'),
   walking('walking', 'A pie');
 
   const TravelMode(this.apiValue, this.label);
 
-  /// Google Directions API's `mode` parameter value.
   final String apiValue;
 
-  /// Short label for the mode-selector chip.
   final String label;
 }
 
-/// One turn-by-turn instruction from a leg's `steps` — [MapScreen]'s live
-/// navigation banner shows [instruction] with an icon derived from
-/// [maneuver], and announces it via TTS once the vehicle is within
-/// range of [startLocation] (see `_MapScreenState._onPositionUpdate`).
+/// Una instrucción de giro; [MapScreen] la anuncia por TTS al acercarse a [startLocation].
 class DirectionsStep {
   const DirectionsStep({
     required this.instruction,
@@ -45,27 +36,18 @@ class DirectionsStep {
     required this.startLocation,
   });
 
-  /// Plain text, HTML tags already stripped from the API's
-  /// `html_instructions` (see [DirectionsService._stripHtml]).
+  /// Texto plano, ya sin tags HTML (ver [DirectionsService._stripHtml]).
   final String instruction;
 
-  /// Google's maneuver keyword (`turn-left`, `roundabout-right`,
-  /// `merge`, ...) — `null` for a step with no special maneuver (typically
-  /// the very first "head on X street" step of a route).
+  /// Keyword de maniobra de Google; `null` si el paso no tiene maniobra especial.
   final String? maneuver;
 
   final int distanceMeters;
 
-  /// Where this step's maneuver happens — the point [MapScreen] measures
-  /// the vehicle's distance to for the "En 80 m" countdown and the TTS
-  /// announcement trigger.
   final LatLng startLocation;
 }
 
-/// A driving/walking route between two points, decoded from the Google
-/// Directions API's `overview_polyline` — enough for [MapScreen]'s "Cómo
-/// llegar" to draw a real route (not just a straight line), show an
-/// ETA/distance, and (via [steps]) narrate turn-by-turn instructions.
+/// Ruta auto/a pie entre dos puntos, decodificada del `overview_polyline` de la Directions API.
 class DirectionsRoute {
   const DirectionsRoute({
     required this.points,
@@ -78,17 +60,13 @@ class DirectionsRoute {
   final int distanceMeters;
   final int durationSeconds;
 
-  /// Turn-by-turn steps in travel order, flattened across every leg (a
-  /// simple origin -> destination request always has exactly one).
   final List<DirectionsStep> steps;
 
   double get distanceKm => distanceMeters / 1000;
 
   String get formattedDuration => formatDuration(durationSeconds);
 
-  /// Static so the live navigation panel can format a *remaining* ETA
-  /// (recomputed from how much of the route is left) with the exact same
-  /// "12 min" / "1 h 5 min" shape as this route's total.
+  /// Estático para que el panel de navegación formatee un ETA restante con el mismo formato que el total de la ruta.
   static String formatDuration(int seconds) {
     final minutes = (seconds / 60).round();
     if (minutes < 60) return '$minutes min';
@@ -98,11 +76,7 @@ class DirectionsRoute {
   }
 }
 
-/// Calls the Google Directions API directly from the client using
-/// [MapsConfig.directionsApiKey] — see that class's doc comment for the
-/// setup this needs (a Cloud Console key with Directions API enabled,
-/// passed in via `--dart-define-from-file`, separate from the Maps SDK
-/// key).
+/// Llama a la Google Directions API directamente desde el cliente usando [MapsConfig.directionsApiKey].
 class DirectionsService {
   factory DirectionsService() => instance;
 
@@ -113,18 +87,7 @@ class DirectionsService {
   static const _endpoint =
       'https://maps.googleapis.com/maps/api/directions/json';
 
-  /// Fetches a *real* route following the street network for [mode] —
-  /// never a straight line. Throws [DirectionsServiceException] (message
-  /// already in Spanish, ready for a snackbar) whenever the Directions API
-  /// can't return real road waypoints: no API key configured, no network,
-  /// a non-OK API status, or a response missing its `overview_polyline`.
-  /// [MapScreen] is expected to notify the user and stay on the
-  /// exploration map rather than drawing anything fabricated.
-  ///
-  /// Every branch — success or failure — logs a `[DirectionsService]` line
-  /// via [debugPrint] (never the raw key itself) so a failure while testing
-  /// on a real device shows up in `flutter run`'s attached console instead
-  /// of just looking like the button "does nothing".
+  /// Trae una ruta real sobre calles para [mode]; lanza [DirectionsServiceException] (mensaje en español) si la API no puede devolver waypoints reales, en vez de dibujar algo inventado.
   Future<DirectionsRoute> getRoute({
     required LatLng origin,
     required LatLng destination,
@@ -145,10 +108,7 @@ class DirectionsService {
         'origin': '${origin.latitude},${origin.longitude}',
         'destination': '${destination.latitude},${destination.longitude}',
         'mode': mode.apiValue,
-        // Without this the API defaults to English — every
-        // `html_instructions` string (and the maneuver banner/TTS text
-        // built from it) needs to come back in Spanish already, not get
-        // translated client-side.
+        // Sin esto la API responde en inglés por defecto.
         'language': 'es',
         'key': key,
       },
@@ -171,20 +131,12 @@ class DirectionsService {
       );
     }
 
-    // Anything from here on parses a response we don't control the shape
-    // of — wrapped as a whole so a malformed/unexpected body (a captive
-    // portal's HTML login page instead of JSON, a field Google renamed)
-    // turns into the same friendly Spanish message instead of an unhandled
-    // exception that would make the button silently do nothing.
+    // Todo el parseo va envuelto porque no controlamos la forma exacta de la respuesta de Google.
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final status = body['status'] as String?;
       if (status != 'OK') {
-        // error_message carries the actual reason (e.g. "This API key is
-        // not authorized to use this service or API" for REQUEST_DENIED,
-        // the #1 real-device gotcha: a key that's fine for the Maps SDK
-        // but restricted against plain HTTP calls like this one) — log it
-        // even though the user-facing message stays generic/friendly.
+        // error_message trae la razón real (útil para depurar REQUEST_DENIED por key restringida), aunque el mensaje al usuario se queda genérico.
         final errorMessage = body['error_message'] as String?;
         debugPrint(
           '[DirectionsService] API status=$status'
@@ -268,9 +220,7 @@ class DirectionsService {
     }
   }
 
-  /// Google's `html_instructions` are plain text with a handful of basic
-  /// tags (`<b>`, `<div>`) for emphasis/line breaks — stripped down to
-  /// plain text since neither the maneuver banner nor TTS render HTML.
+  /// Quita los tags HTML de `html_instructions`; ni el banner ni el TTS renderizan HTML.
   static String _stripHtml(String html) {
     return html
         .replaceAll(RegExp(r'<[^>]*>'), ' ')
@@ -280,10 +230,7 @@ class DirectionsService {
         .trim();
   }
 
-  /// Standard Google encoded-polyline algorithm decoder — see
-  /// https://developers.google.com/maps/documentation/utilities/polylinealgorithm.
-  /// Implemented by hand rather than pulling in a package for this one
-  /// ~30-line algorithm.
+  /// Decoder del algoritmo estándar de polyline de Google, implementado a mano por ser ~30 líneas (no amerita un paquete).
   List<LatLng> _decodePolyline(String encoded) {
     final points = <LatLng>[];
     var index = 0;

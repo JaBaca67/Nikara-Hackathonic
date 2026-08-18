@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Shown right after a business is saved by [RegisterBusinessWizard] — a
-/// short celebratory beat (PedidosYa/Airbnb-style) before landing back on
-/// Home. The success check scales in with an overshoot, then settles into
-/// a slow breathing pulse for as long as the screen stays up.
+/// Beat celebratorio tras guardar un negocio, antes de volver a Home.
 class BusinessSuccessScreen extends StatefulWidget {
   const BusinessSuccessScreen({super.key, required this.businessName});
 
@@ -88,11 +85,14 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [AppColors.primary500, Color(0xFFF5A800)],
+                        colors: [
+                          AppColors.primary500,
+                          AppColors.successBadgeGradientEnd,
+                        ],
                       ),
                       boxShadow: const [
                         BoxShadow(
-                          color: Color(0x66FDBE02),
+                          color: AppColors.successBadgeGlow,
                           offset: Offset(0, 12),
                           blurRadius: 32,
                         ),

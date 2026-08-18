@@ -1,11 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 
-/// Best-effort device location, shared across Home/Map so only one of them
-/// ever has to prompt for permission — whichever screen asks first caches
-/// the result for the other. Every failure mode (services off, permission
-/// denied/forever-denied, a mid-flight error) resolves to `null` rather
-/// than throwing, matching the same silent-fallback behavior MapScreen's
-/// recenter button already used before this was extracted.
+/// Ubicación del dispositivo, cacheada entre Home/Map para que solo una pantalla pida permiso; cualquier falla resuelve a `null` en vez de lanzar.
 class LocationService {
   factory LocationService() => instance;
 
@@ -42,9 +37,7 @@ class LocationService {
     }
   }
 
-  /// Straight-line distance in kilometers between [from] and
-  /// ([lat], [lng]) — `null` whenever any of the three is unavailable, so
-  /// callers can fall back to showing just the city/department instead.
+  /// Distancia en línea recta en km; `null` si falta algún dato, para que el caller muestre solo ciudad/departamento.
   static double? distanceKm(Position? from, double? lat, double? lng) {
     if (from == null || lat == null || lng == null) return null;
     final meters = Geolocator.distanceBetween(

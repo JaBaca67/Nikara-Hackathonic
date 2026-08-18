@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_colors.dart';
 
-/// One [IconData] per known amenity string — falls back to a generic
-/// checkmark for anything outside the wizard's fixed amenity list. Shared
-/// between the wizard's chip picker and BusinessDetailScreen's display so
-/// both always agree on the same glyph.
+/// Compartido entre el picker del wizard y BusinessDetailScreen para que ambos usen el mismo glifo.
 IconData amenityIcon(String label) {
   final key = label.toLowerCase();
   if (key.contains('wifi')) return Icons.wifi_rounded;
@@ -23,16 +20,9 @@ IconData amenityIcon(String label) {
   return Icons.check_circle_outline;
 }
 
-/// Separator between a custom activity's chosen icon key and its label,
-/// e.g. `"kayaking::Kayak en aguas termales"` — internal encoding only,
-/// never shown to the user (see [activityLabel]). Chosen because it can't
-/// plausibly appear inside real, hand-typed activity text.
+/// Separador interno (nunca visible, ver [activityLabel]); "::" no aparece de forma plausible en texto de actividad escrito a mano.
 const String _kActivityIconSeparator = '::';
 
-/// Curated icon choices offered by the "agregar otra actividad" picker
-/// (Pantalla 4c) — one Material glyph per Spanish label, shared between
-/// the wizard's dropdown and [activityIcon]'s lookup so a custom
-/// activity's chosen icon round-trips exactly.
 const Map<String, IconData> activityIconLibrary = {
   'hiking': Icons.hiking,
   'kayaking': Icons.kayaking,
@@ -56,10 +46,7 @@ const Map<String, IconData> activityIconLibrary = {
   'explore': Icons.explore_outlined,
 };
 
-/// Spanish label shown next to each [activityIconLibrary] entry in the
-/// icon picker — same key set, display order matters (picker renders it
-/// as-is), so this is a separate ordered map rather than derived from
-/// [activityIconLibrary]'s (unordered) keys.
+/// Mapa separado (no derivado de [activityIconLibrary]) porque el orden de despliegue en el picker importa.
 const Map<String, String> activityIconLibraryLabels = {
   'hiking': 'Senderismo',
   'kayaking': 'Kayak',
@@ -83,16 +70,11 @@ const Map<String, String> activityIconLibraryLabels = {
   'explore': 'Otro',
 };
 
-/// Encodes a custom activity's user-picked icon key alongside its label —
-/// used only by the "agregar otra actividad" flow. Preset activity chips
-/// (Senderismo, Kayak, ...) never need this: their icon always comes from
-/// [activityIcon]'s keyword match against the plain label.
+/// Solo lo usa el flujo "agregar otra actividad"; los chips preset resuelven su icono por keyword match, no por esta codificación.
 String encodeActivity(String iconKey, String label) =>
     '$iconKey$_kActivityIconSeparator$label';
 
-/// Human-facing label for an activity string — strips the icon-key prefix
-/// [encodeActivity] adds, if present; returns [raw] unchanged otherwise,
-/// which covers every activity saved before this feature shipped.
+/// Devuelve [raw] sin cambios si no tiene el prefijo de [encodeActivity], cubriendo actividades guardadas antes de esta feature.
 String activityLabel(String raw) {
   final index = raw.indexOf(_kActivityIconSeparator);
   if (index == -1) return raw;
@@ -101,13 +83,7 @@ String activityLabel(String raw) {
   return raw.substring(index + _kActivityIconSeparator.length);
 }
 
-/// One [IconData] per activity string. A custom activity with an explicit
-/// [encodeActivity]-picked icon always resolves to exactly that icon;
-/// everything else (preset chips, activities saved before this feature
-/// existed) falls back to a keyword match — matched loosely enough to
-/// still resolve correctly for businesses saved before the wizard's
-/// activity labels dropped their emoji prefixes (e.g. "🚶‍♂️ Senderismo"
-/// still contains "senderismo"). Falls back to a generic compass glyph.
+/// El match por keyword es deliberadamente laxo para seguir resolviendo bien actividades guardadas cuando los labels aún tenían prefijo de emoji.
 IconData activityIcon(String raw) {
   final separatorIndex = raw.indexOf(_kActivityIconSeparator);
   if (separatorIndex != -1) {
@@ -130,11 +106,7 @@ IconData activityIcon(String raw) {
   return Icons.explore_outlined;
 }
 
-/// A fixed, bounded set of "marker looks" driving [MapScreen]'s
-/// per-category pins (Estado 19a/19b) — bounded rather than one bitmap per
-/// free-text `businesses.category` value, since an owner-typed category
-/// string is unbounded but a map only ever needs to precompute a handful
-/// of bitmaps regardless of how many distinct strings exist in the table.
+/// Set acotado de "looks" de pin para no precomputar un bitmap por cada valor libre de `businesses.category`, que es ilimitado.
 enum MapPinCategory {
   food,
   water,
@@ -146,9 +118,7 @@ enum MapPinCategory {
   general,
 }
 
-/// Icon glyph for [category]'s pin — shared between the map's marker
-/// bitmaps and the pin-detail bottom sheet's category badge so both always
-/// agree on the same glyph.
+/// Compartido entre los bitmaps del mapa y el badge del bottom sheet para mantener el mismo glifo.
 IconData mapPinIcon(MapPinCategory category) {
   switch (category) {
     case MapPinCategory.food:
@@ -170,10 +140,7 @@ IconData mapPinIcon(MapPinCategory category) {
   }
 }
 
-/// Accent color for [category]'s pin (unselected ring/icon tint) — reuses
-/// an existing [AppColors] token for every bucket except [mapPinWater]
-/// (see that token's own doc comment for why water needed a genuinely new
-/// hue).
+/// Reutiliza tokens existentes de [AppColors] salvo [mapPinWater] (ver su propio doc comment).
 Color mapPinColor(MapPinCategory category) {
   switch (category) {
     case MapPinCategory.food:
@@ -195,15 +162,7 @@ Color mapPinColor(MapPinCategory category) {
   }
 }
 
-/// Classifies a free-text `businesses.category` value into one of the
-/// bounded [MapPinCategory] buckets via keyword matching — the same
-/// approach [activityIcon] already uses for activities. Covers both the
-/// "Registra tu negocio" wizard's current fixed chip presets
-/// ('Eco-destino', 'Restaurante', 'Hospedaje', 'Tour', 'Cultura',
-/// 'Transporte') and older/legacy category strings that predate that list
-/// (e.g. the prototype seed data's 'Lagunas'/'Tours'/'Eco'). Falls back to
-/// [MapPinCategory.general] — the original single storefront glyph — for
-/// anything unrecognized rather than guessing.
+/// Cubre tanto los presets actuales del wizard como categorías legacy de datos semilla; cae a [MapPinCategory.general] en vez de adivinar.
 MapPinCategory mapPinCategoryFor(String category) {
   final key = category.toLowerCase();
   if (key.contains('restaurant') ||
@@ -244,10 +203,7 @@ MapPinCategory mapPinCategoryFor(String category) {
   return MapPinCategory.general;
 }
 
-/// Whether an on-device media path (from `image_picker`'s
-/// `pickMultipleMedia`) is a video rather than a photo — there's no
-/// video-thumbnail package in this project, so callers use this to decide
-/// between rendering [LocalImage] and a generic video placeholder.
+/// No hay paquete de miniaturas de video en el proyecto; los llamadores usan esto para elegir entre [LocalImage] y un placeholder genérico.
 bool isVideoPath(String path) {
   final lower = path.toLowerCase();
   return lower.endsWith('.mp4') ||

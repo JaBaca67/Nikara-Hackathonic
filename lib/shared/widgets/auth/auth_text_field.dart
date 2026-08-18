@@ -3,12 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Standardized Auth input — uppercase League Spartan label, a soft
-/// `#F7F3EC` field with a hairline inset ring (not a hard [Border]) per the
-/// Claude Design canvas "Nikara Inicio y Mapa" (turns 9/10), a leading
-/// Material icon, and an optional password-visibility toggle it manages
-/// itself (no external `obscureText`/`onToggleObscure` plumbing needed at
-/// the call site). Validation errors render through [AppTextStyles.errorText].
+/// Input estandarizado de Auth; gestiona su propio toggle de visibilidad de contraseña sin plumbing externo.
 class AuthTextField extends StatefulWidget {
   const AuthTextField({
     super.key,
@@ -31,13 +26,9 @@ class AuthTextField extends StatefulWidget {
   final String hintText;
   final TextEditingController controller;
 
-  /// Leading Material icon — the common case (mail/lock/badge/…).
   final IconData? icon;
 
-  /// A fully custom leading widget (e.g. the country-code picker pill on
-  /// the phone field) — takes priority over [icon] when both are absent/
-  /// present isn't possible per the constructor assert, so exactly one of
-  /// the two is ever used.
+  /// Widget custom (p. ej. el selector de código de país); el assert del constructor garantiza que solo uno de [icon]/[prefix] se use.
   final Widget? prefix;
 
   final bool isPassword;

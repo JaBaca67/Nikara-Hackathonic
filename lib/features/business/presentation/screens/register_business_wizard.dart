@@ -35,9 +35,6 @@ const List<String> _kAmenityPresets = [
   'Desayuno incluido',
 ];
 
-/// Preset "Actividades del lugar" chips — exact set and order from
-/// Pantalla 4c. Anything else the owner types goes through
-/// "Agregar otra actividad" instead and renders as its own chip.
 const List<String> _kActivityPresets = [
   'Senderismo',
   'Tour de café',
@@ -54,8 +51,7 @@ const List<String> _kEcoPractices = [
   'Conservación de flora y fauna del sitio',
 ];
 
-/// Common WhatsApp country codes — Nicaragua first/default, then its
-/// Central American neighbors and the US/Canada shared code.
+/// Nicaragua primero/default, luego vecinos centroamericanos y US/Canadá.
 const List<String> _kCountryCodes = [
   '+505',
   '+506',
@@ -65,11 +61,7 @@ const List<String> _kCountryCodes = [
   '+1',
 ];
 
-/// Nicaragua's 15 departments and 2 autonomous regions, each mapped to its
-/// real municipalities — the same administrative division Supabase's
-/// `businesses.city` column stores one value from. The "Departamento"
-/// dropdown (Pantalla 4b) is a UI-only cascading filter over this data;
-/// only the selected municipality is ever persisted, exactly like before.
+/// El dropdown "Departamento" es solo un filtro en cascada de UI; únicamente el municipio elegido se persiste en `businesses.city`.
 const Map<String, List<String>> _kMunicipalitiesByDepartment = {
   'Managua': [
     'Managua',
@@ -256,9 +248,7 @@ const Map<String, List<String>> _kMunicipalitiesByDepartment = {
 
 List<String> get _kDepartments => _kMunicipalitiesByDepartment.keys.toList();
 
-/// Which department's municipality list contains [city] — falls back to
-/// the first department when [city] isn't found in any of them (a
-/// freshly-typed value, or one from before this cascading picker existed).
+/// Si [city] no está en ningún departamento (valor recién tipeado o de antes del picker en cascada), cae al primer departamento.
 String _departmentForCity(String city) {
   for (final entry in _kMunicipalitiesByDepartment.entries) {
     if (entry.value.contains(city)) return entry.key;
@@ -266,7 +256,6 @@ String _departmentForCity(String city) {
   return _kDepartments.first;
 }
 
-/// Fallback map center when geolocation isn't available — Managua.
 const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
 
 final LatLngBounds _kMapBounds = LatLngBounds(
@@ -274,10 +263,7 @@ final LatLngBounds _kMapBounds = LatLngBounds(
   northeast: const LatLng(18.5, -77.0),
 );
 
-/// One row of the Horarios card — either one of the two structured
-/// day-range presets (whose [weekdays] this app can actually check "is
-/// open now" against) or a free-typed [daysLabel] ([weekdays] empty, since
-/// arbitrary text can't be reliably mapped to real days).
+/// [weekdays] queda vacío en entradas de texto libre porque no se puede mapear texto arbitrario a días reales de forma confiable.
 class _ScheduleEntry {
   _ScheduleEntry({
     required this.daysLabel,
@@ -318,9 +304,6 @@ class _ScheduleEntry {
 
   String toLine() => '$daysLabel: $hoursLabel';
 
-  /// Round-trips [toLine]'s own format — [text] from a foreign/legacy
-  /// source (or anything that doesn't match) becomes a single free-typed
-  /// entry instead of being silently discarded.
   static _ScheduleEntry? _parseLine(String line) {
     final parts = line.split(': ');
     if (parts.length != 2) return null;
@@ -342,11 +325,7 @@ class _ScheduleEntry {
     );
   }
 
-  /// Parses [BusinessModel.schedules] back into entries — falls back to
-  /// the two Pantalla 4a defaults for an empty value, or a single
-  /// free-typed entry preserving the raw text when it's in some other
-  /// (legacy) format, so editing a business saved before this structured
-  /// picker existed never silently drops its schedule.
+  /// Preserva el texto crudo como entrada libre si el formato no matchea, para no perder el horario de negocios guardados antes de este picker estructurado.
   static List<_ScheduleEntry> parse(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return [weekdays9to6(), weekend()];
@@ -373,10 +352,7 @@ class _ScheduleEntry {
   static String format(List<_ScheduleEntry> entries) =>
       entries.map((e) => e.toLine()).join('\n');
 
-  /// Real, derivable "abierto ahora" — only counts entries whose
-  /// [weekdays] this app actually recognizes (the two presets, or "Todos
-  /// los días"); a free-typed custom day label never claims a status it
-  /// can't back.
+  /// Solo cuenta entradas con [weekdays] reconocidos; una etiqueta de día libre nunca reclama un estado que no puede respaldar.
   static bool isOpenNow(List<_ScheduleEntry> entries) {
     final now = TimeOfDay.now();
     final nowMinutes = now.hour * 60 + now.minute;
@@ -391,17 +367,7 @@ class _ScheduleEntry {
 }
 
 /// 4-step "Registra tu negocio" wizard — Pantallas 4a-4d ("Datos", "Ubicación",
-/// "Galería", "Publicar"). Purely local/mock beyond the real Supabase write:
-/// on finish it writes a [BusinessModel] into [BusinessStorageService] and
-/// either shows [BusinessSuccessScreen] (new) or pops back with the updated
-/// instance (edit).
-///
-/// Pass [existingBusiness] to reuse the same 4 steps as an editor — every
-/// field pre-fills from it, the footer becomes "Guardar cambios", and
-/// finishing calls [BusinessStorageService.updateBusiness]. Pass
-/// [initialStep] (only meaningful together with [existingBusiness]) to jump
-/// straight to one section — how the "Editar negocio" hub's rows (Pantalla
-/// 4e) deep-link in instead of re-walking the whole flow.
+/// "Galería", "Publicar"). Con [existingBusiness] reutiliza los mismos 4 pasos como editor (pre-llena, "Guardar cambios", `updateBusiness`); [initialStep] permite saltar directo a una sección desde el hub "Editar negocio".
 class RegisterBusinessWizard extends StatefulWidget {
   const RegisterBusinessWizard({
     super.key,
@@ -424,7 +390,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   bool get _isEditing => widget.existingBusiness != null;
 
-  // --- Step 1 (4a): Datos generales y contacto ---
+  // --- Paso 1 (4a): Datos generales y contacto ---
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   String _category = _kCategoryPresets.first;
@@ -434,7 +400,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _facebookController = TextEditingController();
   late List<_ScheduleEntry> _schedule = _ScheduleEntry.parse('');
 
-  // --- Step 2 (4b): Ubicación y pin en el mapa ---
+  // --- Paso 2 (4b): Ubicación y pin en el mapa ---
   late String _department = _kDepartments.first;
   late String _city = _kMunicipalitiesByDepartment[_department]!.first;
   final _addressController = TextEditingController();
@@ -443,7 +409,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   LatLng? _confirmedLocation;
   bool _locatingUser = false;
 
-  // --- Step 3 (4c): Galería y atributos ECO ---
+  // --- Paso 3 (4c): Galería y atributos ECO ---
   final List<XFile> _images = [];
   final List<String> _existingImagePaths = [];
   bool _ecoSealRequested = false;
@@ -495,10 +461,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _selectedAmenities.addAll(business.amenities);
   }
 
-  /// Splits a stored "+505 8123 4567"-style phone back into (code, number)
-  /// for the two-field editor — a number saved before the country-code
-  /// picker existed (or with an unrecognized code) just keeps its whole
-  /// value in the number field under the default code, never truncated.
+  /// Un número guardado antes del picker de código (o con código no reconocido) queda entero en el campo número bajo el código default, sin truncarlo.
   (String, String) _splitPhone(String phone) {
     final trimmed = phone.trim();
     for (final code in _kCountryCodes) {
@@ -546,7 +509,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       setState(() => _mapCenter = here);
       await _mapController?.animateCamera(CameraUpdate.newLatLngZoom(here, 15));
     } catch (_) {
-      // Silent fallback — stays on the Managua default, same as MapScreen.
+      // Se queda en el default de Managua, igual que MapScreen.
     } finally {
       if (mounted) setState(() => _locatingUser = false);
     }
@@ -646,8 +609,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     setState(() => _images.addAll(picked));
   }
 
-  /// Removes the photo at [index] in the combined existing+new gallery —
-  /// index 0 is always the cover.
+  /// El índice 0 siempre es la portada.
   void _removeImageAt(int index) {
     setState(() {
       if (index < _existingImagePaths.length) {
@@ -658,16 +620,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     });
   }
 
-  /// Moves the photo at [index] to the front so it becomes the cover.
   void _makeCover(int index) {
     if (index == 0) return;
     setState(() {
       final paths = _allPhotoPaths;
       final target = paths.removeAt(index);
       paths.insert(0, target);
-      // Re-split back into the existing/new-XFile-backed lists using the
-      // reordered path order — existing (String) paths first, matching how
-      // _allPhotoPaths itself is built.
+      // Re-separa en las listas existing/new preservando el orden, igual que _allPhotoPaths.
       final existing = paths.where(_existingImagePaths.contains).toList();
       final imagesByPath = {for (final x in _images) x.path: x};
       final newOnes = paths.where((p) => !_existingImagePaths.contains(p));
@@ -680,9 +639,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     });
   }
 
-  /// Builds a draft [BusinessModel] from whatever's been entered so far —
-  /// used only for "Vista previa" (never saved) so the owner can see
-  /// exactly what travelers would see before publishing.
+  /// Solo para "Vista previa" (nunca se guarda).
   BusinessModel _draftBusiness() {
     final existing = widget.existingBusiness;
     return BusinessModel(
@@ -802,7 +759,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       try {
         await _authService.markAsEmprendedor();
       } on AuthServiceException {
-        // Ignored — the listing itself already saved correctly.
+        // Se ignora: el negocio ya se guardó correctamente.
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -1543,7 +1500,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     height: 20,
                                     alignment: Alignment.center,
                                     decoration: const BoxDecoration(
-                                      color: Color(0x8C1A1510),
+                                      color: AppColors.removeButtonBackground,
                                       shape: BoxShape.circle,
                                     ),
                                     child: const Icon(
@@ -2014,7 +1971,6 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 }
 
-/// Back arrow + title/subtitle app-header row, per Pantallas 4a-4d.
 class _WizardHeader extends StatelessWidget {
   const _WizardHeader({
     required this.title,
@@ -2086,8 +2042,6 @@ class _WizardHeader extends StatelessWidget {
   }
 }
 
-/// Numbered-circle progress stepper — done (check) / active (gold number) /
-/// pending (hollow) — matching Pantallas 4a-4d exactly.
 class _WizardStepper extends StatelessWidget {
   const _WizardStepper({required this.step});
 
@@ -2196,8 +2150,6 @@ class _StepCircle extends StatelessWidget {
   }
 }
 
-/// Filled cream input — the shared chrome behind every text field across
-/// Pantallas 4a-4c (name, description, address, phone number...).
 class _WizardTextField extends StatelessWidget {
   const _WizardTextField({
     required this.controller,
@@ -2345,8 +2297,6 @@ class _CountryCodeField extends StatelessWidget {
   }
 }
 
-/// One Instagram/Facebook row — icon circle + inline text field, per
-/// Pantalla 4a's "Redes (opcional)" card.
 class _SocialField extends StatelessWidget {
   const _SocialField({
     required this.icon,
@@ -2402,8 +2352,6 @@ class _SocialField extends StatelessWidget {
   }
 }
 
-/// A "1 fila = 1 día" schedule entry: tap the day label to pick a preset,
-/// tap either time to open a real [showTimePicker].
 class _ScheduleRow extends StatelessWidget {
   const _ScheduleRow({
     required this.entry,
@@ -2476,15 +2424,7 @@ class _ScheduleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A Wrap (not a Row) so an unusually long custom day label — free text
-    // the owner typed, no length limit — moves the time controls to a
-    // second line instead of overflowing on a narrow screen.
-    // A Column, not a single Row — two independently-sized pieces (the
-    // free-typed day label and the two time chips) competing for one
-    // 254px-ish card width is exactly the kind of pairing that overflows
-    // the moment either renders a hair wider than expected (a long custom
-    // label, a fallback font in a headless test harness, ...). Stacking
-    // them removes that competition entirely instead of trying to tune it.
+    // Column (no Row) para que la etiqueta de día libre y los chips de hora no compitan por el ancho y desborden.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2573,9 +2513,6 @@ class _ScheduleRow extends StatelessWidget {
   }
 }
 
-/// The "ABIERTO AHORA" pill on Pantalla 4a's Horarios card header — only
-/// lights up when [_ScheduleEntry.isOpenNow] can actually derive a real
-/// answer from the entered hours.
 class _OpenNowPill extends StatelessWidget {
   const _OpenNowPill({required this.entries});
 
@@ -2616,8 +2553,6 @@ class _OpenNowPill extends StatelessWidget {
   }
 }
 
-/// A pill-shaped chip reused for category / activity / amenity selection —
-/// gold+dark when selected, cream+bordered otherwise, per Pantallas 4a/4c.
 class _WizardChip extends StatelessWidget {
   const _WizardChip({
     required this.label,
@@ -2689,9 +2624,7 @@ class _WizardChip extends StatelessWidget {
   }
 }
 
-/// Sticky bottom action bar — secondary (compact) + primary (full-width
-/// gold) — the one component reused verbatim across every wizard step and
-/// the Editar-negocio hub.
+/// Reutilizado tal cual en cada paso del wizard y en el hub de Editar-negocio.
 class _WizardFooter extends StatelessWidget {
   const _WizardFooter({
     required this.primaryLabel,
@@ -2804,15 +2737,7 @@ class _WizardFooter extends StatelessWidget {
   }
 }
 
-/// A live map with a pin fixed at the exact center of its viewport — the
-/// user pans the map underneath it, or taps a point to jump straight there
-/// — plus +/- zoom buttons, per Pantalla 4b. "Confirmar esta ubicación"
-/// (owned by the parent step, not this widget) reads the parent's
-/// `_mapCenter`, kept in sync via [onCameraMove] since
-/// `google_maps_flutter`'s controller has no synchronous "current center"
-/// getter like `flutter_map`'s did — that covers both a drag AND the
-/// camera animation [onTap] kicks off, so either gesture ends up updating
-/// the same state the same way.
+/// [onCameraMove] mantiene sincronizado `_mapCenter` del padre porque `google_maps_flutter` no expone un getter síncrono de centro actual.
 class _MapLocationPicker extends StatelessWidget {
   const _MapLocationPicker({
     required this.initialCenter,
@@ -2873,7 +2798,7 @@ class _MapLocationPicker extends StatelessWidget {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Color(0x42261D0C),
+                              color: AppColors.wizardPhotoShadow,
                               offset: Offset(0, 6),
                               blurRadius: 14,
                             ),
@@ -2942,8 +2867,7 @@ class _MapLocationPicker extends StatelessWidget {
   }
 }
 
-/// Live "cómo te ven en Inicio" preview card — mirrors the real Home/Map
-/// card layout so it isn't just decorative, per Pantalla 4d.
+/// Refleja el layout real de la tarjeta de Home/Mapa, no es solo decorativa.
 class _WizardPreviewCard extends StatelessWidget {
   const _WizardPreviewCard({required this.business, required this.photos});
 
@@ -3085,8 +3009,6 @@ class _WizardPreviewCard extends StatelessWidget {
   }
 }
 
-/// A "Listo para enviar" checklist row — olive check when [done], amber
-/// warning otherwise, matching Pantalla 4d exactly.
 class _ChecklistRow extends StatelessWidget {
   const _ChecklistRow({
     required this.done,
@@ -3177,8 +3099,6 @@ class _ChecklistRow extends StatelessWidget {
   }
 }
 
-/// Grid of every [activityIconLibrary] entry — the "librería desplegable"
-/// of icons a custom activity can be tagged with.
 class _ActivityIconPickerSheet extends StatelessWidget {
   const _ActivityIconPickerSheet();
 

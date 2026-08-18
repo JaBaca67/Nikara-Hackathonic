@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Real, countable user activity — the only inputs badge unlock conditions
-/// are allowed to look at (never a hardcoded/mock number).
+/// Actividad real y contable del usuario — único input válido para condiciones de badges (nunca un número mock).
 class UserStats {
   const UserStats({
     required this.tripsCount,
@@ -16,8 +15,7 @@ class UserStats {
   final int reviewsCount;
 }
 
-/// One master badge definition plus whether the current [UserStats] meet
-/// its unlock condition.
+/// Definición de un badge más si las [UserStats] actuales cumplen su condición de desbloqueo.
 class BadgeInfo {
   const BadgeInfo({
     required this.id,
@@ -34,13 +32,11 @@ class BadgeInfo {
   final Color tint;
   final bool unlocked;
 
-  /// Shown when locked — the exact real condition still needed, e.g.
-  /// "Guarda 3 lugares favoritos" (not a vague "sigue explorando").
+  /// Se muestra cuando está bloqueado: la condición real pendiente, no un texto vago.
   final String requirementLabel;
 }
 
-/// Master badge list (Figma node 421:361) — every unlock condition is
-/// evaluated against real [UserStats], never a fixed true/false.
+/// Lista maestra de badges (Figma node 421:361); toda condición se evalúa contra [UserStats] reales.
 abstract class BadgesLogic {
   static List<BadgeInfo> build(UserStats stats) {
     return [

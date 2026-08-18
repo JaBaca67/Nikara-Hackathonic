@@ -13,10 +13,7 @@ class EcoServiceException implements Exception {
   String toString() => message;
 }
 
-/// Persists [EcoActivityModel]s to Supabase's `eco_activities` table and
-/// join/leave actions to `eco_participants` (see
-/// supabase/sql/009_eco_activities.sql) — the ECO tab's single source of
-/// truth, same singleton-service pattern as [BusinessStorageService].
+/// Persiste [EcoActivityModel] en `eco_activities`/`eco_participants` (supabase/sql/009_eco_activities.sql); mismo patrón singleton que [BusinessStorageService].
 class EcoService {
   factory EcoService() => EcoService.instance;
 
@@ -24,10 +21,7 @@ class EcoService {
 
   static final EcoService instance = EcoService._internal();
 
-  /// Bumped on every write this device makes (join/leave/create) — screens
-  /// listen to this the same way they listen to `BusinessStorageService
-  /// .revision` so e.g. EcoMainScreen refreshes instantly after
-  /// [createActivity] without a manual pull-to-refresh.
+  /// Se incrementa en cada escritura local para que las pantallas se refresquen sin pull-to-refresh.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   SupabaseClient get _client => Supabase.instance.client;
@@ -52,18 +46,12 @@ class EcoService {
   static bool _isMissingOrganizations(PostgrestException e) =>
       e.code == 'PGRST200' || e.code == '42703' || e.code == '42P01';
 
-  /// Every activity that hasn't already ended (`start_time` in the past
-  /// activities are excluded here — [getPastActivities] is the separate
-  /// call for those), newest-start-first isn't the ordering EcoMainScreen
-  /// wants (soonest-first reads as "what's coming up"), so this orders by
-  /// `start_time` ascending.
+  /// Ordena por `start_time` ascendente ("lo próximo primero"), no descendente.
   Future<List<EcoActivityModel>> getUpcomingActivities() async {
     return _select(pastOnly: false);
   }
 
-  /// Activities whose `start_time` has already passed — Estado 3
-  /// ("Completada"), fetched separately from [getUpcomingActivities] so
-  /// the main feed never has to filter/sort a mixed list client-side.
+  /// Separado de [getUpcomingActivities] para no filtrar/ordenar una lista mixta en el cliente.
   Future<List<EcoActivityModel>> getPastActivities() async {
     return _select(pastOnly: true);
   }
@@ -118,11 +106,7 @@ class EcoService {
     }
   }
 
-  /// eco_participants(user_id, joined_at) is embedded via Postgrest's
-  /// nested-select syntax — one round trip gets every activity's full
-  /// participant list, which EcoActivityModel.fromRow reduces into
-  /// participantCount/isJoinedByCurrentUser instead of a query per
-  /// activity (or per activity per user).
+  /// El embed anidado de eco_participants trae la lista completa en un solo viaje, en vez de una consulta por actividad.
   Future<List<EcoActivityModel>> _runSelect({
     required String select,
     bool? pastOnly,
@@ -187,11 +171,7 @@ class EcoService {
     );
   }
 
-  /// Every participant's `user_id`/`joined_at` for the detail screen's
-  /// "Participantes" tab — `profiles` isn't embeddable here (no direct FK
-  /// between `eco_participants` and `public.profiles`, both instead point
-  /// at `auth.users`), so display names are resolved separately, per id,
-  /// via `AuthService.getProfileById`.
+  /// `profiles` no es embebible aquí (sin FK directa a `eco_participants`, ambos apuntan a `auth.users`): los nombres se resuelven aparte vía `AuthService.getProfileById`.
   Future<List<({String userId, DateTime joinedAt})>> getParticipants(
     String activityId,
   ) async {
@@ -221,8 +201,7 @@ class EcoService {
     }
   }
 
-  /// "Unirme" — the caller is expected to have already gated this behind
-  /// [GuestGuard.allow] (a guest has no `auth.users` id to insert).
+  /// "Unirme": se asume que quien llama ya validó con [GuestGuard.allow] (un invitado no tiene id para insertar).
   Future<void> joinActivity(String activityId) async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
@@ -237,9 +216,7 @@ class EcoService {
       });
       revision.value++;
     } on PostgrestException catch (e) {
-      // Unique-violation on the (activity_id, user_id) primary key means
-      // the user is already in — not a real failure from their point of
-      // view, so it's worth a friendlier message than the raw Postgres one.
+      // Violación de unicidad = ya estaba inscrito, no es un error real desde su perspectiva.
       if (e.code == '23505') {
         throw const EcoServiceException(
           'Ya estás participando en esta actividad.',
@@ -281,18 +258,7 @@ class EcoService {
     }
   }
 
-  /// [CreateEcoActivityScreen]'s save action — the organizer is always the
-  /// currently signed-in user's real name (from their `profiles` row via
-  /// [AuthService.getCurrentProfile]), never a client-supplied "verified"
-  /// claim: `organizer_verified` is intentionally left at its column
-  /// default (`false`) here, same reasoning as `BusinessModel.isVerified`
-  /// — nothing in the client ever sets that itself.
-  ///
-  /// [organizationId] es el "publicar como" del formulario: nulo publica a
-  /// título personal, con valor publica en nombre de esa fundación (el
-  /// badge VERIFICADO sale entonces de `organizations.is_verified`, no de
-  /// esta fila). `organizer_id` se guarda siempre, también cuando publica
-  /// una fundación: es quien creó la jornada y quien puede gestionarla.
+  /// El cliente nunca envía `organizer_verified` (default `false`, igual que `BusinessModel.isVerified`); [organizationId] nulo publica a título personal, con valor publica en nombre de esa fundación (badge sale de `organizations.is_verified`).
   Future<void> createActivity({
     required String title,
     required String description,
@@ -325,9 +291,7 @@ class EcoService {
         'organizer_id': user.id,
         'organizer_name': profile?.fullName,
         'requirements': requirements,
-        // Se omite la clave cuando es null (sintaxis de elemento
-        // null-aware) para que publicar a título personal siga funcionando
-        // aunque la migración 010 todavía no haya corrido.
+        // Se omite la clave si es null para que funcione sin la migración 010.
         'organization_id': ?organizationId,
       });
       revision.value++;
@@ -342,14 +306,7 @@ class EcoService {
     }
   }
 
-  /// Subscribes to Postgres INSERT/UPDATE/DELETE on both ECO tables and
-  /// calls [onChange] for each one — how EcoMainScreen picks up an
-  /// activity someone else created, or a join/leave from another device,
-  /// without the user having to reopen the tab. [revision] covers changes
-  /// made by this device; this covers the rest. Silent by design if
-  /// Realtime isn't enabled for either table (see the migration file):
-  /// the channel subscribes fine, no events ever arrive, and the app keeps
-  /// working off its normal fetches.
+  /// Cubre cambios de otros dispositivos ([revision] solo cubre los propios); si Realtime no está habilitado, simplemente no llegan eventos y la app sigue funcionando con sus fetches normales.
   Future<void> Function() subscribeToChanges(VoidCallback onChange) {
     final channel = _client
         .channel('public:eco_activities_and_participants')

@@ -1,11 +1,6 @@
 import 'package:flutter/services.dart';
 
-/// Formats a Nicaraguan mobile number as the user types digits, producing
-/// "XXXX-XXXX" (the "+505 " country-code prefix is shown separately via
-/// the field's `prefixText`, never mixed into the editable value — that
-/// keeps the formatter simple and avoids the classic "cursor jumps to the
-/// wrong place" bug that comes from formatting a prefix the user can't
-/// actually edit).
+/// Formatea un número móvil nicaragüense como "XXXX-XXXX"; el prefijo "+505" se muestra aparte vía `prefixText` para evitar el bug clásico del cursor saltando al formatear texto no editable.
 class NicaraguaPhoneInputFormatter extends TextInputFormatter {
   const NicaraguaPhoneInputFormatter();
 

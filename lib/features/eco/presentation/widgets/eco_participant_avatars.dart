@@ -2,14 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Pila de avatares superpuestos + contador ("+18") de quienes ya se
-/// unieron a una actividad. La comparten la tarjeta del feed y la pestaña
-/// "Información" del detalle.
-///
-/// `eco_participants` no trae foto de perfil, así que los círculos se
-/// pintan con los rellenos neutros de [AppColors.ecoAvatarStack] — sugieren
-/// varias personas distintas sin inventar identidades. Cuando no hay nadie
-/// no se dibuja nada: quien llama decide qué poner en su lugar.
+/// `eco_participants` no trae foto de perfil, así que se usan rellenos neutros en vez de inventar identidades; sin participantes no dibuja nada.
 class EcoParticipantAvatars extends StatelessWidget {
   const EcoParticipantAvatars({
     super.key,

@@ -1,5 +1,4 @@
-/// Supported third-party sign-in providers, matching the three social
-/// buttons in the Figma login design (node 145:72).
+/// Proveedores de login social, según el diseño de Figma (node 145:72).
 enum SocialAuthKind { google, apple, facebook }
 
 class SocialAuthProvider {
@@ -14,13 +13,7 @@ class SocialAuthProvider {
   });
 }
 
-/// Mock data standing in for a future remote-config/auth-providers endpoint.
-///
-/// Apple is intentionally left out for now — [AuthService.signInWithApple],
-/// [SocialAuthKind.apple], and the Apple branch in [SocialLoginRow]'s
-/// `_handleTap` are all still there as a ready-to-use component; re-add a
-/// [SocialAuthProvider] entry for it here (`assets/images/social_apple.svg`
-/// already exists) whenever it's ready to ship again.
+/// Apple se omite a propósito por ahora; el soporte ya existe en [AuthService.signInWithApple] y [SocialLoginRow], solo falta agregar la entrada aquí para reactivarlo.
 const List<SocialAuthProvider> mockSocialAuthProviders = [
   SocialAuthProvider(
     kind: SocialAuthKind.google,

@@ -1,13 +1,9 @@
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 
-/// A tourism business registered through the "Registra tu negocio" wizard.
-/// Core fields (see [BusinessStorageService]) persist to Supabase's
-/// `businesses` table; [id] is still a client-generated uuid (the wizard
-/// assigns it before the first insert). A handful of fields the wizard
-/// collects have no column there yet — see [BusinessStorageService]'s doc
-/// for exactly which ones and why — so [localImagePaths] are on-device
-/// file paths uploaded as plain strings into the `photos` array rather than
-/// through real object storage.
+/// Negocio turístico registrado vía el wizard "Registra tu negocio".
+/// [id] es un uuid generado en el cliente (el wizard lo asigna antes del
+/// insert); [localImagePaths] son rutas locales guardadas como strings en
+/// `photos` porque no hay object storage real todavía.
 class BusinessModel {
   const BusinessModel({
     required this.id,
@@ -44,12 +40,10 @@ class BusinessModel {
   final String category;
   final String description;
 
-  /// Short city/municipality label (e.g. "Masaya") — shown on summary
-  /// cards and list rows across Home/Map/Profile. Never the full address.
+  /// Etiqueta corta de ciudad/municipio (ej. "Masaya"); nunca la dirección completa.
   final String city;
 
-  /// Exact street address, shown only on the detail screen's "Mapa de
-  /// ubicación exacta e indicaciones" section — never on a compact card.
+  /// Dirección exacta; solo se muestra en la sección "Mapa de ubicación exacta" del detalle, nunca en tarjetas compactas.
   final String locationText;
   final double? latitude;
   final double? longitude;
@@ -65,40 +59,26 @@ class BusinessModel {
   final List<String> amenities;
   final List<String> activities;
 
-  /// Owner opted in to the "Sello ECO" self-declaration (Pantalla 4c). Not
-  /// an admin-verified badge by itself — see [ecoPractices].
+  /// El dueño se autodeclaró para el "Sello ECO" (Pantalla 4c); no es una insignia verificada por un admin — ver [ecoPractices].
   final bool ecoSealRequested;
 
-  /// Which of the fixed sustainability-practice checklist items (Pantalla
-  /// 4c: "Atendido por familias...", "Manejo de residuos...", etc.) the
-  /// owner checked. The seal shows as "por verificar" in the wizard until
-  /// at least 2 are checked — that's a UI hint, not an enforced gate, since
-  /// there's no admin review workflow wired up to actually verify them yet.
+  /// Prácticas de sostenibilidad marcadas por el dueño; el wizard exige al menos 2 para mostrar "por verificar", pero es solo un hint de UI, no hay workflow de revisión admin todavía.
   final List<String> ecoPractices;
 
   final String hostName;
 
-  /// Supabase `auth.users.id` (== `profiles.id`) of whoever created this
-  /// business — a real, backend-verified uuid. Empty for businesses saved
-  /// before real auth existed. Drives "Mis Negocios" in Profile and the
-  /// Anfitrión section's real-profile link in BusinessDetailScreen.
+  /// uuid real de `auth.users.id`; vacío para negocios guardados antes de que existiera auth real. Alimenta "Mis Negocios" y el link a perfil del Anfitrión.
   final String ownerId;
   final String schedules;
 
-  /// Extra "Mostrar más" description content — parqueos/senderos/zonas
-  /// comunes and any other notes worth calling out (bring cash, weather,
-  /// etc). Both are optional and, unlike [description], aren't collected
-  /// by the wizard yet, so they're empty for every business created today.
+  /// Contenido extra de "Mostrar más" (parqueos, senderos, notas); a diferencia de [description], el wizard aún no lo recolecta, por eso está vacío en todo negocio actual.
   final String accessDetails;
   final String otherNotes;
 
   final List<String> localImagePaths;
   final List<ReviewModel> reviews;
 
-  /// `businesses.is_verified` — read-only from the client. Nothing in this
-  /// app ever writes `true` here (that's an auditor-role action, done
-  /// directly in Supabase); it only reflects whatever an admin has already
-  /// set, never a fabricated "verified" claim.
+  /// Solo lectura desde el cliente: nadie en la app escribe `true` aquí (es acción de rol auditor, directo en Supabase).
   final bool isVerified;
 
   double get averageRating {
@@ -205,9 +185,7 @@ class BusinessModel {
       name: json['name'] as String,
       category: json['category'] as String,
       description: json['description'] as String,
-      // Businesses saved before the city/address split only have
-      // locationText — fall back to it as a best-effort city label until
-      // the owner edits their listing, rather than fabricating one.
+      // Negocios guardados antes del split ciudad/dirección solo tienen locationText; se usa como fallback hasta que el dueño edite.
       city: json['city'] as String? ?? json['locationText'] as String? ?? '',
       locationText: json['locationText'] as String,
       latitude: (json['latitude'] as num?)?.toDouble(),

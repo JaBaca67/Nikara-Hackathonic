@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 
-/// Static stand-in for a future destinations API/repository. Values follow
-/// what's visible in the Figma "Inicio" frame (node 124:37); region
-/// groupings and prices for cards cropped out of the screenshot are
-/// reasonable placeholders.
+/// Reemplazo estático mientras no exista API/repositorio de destinos real; valores según el frame "Inicio" de Figma (nodo 124:37), con placeholders razonables donde la captura no alcanzaba.
 const List<DestinationModel> mockDestinations = [
   DestinationModel(
     id: 'laguna-de-apoyo',

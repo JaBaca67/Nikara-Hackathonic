@@ -21,14 +21,13 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Fallback map center when geolocation isn't available (permission denied,
-/// location services off, or any lookup failure) — Managua, Nicaragua's
-/// capital — the same fallback used by the "Registra tu negocio" wizard's
-/// map picker.
+/// Centro por defecto si falla la geolocalización (permiso denegado,
+/// GPS apagado, etc.) — Managua, mismo fallback que el selector de mapa
+/// del wizard "Registra tu negocio".
 const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
 
-/// Keeps the camera from panning out into the ocean beyond Nicaragua and its
-/// Central American neighbors.
+/// Evita que la cámara se aleje hacia el océano fuera de Nicaragua y sus
+/// vecinos centroamericanos.
 final LatLngBounds _kMapBounds = LatLngBounds(
   southwest: const LatLng(7.0, -92.0),
   northeast: const LatLng(18.5, -77.0),
@@ -36,40 +35,31 @@ final LatLngBounds _kMapBounds = LatLngBounds(
 
 const String _kAllCategories = 'Todos';
 
-/// How much wider/taller than the exact visible viewport
-/// [_MapScreenState._loadBusinessesInViewport] queries — see
-/// [_MapScreenState._paddedBounds].
+/// Margen extra sobre el viewport visible al consultar negocios (ver
+/// [_MapScreenState._loadBusinessesInViewport]/[_MapScreenState._paddedBounds]).
 const double _kViewportPadding = 0.3;
 
-/// Mapa de exploración principal — real, live map (`google_maps_flutter`)
-/// showing only real businesses persisted in Supabase's `businesses` table,
-/// no mock destinations. Visual chrome (floating search bar, category
-/// chips, active/inactive pins, no-price preview card) ports the Claude
-/// Design project "Rediseño de Níkara Home y Mapa", Pantalla 2b — exact
-/// colors, radii and shadows, not the older Figma pass.
+/// Mapa de exploración principal (`google_maps_flutter`) con negocios reales
+/// de Supabase, sin destinos mock. El chrome visual sigue el diseño
+/// "Rediseño de Níkara Home y Mapa", Pantalla 2b.
 ///
-/// "Cómo llegar" fetches a real route via [DirectionsService] and switches
-/// this screen through two phases — entirely in-app, never handing off to
-/// the external Google Maps app:
-///  - **Fase 1 (preview)**: the camera frames origin + destination + the
-///    full route, a top selector switches between Automóvil/A pie (see
-///    [_MapScreenState._changeTripMode]), and a bottom panel shows
-///    distance/ETA/hora de llegada — see
-///    [_MapScreenState._startTripPreview].
-///  - **Fase 2 (live)**: "Iniciar viaje" tilts the camera into a driving
-///    view, tracks [Geolocator.getPositionStream], trims the golden
-///    `Polyline` down to what's left ahead of the vehicle, and narrates
-///    upcoming maneuvers via [TtsService] — see
-///    [_MapScreenState._confirmStartTrip].
+/// "Cómo llegar" usa [DirectionsService] y pasa por dos fases, siempre
+/// dentro de la app (nunca delega a la app externa de Google Maps):
+///  - **Fase 1 (preview)**: cámara enmarca origen+destino+ruta, selector
+///    Automóvil/A pie (ver [_MapScreenState._changeTripMode]), panel con
+///    distancia/ETA (ver [_MapScreenState._startTripPreview]).
+///  - **Fase 2 (live)**: "Iniciar viaje" inclina la cámara, sigue
+///    [Geolocator.getPositionStream], recorta la `Polyline` a lo que falta
+///    y narra maniobras vía [TtsService] (ver
+///    [_MapScreenState._confirmStartTrip]).
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, this.initialFocus});
 
-  /// Business (id, name, lat/lng) to center and select as soon as the map
-  /// finishes loading — set when the map is opened *at* a business instead
-  /// of for free exploration. `MainLayout` builds this screen without
-  /// arguments, so that path arrives through [MapFocusController] instead
-  /// (see [_MapScreenState._onFocusRequested]); this constructor parameter
-  /// is for pushing a focused map as its own route.
+  /// Negocio a centrar/seleccionar al cargar el mapa — se usa cuando se abre
+  /// el mapa enfocado en un negocio en vez de exploración libre.
+  /// `MainLayout` construye esta pantalla sin argumentos, así que esa vía
+  /// llega por [MapFocusController] (ver [_MapScreenState._onFocusRequested]);
+  /// este parámetro es para cuando el mapa se empuja como ruta propia.
   final MapFocusRequest? initialFocus;
 
   @override
@@ -80,23 +70,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final _businessStorageService = BusinessStorageService();
   GoogleMapController? _mapController;
 
-  /// Unselected pin bitmap per [MapPinCategory] bucket (Estado 19a) — see
-  /// [_loadMarkerIcons]. A category whose bitmap isn't ready yet (still
-  /// loading) or that somehow isn't in the map falls back to
-  /// [MapPinCategory.general]'s, so a marker never has no icon at all.
+  /// Bitmap de pin sin seleccionar por [MapPinCategory] (Estado 19a). Si una
+  /// categoría no está lista, cae a [MapPinCategory.general] para que nunca
+  /// falte ícono.
   final Map<MapPinCategory, BitmapDescriptor> _pinIcons = {};
 
-  /// Selected pin bitmap per [MapPinCategory] bucket (Estado 19b) — same
-  /// gold fill for every category, only the glyph inside varies (see
-  /// [_buildPinBitmap]).
+  /// Bitmap de pin seleccionado por [MapPinCategory] (Estado 19b) — mismo
+  /// dorado en todas, solo cambia el glifo (ver [_buildPinBitmap]).
   final Map<MapPinCategory, BitmapDescriptor> _pinIconsSelected = {};
   BitmapDescriptor? _vehicleIcon;
 
-  /// Cluster badge bitmaps, keyed by count — 2..9 individually, 10 stands
-  /// in for "9+" (see [_clusterIconKey]). Built once alongside the pin
-  /// icons in [_loadMarkerIcons], same reasoning as those: a marker's
-  /// `icon` has to be a ready [BitmapDescriptor], not something built
-  /// on-demand inside the synchronous [build]/[_buildMarkers] pass.
+  /// Bitmaps de badge de cluster por conteo (2..9, 10 = "9+", ver
+  /// [_clusterIconKey]). Se generan una sola vez junto a los pines en
+  /// [_loadMarkerIcons] porque `icon` de un marker necesita un
+  /// [BitmapDescriptor] ya listo, no algo construido al vuelo dentro del
+  /// build síncrono.
   final Map<int, BitmapDescriptor> _clusterIcons = {};
 
   final _searchController = TextEditingController();
@@ -113,104 +101,100 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Position? _userPosition;
   List<BusinessModel> _businesses = const [];
 
-  /// Pending "center the map on this business" request — from
-  /// [MapScreen.initialFocus] or [MapFocusController], applied by
-  /// [_consumePendingFocus] once there are businesses to match it against.
+  /// Solicitud pendiente de centrar el mapa en un negocio — de
+  /// [MapScreen.initialFocus] o [MapFocusController], aplicada por
+  /// [_consumePendingFocus] cuando ya hay negocios cargados.
   MapFocusRequest? _pendingFocus;
 
-  /// Cancels the live `businesses` row-change subscription (another device
-  /// registering a business, an admin edit) — see
+  /// Cancela la suscripción realtime a cambios en `businesses` (otro
+  /// dispositivo registra/edita un negocio) — ver
   /// [BusinessStorageService.subscribeToBusinessChanges].
   Future<void> Function()? _unsubscribeBusinessChanges;
 
-  /// Collapses a burst of realtime events (a multi-row edit fires one per
-  /// row) into a single reload.
+  /// Junta una ráfaga de eventos realtime (una edición multi-fila dispara
+  /// uno por fila) en un solo reload.
   Timer? _realtimeReloadDebounce;
 
-  /// Every distinct category across the whole table — deliberately not
-  /// scoped to the current viewport (see
-  /// [BusinessStorageService.getAllCategories]) so the chip row doesn't
-  /// change as the user pans.
+  /// Todas las categorías de la tabla, deliberadamente sin acotar al
+  /// viewport actual (ver [BusinessStorageService.getAllCategories]) para
+  /// que los chips no cambien al hacer pan.
   List<String> _categories = const [];
 
-  /// Current camera zoom, tracked from [GoogleMap.onCameraMove] (no
-  /// `setState` there — see that callback) so it's up to date by the time
-  /// [GoogleMap.onCameraIdle] re-clusters once the gesture settles.
+  /// Zoom actual de cámara, actualizado desde [GoogleMap.onCameraMove] (sin
+  /// `setState` ahí) para que esté al día cuando [GoogleMap.onCameraIdle]
+  /// re-agrupa al terminar el gesto.
   double _currentZoom = 13;
 
-  // --- Trip preview mode, Fase 1 (see _startTripPreview) ---
+  // --- Modo de preview de viaje, Fase 1 (ver _startTripPreview) ---
   bool _isPreviewingTrip = false;
   TravelMode _tripMode = TravelMode.driving;
 
-  /// Fixed at the moment "Cómo llegar" is tapped and reused for every mode
-  /// switch during preview — re-reading live GPS on every tap would be
-  /// pointless before the trip has actually started.
+  /// Fijado al tocar "Cómo llegar" y reusado en cada cambio de modo durante
+  /// el preview — releer el GPS en cada tap no tendría sentido antes de que
+  /// el viaje realmente empiece.
   LatLng? _tripOrigin;
 
-  /// True while [_changeTripMode] is re-fetching a route for the newly
-  /// tapped mode — disables the mode selector so a second tap can't fire
-  /// a second request mid-flight.
+  /// True mientras [_changeTripMode] recarga la ruta para el modo recién
+  /// tocado — bloquea el selector para que un segundo tap no dispare otra
+  /// solicitud a mitad de vuelo.
   bool _isChangingTripMode = false;
 
-  // --- Live navigation mode, Fase 2 (see _confirmStartTrip) ---
+  // --- Modo de navegación en vivo, Fase 2 (ver _confirmStartTrip) ---
   bool _isNavigating = false;
   BusinessModel? _navigationTarget;
   DirectionsRoute? _navigationRoute;
 
-  /// Route polyline trimmed down to what's still ahead of the vehicle —
-  /// recomputed on every GPS fix (see [_onPositionUpdate] and
-  /// [nearestRouteIndex]). Falls back to the full route until the first
-  /// fix arrives.
+  /// Polyline de la ruta recortada a lo que falta por recorrer —
+  /// recalculada en cada fix de GPS (ver [_onPositionUpdate] y
+  /// [nearestRouteIndex]). Usa la ruta completa hasta que llega el primer fix.
   List<LatLng>? _remainingRoutePoints;
 
-  /// Furthest route vertex index already confirmed passed — monotonic, so
-  /// a moment of GPS jitter can never make an already-driven stretch of
-  /// the polyline reappear.
+  /// Índice del vértice de ruta más lejano ya confirmado como recorrido —
+  /// monotónico, para que un salto de GPS nunca haga reaparecer un tramo ya
+  /// recorrido de la polyline.
   int _routeTrimIndex = 0;
 
-  /// Index into `_navigationRoute!.steps` of the upcoming maneuver shown
-  /// in [_ManeuverBanner].
+  /// Índice en `_navigationRoute!.steps` de la próxima maniobra mostrada en
+  /// [_ManeuverBanner].
   int _currentStepIndex = 0;
 
-  /// Distance in meters to the current step's maneuver point, recomputed
-  /// on every GPS fix — the "En 80 m" countdown in [_ManeuverBanner].
+  /// Distancia en metros al punto de maniobra del paso actual, recalculada
+  /// en cada fix de GPS — el contador "En 80 m" de [_ManeuverBanner].
   double? _distanceToStepMeters;
 
-  /// Guards the TTS announcement for the *current* step so it fires
-  /// exactly once per maneuver instead of on every GPS fix inside the
-  /// announce radius.
+  /// Evita que el anuncio TTS del paso actual se repita en cada fix de GPS
+  /// dentro del radio de anuncio — debe sonar una sola vez por maniobra.
   bool _announcedCurrentStep = false;
 
-  /// Live speed read straight from the GPS fix (`position.speed`, m/s)
-  /// converted to km/h — [_SpeedometerBadge]'s readout.
+  /// Velocidad en vivo desde el fix de GPS (`position.speed`, m/s)
+  /// convertida a km/h — lectura de [_SpeedometerBadge].
   double? _currentSpeedKmh;
 
-  /// Waze/Google-Maps-style camera follow — true keeps the vehicle pinned
-  /// to the screen center on every GPS fix (see [_onPositionUpdate]).
-  /// Dragging/pinching the map mid-trip (detected via
-  /// [GoogleMap.onCameraMoveStarted] in build(), see
-  /// [_programmaticCameraMoves]) sets this false so the user's manual pan
-  /// sticks instead of snapping back on the next fix; the floating
-  /// "Recentrar" button ([_recenterNavigationCamera]) sets it true again.
+  /// Seguimiento de cámara estilo Waze/Google Maps — true mantiene el
+  /// vehículo fijo al centro en cada fix (ver [_onPositionUpdate]). Arrastrar
+  /// el mapa a mitad de viaje (detectado vía [GoogleMap.onCameraMoveStarted]
+  /// en build(), ver [_programmaticCameraMoves]) lo pone en false para que
+  /// el pan manual no se revierta en el siguiente fix; el botón flotante
+  /// "Recentrar" ([_recenterNavigationCamera]) lo vuelve a poner en true.
   bool _isCameraLocked = true;
 
-  /// Depth counter of in-flight camera animations *we* issued during live
-  /// navigation (see [_animateNavigationCamera]) — while positive,
-  /// [GoogleMap.onCameraMoveStarted] knows the movement it's seeing is our
-  /// own follow-camera update, not the user's gesture, and leaves
-  /// [_isCameraLocked] alone. A counter rather than a bool so two
-  /// overlapping animations (a GPS fix landing mid-animation) can't have
-  /// the first one's completion clear a flag the second one still needs.
+  /// Contador de animaciones de cámara en curso emitidas por nosotros (ver
+  /// [_animateNavigationCamera]) — mientras sea positivo,
+  /// [GoogleMap.onCameraMoveStarted] sabe que el movimiento es nuestro
+  /// seguimiento automático, no un gesto del usuario, y no toca
+  /// [_isCameraLocked]. Es contador y no bool porque dos animaciones
+  /// solapadas (un fix de GPS llega a mitad de una animación) no deben dejar
+  /// que la primera en terminar limpie una bandera que la segunda aún
+  /// necesita.
   int _programmaticCameraMoves = 0;
 
-  /// Meters left along the route from the vehicle's current position,
-  /// recomputed on every GPS fix (see [remainingRouteMeters]) — the
-  /// "3,4 km restantes" readout in [_NavigationPanel]. Null until the first
-  /// fix arrives, when the route's own total distance stands in.
+  /// Metros restantes de ruta desde la posición actual del vehículo,
+  /// recalculado en cada fix de GPS (ver [remainingRouteMeters]) — lectura
+  /// "3,4 km restantes" de [_NavigationPanel]. Null hasta el primer fix.
   double? _remainingMeters;
 
-  /// Voice guidance toggle in [_NavigationPanel] — mutes/unmutes
-  /// [TtsService] announcements without stopping navigation itself.
+  /// Toggle de voz en [_NavigationPanel] — silencia [TtsService] sin
+  /// detener la navegación.
   bool _voiceGuidanceEnabled = false;
   StreamSubscription<Position>? _positionSub;
   late final AnimationController _vehicleLerpController;
@@ -221,9 +205,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   LatLng? _vehicleDisplayPosition;
   double _vehicleDisplayBearing = 0;
 
-  /// Full route while previewing (Fase 1), trimmed down to what's still
-  /// ahead of the vehicle once live navigation starts (Fase 2, see
-  /// [_onPositionUpdate]) — empty outside both modes.
+  /// Ruta completa durante el preview (Fase 1), recortada a lo que falta
+  /// una vez inicia la navegación en vivo (Fase 2, ver [_onPositionUpdate]).
   Set<Polyline> get _polylines {
     final route = _navigationRoute;
     if (route == null || (!_isNavigating && !_isPreviewingTrip)) {
@@ -246,20 +229,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    // Read before subscribing below so consuming the request here doesn't
-    // immediately re-fire _onFocusRequested with what we already took.
+    // Se lee antes de suscribirse para no re-disparar _onFocusRequested con
+    // lo que ya se acaba de tomar.
     _pendingFocus =
         widget.initialFocus ?? MapFocusController().pendingFocus.value;
     MapFocusController().pendingFocus.value = null;
     MapFocusController().pendingFocus.addListener(_onFocusRequested);
     MapFocusController().pendingRoute.addListener(_onRouteRequested);
-    // Businesses created/edited/deleted on THIS device (the wizard bumps
-    // this on save) — so coming back from "Registra tu negocio" shows the
-    // new pin without reopening the map.
+    // Negocios creados/editados/eliminados en ESTE dispositivo (el wizard
+    // incrementa esto al guardar) para que volver de "Registra tu negocio"
+    // muestre el pin nuevo sin reabrir el mapa.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
-    // The realtime subscription for changes made *elsewhere* is opened
-    // after the first successful load instead of here — see
-    // _loadAllBusinessesAndFitCamera.
+    // La suscripción realtime para cambios hechos en otro lugar se abre
+    // tras la primera carga exitosa — ver _loadAllBusinessesAndFitCamera.
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim());
     });
@@ -270,8 +252,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _loadMarkerIcons();
     _locateUser();
     _loadCategories();
-    // The first business fetch happens once the map reports its initial
-    // visible region — see onMapCreated in build().
+    // La primera carga de negocios ocurre cuando el mapa reporta su región
+    // visible inicial — ver onMapCreated en build().
   }
 
   @override
@@ -292,12 +274,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  /// A business was added/edited/deleted from this device — reload the full
-  /// set and refit the camera so the change is visible right away. Skipped
-  /// mid-trip (preview or live): yanking the camera away from a route the
-  /// user is planning or actively following would be worse than showing a
-  /// stale pin, and [_stopNavigation]/[_cancelTripPreview] reload on the
-  /// way out anyway.
+  /// Se agregó/editó/eliminó un negocio desde este dispositivo — recarga y
+  /// reencuadra la cámara. Se omite a mitad de viaje (preview o live): mover
+  /// la cámara lejos de una ruta en curso sería peor que un pin desactualizado,
+  /// y [_stopNavigation]/[_cancelTripPreview] recargan al salir de todos modos.
   void _onBusinessesChanged() {
     if (_isNavigating || _isPreviewingTrip) return;
     unawaited(_loadAllBusinessesAndFitCamera());
@@ -311,22 +291,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// Another screen (today: "Cómo llegar" in `BusinessDetailScreen`) asked
-  /// the map to focus a business.
+  /// Otra pantalla (hoy: "Cómo llegar" en `BusinessDetailScreen`) pidió que
+  /// el mapa enfoque un negocio.
   void _onFocusRequested() {
     final request = MapFocusController().pendingFocus.value;
     if (request == null) return;
-    // Clearing it here also re-enters this listener with null, which the
-    // guard above drops.
+    // Limpiarlo aquí también re-entra a este listener con null, que la
+    // guarda de arriba descarta.
     MapFocusController().pendingFocus.value = null;
     _pendingFocus = request;
-    // Mid-load, _loadAllBusinessesAndFitCamera consumes it when it lands.
+    // Si está cargando, _loadAllBusinessesAndFitCamera lo consume al terminar.
     if (!_isLoading) unawaited(_consumePendingFocus());
   }
 
-  /// Another screen (today: "Cómo llegar" in `EcoDetailScreen`) asked the
-  /// map to start a route preview toward an arbitrary point that isn't a
-  /// registered business.
+  /// Otra pantalla (hoy: "Cómo llegar" en `EcoDetailScreen`) pidió iniciar
+  /// un preview de ruta hacia un punto que no es un negocio registrado.
   void _onRouteRequested() {
     final request = MapFocusController().pendingRoute.value;
     if (request == null) return;
@@ -334,16 +313,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     unawaited(_startTripPreview(_syntheticDestination(request)));
   }
 
-  /// [_startTripPreview] takes a [BusinessModel] because every other "Cómo
-  /// llegar" trigger already has one on hand — rather than generalizing
-  /// the whole trip-preview/live-navigation state (`_navigationTarget` and
-  /// everything downstream of it: marker rendering, [_selectBusiness]'s
-  /// carousel sync, pin category icon) to a smaller shared type, a
-  /// non-eco-coupled route request is adapted into a throwaway
-  /// [BusinessModel] that's never persisted, displayed as a business card,
-  /// or looked up by id — only [BusinessModel.name]/[latitude]/[longitude]
-  /// (and [category], just so the decluttered nav pin picks the eco glyph)
-  /// actually get read during a trip.
+  /// [_startTripPreview] recibe un [BusinessModel] porque todo otro disparador
+  /// de "Cómo llegar" ya tiene uno a mano. En vez de generalizar todo el
+  /// estado de preview/navegación a un tipo compartido más chico, se adapta
+  /// la solicitud de ruta a un [BusinessModel] desechable (nunca persistido
+  /// ni mostrado como card) del que solo se leen name/latitude/longitude
+  /// (y category, para que el pin use el glifo eco).
   BusinessModel _syntheticDestination(MapRouteRequest request) {
     return BusinessModel(
       id: request.destinationId,
@@ -360,17 +335,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Centers and selects [_pendingFocus]'s business — the pin turns gold
-  /// and its carousel card slides in, exactly like a pin tap. Falls back to
-  /// just flying to the coordinates when the business isn't in the loaded
-  /// set (e.g. it was deleted between screens).
+  /// Centra y selecciona el negocio de [_pendingFocus], igual que un tap en
+  /// el pin. Si el negocio ya no está en el set cargado (p. ej. se borró
+  /// entre pantallas), solo vuela a las coordenadas.
   Future<void> _consumePendingFocus() async {
     final request = _pendingFocus;
     if (request == null || _mapController == null) return;
     _pendingFocus = null;
 
-    // A leftover category/search filter could hide the very business we
-    // were asked to show, so the focus request resets both.
+    // Un filtro de categoría/búsqueda residual podría ocultar el negocio
+    // pedido, así que el foco resetea ambos.
     if (_searchQuery.isNotEmpty) _searchController.clear();
     if (_selectedCategory != _kAllCategories) {
       setState(() => _selectedCategory = _kAllCategories);
@@ -391,11 +365,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return null;
   }
 
-  /// The carousel's current target height — expanded (Estado 19b) while a
-  /// card is selected, compact (Estado 19a) otherwise. Drives both the
-  /// carousel's own [AnimatedContainer] and the recenter button's
-  /// [AnimatedPositioned] offset in build(), so neither snaps when a
-  /// selection toggles on or off.
+  /// Altura objetivo del carrusel — expandida (Estado 19b) con card
+  /// seleccionada, compacta (Estado 19a) si no. Alimenta tanto el
+  /// [AnimatedContainer] del carrusel como el offset del botón de
+  /// recentrar, para que ninguno salte al cambiar la selección.
   double get _carouselHeight => _selectedBusinessId == null
       ? _kCarouselCompactHeight
       : _kCarouselExpandedHeight;
@@ -414,11 +387,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         .toList(growable: false);
   }
 
-  /// Renders every pin state — both selected/unselected AND all
-  /// [MapPinCategory] buckets — once as bitmaps — `google_maps_flutter`
-  /// markers can't embed a live Flutter widget like `flutter_map`'s
-  /// `Marker.child` could, so each badge from Pantalla 2b is drawn to a
-  /// canvas instead, matching the same colors/sizes.
+  /// Genera todos los estados de pin (seleccionado/no, por categoría) como
+  /// bitmaps porque `google_maps_flutter` no permite un widget Flutter vivo
+  /// como marker (a diferencia de `flutter_map`'s `Marker.child`), así que
+  /// cada badge de Pantalla 2b se dibuja en un canvas.
   Future<void> _loadMarkerIcons() async {
     final dpr =
         WidgetsBinding
@@ -462,10 +434,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// Bitmap for [category] in the given [selected] state — [_pinIcons]/
-  /// [_pinIconsSelected] falling back to [MapPinCategory.general] if the
-  /// exact bucket somehow isn't ready yet, so a marker is never left
-  /// without an icon while bitmaps are still loading.
+  /// Bitmap de [category] en el estado [selected]; cae a
+  /// [MapPinCategory.general] si esa categoría aún no está lista.
   BitmapDescriptor? _pinBitmapFor(
     MapPinCategory category, {
     required bool selected,
@@ -474,10 +444,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return byCategory[category] ?? byCategory[MapPinCategory.general];
   }
 
-  /// 9+ is folded into one shared bitmap ([_clusterOverflowKey]) instead of
-  /// generating one per exact count — Nikara's business density has no
-  /// realistic scenario with dozens of listings inside one cluster cell,
-  /// so an exact "47" badge isn't worth the extra bitmap generation.
+  /// 9+ se agrupa en un solo bitmap compartido en vez de generar uno por
+  /// conteo exacto — la densidad de negocios de Nikara no justifica un
+  /// badge exacto tipo "47".
   static const _clusterOverflowKey = 10;
 
   static int _clusterIconKey(int count) =>
@@ -537,20 +506,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final picture = recorder.endRecording();
     final image = await picture.toImage(size, size);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // Without imagePixelRatio the platform treats the bitmap as 1:1 device
-    // pixels, so a pin rendered at 3x for sharpness would also draw 3x too
-    // big — this is what keeps the logical sizes above the real on-screen
-    // sizes on every density.
+    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
+    // el tamaño visual del pin al renderizarlo a mayor densidad.
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
       imagePixelRatio: devicePixelRatio,
     );
   }
 
-  /// A small gold navigation "puck" — circle + upward chevron — drawn
-  /// pointing north by default so [Marker.rotation] (bearing, clockwise
-  /// degrees from north) rotates it to match the phone's real heading of
-  /// travel during [_confirmStartTrip]'s live tracking.
+  /// "Puck" de navegación dorado (círculo + flecha) dibujado apuntando al
+  /// norte por defecto, para que [Marker.rotation] lo rote según el rumbo
+  /// real del teléfono durante el tracking en vivo.
   static Future<BitmapDescriptor> _buildVehicleBitmap({
     required double devicePixelRatio,
   }) async {
@@ -595,30 +561,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final picture = recorder.endRecording();
     final image = await picture.toImage(size, size);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // Without imagePixelRatio the platform treats the bitmap as 1:1 device
-    // pixels, so a pin rendered at 3x for sharpness would also draw 3x too
-    // big — this is what keeps the logical sizes above the real on-screen
-    // sizes on every density.
+    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
+    // el tamaño visual del pin al renderizarlo a mayor densidad.
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
       imagePixelRatio: devicePixelRatio,
     );
   }
 
-  /// Inactive pin (Estado 19a): a white circle ringed and glyphed in the
-  /// business's [MapPinCategory] accent color (see [mapPinColor]).
+  /// Pin inactivo (Estado 19a): círculo blanco con anillo y glifo en el
+  /// color de acento de [MapPinCategory] (ver [mapPinColor]).
   static const double _kPinDiameter = 34;
 
-  /// Selected pin (Estado 19b): a bigger gold circle plus a pointer tail,
-  /// so the active business reads as a real "pin" planted on its exact
-  /// coordinate instead of just a recolored dot.
+  /// Pin seleccionado (Estado 19b): círculo dorado más grande con cola,
+  /// para que el negocio activo se lea como un pin real clavado en su
+  /// coordenada y no solo un punto recoloreado.
   static const double _kSelectedPinDiameter = 42;
   static const double _kSelectedPinTail = 11;
   static const double _kSelectedPinHeight =
       _kSelectedPinDiameter + _kSelectedPinTail;
 
-  /// Anchors the selected pin by its tail tip (the tail ends 1.5 logical px
-  /// above the bitmap's bottom edge, leaving room for its blur).
+  /// Ancla el pin seleccionado por la punta de la cola (termina 1.5px
+  /// lógicos arriba del borde inferior, dejando espacio para el blur).
   static const Offset _kSelectedPinAnchor = Offset(
     0.5,
     (_kSelectedPinHeight - 1.5) / _kSelectedPinHeight,
@@ -646,7 +610,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final radius = logicalWidth / 2 - 2.5;
 
     if (selected) {
-      // Drawn before the circle so the circle covers where the two meet.
+      // Se dibuja antes que el círculo para que este cubra la unión.
       final tail = Path()
         ..moveTo(center.dx - radius * 0.46, center.dy + radius * 0.7)
         ..lineTo(center.dx, logicalHeight - 1.5)
@@ -679,10 +643,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       center,
       radius,
       Paint()
-        // Selected pins keep a neutral gold-on-cream ring regardless of
-        // category — gold fill already reads as "selected" on its own.
-        // Unselected pins ring in the category's own accent color, so its
-        // color is legible even before the tiny glyph inside is.
+        // El pin seleccionado usa siempre un anillo neutro dorado/crema (el
+        // relleno dorado ya comunica "seleccionado"); el no seleccionado usa
+        // el color de acento de su categoría para ser legible sin depender
+        // del glifo.
         ..color = selected ? AppColors.surface100 : accentColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5,
@@ -707,30 +671,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final picture = recorder.endRecording();
     final image = await picture.toImage(width, height);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // Without imagePixelRatio the platform treats the bitmap as 1:1 device
-    // pixels, so a pin rendered at 3x for sharpness would also draw 3x too
-    // big — this is what keeps the logical sizes above the real on-screen
-    // sizes on every density.
+    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
+    // el tamaño visual del pin al renderizarlo a mayor densidad.
     return BitmapDescriptor.bytes(
       bytes!.buffer.asUint8List(),
       imagePixelRatio: devicePixelRatio,
     );
   }
 
-  /// Smoothly flies the camera to [target].
   Future<void> _animateCameraTo(LatLng target, {double zoom = 16}) async {
     await _mapController?.animateCamera(
       CameraUpdate.newLatLngZoom(target, zoom),
     );
   }
 
-  /// Best-effort: centers the map on the device's current position and
-  /// records it for the "a X km" distance shown in [_BusinessPreviewSheet].
-  /// Any failure along the way (location services off, permission denied,
-  /// timeout) is swallowed silently — the map just stays on the Managua
-  /// fallback, exactly like before. Goes through [LocationService] so Home
-  /// and Map share one cached position instead of each prompting for
-  /// permission separately.
+  /// Centra el mapa en la posición actual y la guarda para el "a X km" de
+  /// [_BusinessPreviewSheet]. Cualquier falla (GPS apagado, permiso
+  /// denegado, timeout) se ignora silenciosamente y el mapa se queda en el
+  /// fallback de Managua. Usa [LocationService] para que Home y Mapa
+  /// compartan una posición cacheada en vez de pedir permiso cada uno.
   Future<void> _locateUser({bool animate = false}) async {
     setState(() => _locatingUser = true);
     try {
@@ -740,8 +699,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       if (!mounted || position == null) return;
       setState(() {
         _userPosition = position;
-        // While navigating, the vehicle puck IS the user marker — turning
-        // Google's blue dot back on here would draw a second one.
+        // Durante la navegación el puck del vehículo YA es el marcador de
+        // usuario — activar el punto azul de Google dibujaría un segundo.
         _myLocationEnabled = !_isNavigating;
       });
       final here = LatLng(position.latitude, position.longitude);
@@ -755,17 +714,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Fetched once, independent of the viewport — see
-  /// [BusinessStorageService.getAllCategories]'s doc comment for why.
   Future<void> _loadCategories() async {
     try {
       final categories = await _businessStorageService.getAllCategories();
       if (!mounted) return;
       setState(() => _categories = categories);
     } on BusinessServiceException {
-      // Non-fatal — the chip row just falls back to only "Todos" until the
-      // next successful load; _loadBusinessesInViewport below is what
-      // surfaces a real error overlay/retry for actual connectivity issues.
+      // No fatal — los chips solo caen a "Todos" hasta el próximo load
+      // exitoso; _loadBusinessesInViewport es quien muestra el error real.
     }
   }
 
@@ -774,20 +730,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _loadAllBusinessesAndFitCamera();
   }
 
-  /// Fetches only what's inside the current camera viewport (padded by
-  /// [_kViewportPadding] so a small pan doesn't immediately show empty
-  /// edges) via [BusinessStorageService.getBusinessesInBounds] — called on
-  /// every [GoogleMap.onCameraIdle] (see build()), so panning/zooming only
-  /// ever downloads what's actually near what's on screen instead of the
-  /// whole `businesses` table.
+  /// Trae solo lo que está dentro del viewport actual (con margen
+  /// [_kViewportPadding]) en cada [GoogleMap.onCameraIdle], para no
+  /// descargar la tabla `businesses` completa al hacer pan/zoom.
   ///
-  /// Results are *merged* into [_businesses] rather than replacing it: a
-  /// viewport fetch is an incremental "load what's new here", so zooming
-  /// into one pin must not make every other pin (and its carousel card)
-  /// disappear. [_loadAllBusinessesAndFitCamera] is the one that replaces
-  /// the set outright, which is also what drops businesses deleted
-  /// elsewhere. It's likewise silent — no full-screen spinner and no error
-  /// overlay for a background top-up that leaves the current pins intact.
+  /// Los resultados se *fusionan* en [_businesses] en vez de reemplazarlo:
+  /// es una carga incremental, así que hacer zoom en un pin no debe hacer
+  /// desaparecer los demás. [_loadAllBusinessesAndFitCamera] es quien
+  /// reemplaza el set completo (y así refleja negocios borrados en otro
+  /// lado). Es silencioso a propósito: sin spinner ni overlay de error para
+  /// un refresco de fondo que no afecta los pines ya visibles.
   Future<void> _loadBusinessesInViewport() async {
     final controller = _mapController;
     if (controller == null) return;
@@ -806,8 +758,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         for (final business in _businesses) business.id: business,
       };
       for (final business in businesses) {
-        // A business without coordinates can't be pinned — defensive only,
-        // since `businesses.location` is a NOT NULL column.
+        // Defensivo solamente: `businesses.location` es NOT NULL, pero sin
+        // coordenadas no se puede anclar un pin.
         if (business.latitude == null || business.longitude == null) continue;
         merged[business.id] = business;
       }
@@ -821,10 +773,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Expands a bounds box by [factor] on every side (e.g. 0.3 = 30% wider
-  /// and taller) so businesses just outside the exact visible edge are
-  /// already loaded by the time a small pan reveals them, instead of every
-  /// pan needing its own round-trip before pins appear.
+  /// Expande el bounds por [factor] en cada lado para que negocios justo
+  /// fuera del borde visible ya estén cargados cuando un pan pequeño los
+  /// revele, sin esperar un round-trip por cada pan.
   static LatLngBounds _paddedBounds(
     LatLngBounds bounds, {
     double factor = 0.3,
@@ -845,14 +796,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Selects [business] — highlights its pin, flies the camera to it, and
-  /// pages the carousel to its "Recomendaciones destacadas" card, which
-  /// expands into this business's floating info card (Estado 19b). The
-  /// single entry point for every "focus this business" trigger: a marker
-  /// tap (via [_onMarkerTapped]), a direct carousel card tap (via
-  /// [_onCarouselCardTapped]), or submitting a search. Deliberately NOT
-  /// triggered by just scrolling the carousel — swiping through cards
-  /// browses them without moving the map, only tapping one commits to it.
+  /// Punto de entrada único para "enfocar este negocio": tap en marker, tap
+  /// en card del carrusel, o búsqueda. Deliberadamente NO se dispara solo
+  /// con el scroll del carrusel — deslizar solo hojea, tocar confirma.
   Future<void> _selectBusiness(BusinessModel business) async {
     setState(() => _selectedBusinessId = business.id);
     unawaited(
@@ -860,10 +806,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
     final index = _filteredBusinesses.indexWhere((b) => b.id == business.id);
     if (index == -1) return;
-    // The carousel isn't attached yet on the very first frames — the case
-    // an external focus request (see [_consumePendingFocus]) lands in. Jump
-    // to the card as soon as it exists instead of leaving it on the first
-    // business while a different pin shows as selected.
+    // El carrusel aún no está montado en los primeros frames — caso de una
+    // solicitud de foco externa (ver [_consumePendingFocus]). Salta a la
+    // card en cuanto exista.
     if (!_carouselController.hasClients) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -881,15 +826,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Direct pin tap (as opposed to a carousel card tap or search): syncs
-  /// the selection like any other trigger, AND additionally opens a
-  /// Google-Maps-style bottom sheet with that business's full details —
-  /// the behavior split Estado 19b asks for: tapping a card just moves the
-  /// camera and expands its own floating card, but tapping a pin on the
-  /// map opens a dedicated detail panel. Tapping the pin that's *already*
-  /// selected instead toggles it back off — same deselect this mirrors in
-  /// [_onCarouselCardTapped] — rather than reopening the sheet on top of
-  /// itself.
+  /// Tap directo en pin (vs. card o búsqueda): además de seleccionar, abre
+  /// un bottom sheet estilo Google Maps con el detalle — Estado 19b separa
+  /// ambos comportamientos (card solo mueve cámara, pin abre panel). Tocar
+  /// el pin ya seleccionado lo deselecciona en vez de reabrir el sheet.
   Future<void> _onMarkerTapped(BusinessModel business) async {
     if (business.id == _selectedBusinessId) {
       setState(() => _selectedBusinessId = null);
@@ -900,12 +840,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _showBusinessSheet(business);
   }
 
-  /// Tapping the carousel's expanded (already-selected) card, or any
-  /// compact one, toggles that business's selection — the mirror of
-  /// [_onMarkerTapped]'s pin-tap toggle. Selecting flies the camera and
-  /// expands the card (Estado 19b); re-tapping the same card deselects it,
-  /// collapsing every card in the carousel back to Estado 19a without
-  /// moving the camera or the current scroll position.
+  /// Espejo del toggle de [_onMarkerTapped] pero para cards del carrusel:
+  /// re-tocar la card ya seleccionada la deselecciona (colapsa a Estado
+  /// 19a) sin mover cámara ni el scroll.
   void _onCarouselCardTapped(BusinessModel business) {
     if (business.id == _selectedBusinessId) {
       setState(() => _selectedBusinessId = null);
@@ -914,10 +851,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     unawaited(_selectBusiness(business));
   }
 
-  /// The sheet itself reuses [_BusinessCarouselCard] unchanged — it already
-  /// renders exactly what's asked for (foto, nombre, rating, badges, "Cómo
-  /// llegar", "Ver perfil") — wrapped in [_PinDetailSheetChrome]'s rounded
-  /// top + drag handle instead of duplicating that layout.
+  /// Reusa [_BusinessCarouselCard] tal cual dentro del chrome de
+  /// [_PinDetailSheetChrome] en vez de duplicar ese layout.
   Future<void> _showBusinessSheet(BusinessModel business) {
     return showModalBottomSheet<void>(
       context: context,
@@ -948,9 +883,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Pages the carousel to [index] without moving the camera — used to
-  /// reset scroll position (e.g. [_onCategorySelected]) or to catch up to
-  /// a selection made before the carousel existed (see [_selectBusiness]).
   void _jumpCarouselTo(int index) {
     if (!_carouselController.hasClients) return;
     _carouselController.jumpToPage(index);
@@ -963,33 +895,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _selectBusiness(matches.first);
   }
 
-  /// Chip row (Estado 19a) — filters the pins *and* the carousel, then
-  /// refits the camera to whatever is left so the new selection is framed
-  /// on screen instead of leaving the user zoomed in on a filtered-out area.
+  /// Chips (Estado 19a): filtran pines y carrusel, y reencuadran la cámara
+  /// a lo que queda visible.
   void _onCategorySelected(String category) {
     setState(() {
       _selectedCategory = category;
-      // A business the new filter hides can't stay the selected pin.
+      // Un negocio que el nuevo filtro oculta no puede seguir seleccionado.
       final stillVisible = _filteredBusinesses.any(
         (b) => b.id == _selectedBusinessId,
       );
       if (!stillVisible) _selectedBusinessId = null;
     });
-    // The carousel now holds a different (usually shorter) list, so its
-    // current page would point at an unrelated business.
+    // La lista del carrusel cambió, así que la página actual apuntaría a
+    // un negocio distinto.
     _jumpCarouselTo(0);
     unawaited(_fitCameraToBusinesses(_filteredBusinesses));
   }
 
-  /// Initial load (and reload on map creation): fetches every business
-  /// within [_kMapBounds] — the same hard limit the camera itself can
-  /// never pan past — rather than just the freshly-created map's tiny
-  /// initial viewport, so [_fitCameraToBusinesses] below has the complete
-  /// set to fit the camera to. At real scale (hundreds+ of businesses)
-  /// this should narrow to something like "nearby cities only" instead of
-  /// literally all of Nicaragua; today's business count doesn't justify
-  /// that complexity yet. [_loadBusinessesInViewport] takes back over for
-  /// every pan/zoom after this first fit.
+  /// Carga inicial: trae todos los negocios dentro de [_kMapBounds] (no solo
+  /// el viewport inicial) para que [_fitCameraToBusinesses] tenga el set
+  /// completo. A escala real (cientos+ de negocios) esto debería acotarse a
+  /// "ciudades cercanas"; hoy no se justifica esa complejidad.
+  /// [_loadBusinessesInViewport] toma el control en cada pan/zoom posterior.
   Future<void> _loadAllBusinessesAndFitCamera() async {
     setState(() {
       _isLoading = true;
@@ -1007,21 +934,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _businesses = businesses
             .where((b) => b.latitude != null && b.longitude != null)
             .toList(growable: false);
-        // A business that disappeared from the table can't stay selected.
+        // Un negocio que desapareció de la tabla no puede seguir seleccionado.
         if (_businessById(_selectedBusinessId ?? '') == null) {
           _selectedBusinessId = null;
         }
         _isLoading = false;
       });
-      // Only once the map has really talked to Supabase — no point holding
-      // a realtime socket open for a screen that never managed to load
-      // (and it keeps widget tests, which never reach this code, free of a
-      // live connection they'd have to tear down).
+      // Solo se abre tras el primer load exitoso — evita mantener un socket
+      // realtime en pantallas que nunca cargaron (y deja a los widget tests,
+      // que no llegan aquí, sin una conexión viva que cerrar).
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onRemoteBusinessesChanged);
-      // A pending "open the map at this business" request wins over the
-      // fit-everything framing — otherwise the camera would fit all pins
-      // and then immediately fly off to the requested one.
+      // Una solicitud de foco pendiente gana sobre el encuadre general —
+      // si no, la cámara encuadraría todo y luego volaría al pin pedido.
       if (_pendingFocus != null) {
         await _consumePendingFocus();
         return;
@@ -1036,11 +961,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Animates the camera so every business in [businesses] is on screen —
-  /// via [_boundsForPoints], the same bounds-fit helper navigation and
-  /// cluster taps already use — called after the initial load and
-  /// whenever the category filter changes. Falls back to the default
-  /// Managua view when there's nothing to fit (e.g. an empty category).
+  /// Encuadra la cámara sobre todos los [businesses] vía [_boundsForPoints].
+  /// Cae al centro por defecto de Managua si no hay nada que encuadrar.
   Future<void> _fitCameraToBusinesses(List<BusinessModel> businesses) async {
     final controller = _mapController;
     if (controller == null) return;
@@ -1069,18 +991,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// "Cómo llegar" — Fase 1: fetches the device's current position and a
-  /// real driving route (following the actual street network, never a
-  /// straight line) to [business] via [DirectionsService], then enters
-  /// route-preview mode instead of starting the trip immediately: the
-  /// camera frames origin + destination + the full route
-  /// ([_fitTripPreviewCamera]), a top selector lets the user switch modes
-  /// ([_changeTripMode]), and a bottom panel shows distance/ETA/hora de
-  /// llegada with the "Iniciar viaje" button that hands off to live
-  /// navigation (see [_confirmStartTrip]). If a real route can't be
-  /// fetched (no Directions key configured, no network, no result), this
-  /// shows the specific reason in a snackbar and stays on the exploration
-  /// map instead of ever drawing a fabricated route.
+  /// "Cómo llegar" — Fase 1: pide la posición actual y una ruta real (nunca
+  /// una línea recta) vía [DirectionsService], y entra en modo preview en
+  /// vez de arrancar el viaje de inmediato (cámara encuadra origen+destino+
+  /// ruta, selector de modo, panel de distancia/ETA — ver
+  /// [_confirmStartTrip] para Fase 2). Si no se puede obtener una ruta real
+  /// (sin key, sin red, sin resultado), muestra la razón en un snackbar y
+  /// nunca dibuja una ruta inventada.
   Future<void> _startTripPreview(BusinessModel business) async {
     debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
     final lat = business.latitude;
@@ -1124,18 +1041,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _navigationRoute = route;
       _selectedBusinessId = business.id;
     });
-    // Hides MainLayout's bottom navigation bar for both trip phases — the
-    // carousel and the top search chrome hide themselves off
-    // `_isPreviewingTrip`/`_isNavigating` in build(), so the preview/live
-    // floating chrome is the only thing left.
+    // Oculta el bottom nav de MainLayout durante ambas fases del viaje —
+    // carrusel y chrome de búsqueda ya se ocultan solos en build() según
+    // `_isPreviewingTrip`/`_isNavigating`.
     MapFocusController().navigationActive.value = true;
     await _fitTripPreviewCamera();
   }
 
-  /// Shared by [_startTripPreview] and [_changeTripMode] — wraps
-  /// [DirectionsService.getRoute] with the friendly-snackbar-on-failure
-  /// behavior both need, returning `null` (instead of throwing) so callers
-  /// just check for that instead of duplicating a try/catch each.
+  /// Compartido por [_startTripPreview] y [_changeTripMode] — envuelve
+  /// [DirectionsService.getRoute] mostrando el snackbar de error y
+  /// devuelve `null` en vez de lanzar, para no duplicar el try/catch.
   Future<DirectionsRoute?> _fetchTripRoute({
     required LatLng origin,
     required LatLng destination,
@@ -1157,11 +1072,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// Fits the camera to origin + destination + the full route polyline via
-  /// [CameraUpdate.newLatLngBounds] (Fase 1's explicit spec) rather than
-  /// just the route's own points, so the user's current position and the
-  /// destination pin both stay inside the frame even if Directions'
-  /// `overview_polyline` starts/ends a few meters short of either.
+  /// Encuadra origen + destino + la polyline completa (no solo los puntos
+  /// de la ruta), para que ambos pines queden dentro del frame aunque el
+  /// `overview_polyline` de Directions empiece/termine unos metros corto.
   Future<void> _fitTripPreviewCamera() async {
     final origin = _tripOrigin;
     final target = _navigationTarget;
@@ -1176,11 +1089,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Mode-selector tap during preview — re-fetches the route for [mode]
-  /// from the same [_tripOrigin] and re-fits the camera without leaving
-  /// preview. A failed re-fetch leaves the previously-loaded route/mode on
-  /// screen rather than clearing it, so a flaky request doesn't strand the
-  /// preview with nothing drawn.
+  /// Tap en el selector de modo durante el preview — si la recarga falla,
+  /// deja la ruta/modo anterior en pantalla en vez de limpiarlo, para que
+  /// una solicitud fallida no deje el preview sin nada dibujado.
   Future<void> _changeTripMode(TravelMode mode) async {
     if (mode == _tripMode || _isChangingTripMode) return;
     final origin = _tripOrigin;
@@ -1205,10 +1116,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     await _fitTripPreviewCamera();
   }
 
-  /// "Iniciar viaje" — Fase 1 -> Fase 2: leaves preview and starts live GPS
-  /// navigation along the route already loaded for whichever [_tripMode]
-  /// the user landed on, tilting the camera into a driving view and
-  /// opening the position stream that drives [_onPositionUpdate].
+  /// "Iniciar viaje" — Fase 1 -> Fase 2: inicia navegación GPS en vivo con
+  /// la ruta ya cargada, inclina la cámara a vista de manejo y abre el
+  /// stream de posición que alimenta [_onPositionUpdate].
   Future<void> _confirmStartTrip() async {
     final origin = _tripOrigin;
     final route = _navigationRoute;
@@ -1236,13 +1146,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _currentSpeedKmh = null;
       _vehicleDisplayPosition = origin;
       _vehicleDisplayBearing = initialBearing;
-      // The custom vehicle puck below replaces Google's own blue dot —
-      // both on at once would show two overlapping user markers.
+      // El puck del vehículo reemplaza al punto azul de Google — ambos a
+      // la vez mostrarían dos marcadores de usuario superpuestos.
       _myLocationEnabled = false;
     });
 
-    // Immediate 3D driving transition — _onPositionUpdate takes over
-    // framing the camera from the first real GPS fix onward.
+    // Transición 3D inmediata — _onPositionUpdate toma el control del
+    // encuadre desde el primer fix de GPS real.
     await _animateNavigationCamera(
       CameraPosition(
         target: origin,
@@ -1265,9 +1175,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     ).listen(_onPositionUpdate);
   }
 
-  /// Backs out of route preview (Fase 1) without ever starting a live
-  /// trip — the preview-phase mirror of [_stopNavigation], dropping back
-  /// to free exploration with the destination still selected.
+  /// Sale del preview (Fase 1) sin llegar a iniciar el viaje — el espejo
+  /// de [_stopNavigation] para esta fase.
   Future<void> _cancelTripPreview() async {
     MapFocusController().navigationActive.value = false;
     final target = _navigationTarget;
@@ -1281,9 +1190,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (target != null) await _selectBusiness(target);
   }
 
-  /// "Cancelar viaje" — clears the route and drops back to Estado 19a/19b
-  /// with the destination still selected, so the user lands back on that
-  /// business's card instead of on a blank map.
+  /// "Cancelar viaje" — limpia la ruta y vuelve a Estado 19a/19b con el
+  /// destino aún seleccionado, para no dejar un mapa en blanco.
   Future<void> _stopNavigation() async {
     await _positionSub?.cancel();
     _positionSub = null;
@@ -1312,17 +1220,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (target != null) await _selectBusiness(target);
   }
 
-  /// Camera zoom/tilt for live navigation's Waze/Google-Maps-style driving
-  /// view — the initial transition in [_confirmStartTrip], every
-  /// GPS-follow update in [_onPositionUpdate], and [_recenterNavigationCamera]
-  /// all frame the vehicle the exact same way.
+  /// Zoom/tilt de cámara para la vista de manejo estilo Waze — usado por
+  /// la transición inicial, el seguimiento GPS y "Recentrar" por igual.
   static const double _kNavCameraZoom = 17.5;
   static const double _kNavCameraTilt = 50;
 
-  /// Wraps every camera animation issued *during live navigation* so
-  /// [GoogleMap.onCameraMoveStarted] (see build()) can tell our own
-  /// periodic GPS-follow updates apart from the user actually dragging the
-  /// map — only the latter should flip [_isCameraLocked] off.
+  /// Envuelve toda animación de cámara emitida durante navegación en vivo
+  /// para que [GoogleMap.onCameraMoveStarted] distinga nuestras
+  /// actualizaciones de seguimiento del arrastre real del usuario — solo
+  /// este último debe apagar [_isCameraLocked].
   Future<void> _animateNavigationCamera(CameraPosition position) async {
     _programmaticCameraMoves++;
     try {
@@ -1334,9 +1240,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// The live-nav "Recentrar" button — re-locks the camera to the vehicle
-  /// and glides it back into the standard driving frame, mirroring
-  /// whatever bearing the puck is already facing.
   Future<void> _recenterNavigationCamera() async {
     setState(() => _isCameraLocked = true);
     final position = _vehicleDisplayPosition;
@@ -1368,23 +1271,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Distance to a step's maneuver point below which its TTS instruction
-  /// is announced (see [_onPositionUpdate]).
+  /// Distancia al punto de maniobra bajo la cual se anuncia por TTS.
   static const double _kManeuverAnnounceMeters = 80;
 
-  /// Distance to a step's maneuver point below which it's considered
-  /// reached — [_onPositionUpdate] advances the banner to the next step.
+  /// Distancia bajo la cual una maniobra se considera alcanzada y
+  /// [_onPositionUpdate] avanza al siguiente paso.
   static const double _kManeuverAdvanceMeters = 25;
 
-  /// Fires on every raw GPS fix while navigating — computes the real
-  /// movement bearing (not the phone's compass heading, which drifts and
-  /// jumps a lot more) from the last displayed position, then animates
-  /// [_vehicleDisplayPosition]/[_vehicleDisplayBearing] toward the new fix
-  /// over [_vehicleLerpController]'s duration instead of snapping straight
-  /// to it, so the puck glides smoothly between updates like a real
-  /// turn-by-turn app instead of jittering. Also trims the drawn route
-  /// down to what's ahead of the vehicle, advances/announces the upcoming
-  /// maneuver, and updates the speedometer.
+  /// Se dispara en cada fix de GPS: calcula el rumbo por movimiento real
+  /// (no la brújula del teléfono, que salta mucho más) y anima el puck
+  /// suavemente hacia la nueva posición en vez de saltar de golpe. También
+  /// recorta la ruta dibujada, avanza/anuncia la maniobra y actualiza el
+  /// velocímetro.
   void _onPositionUpdate(Position position) {
     final newPos = LatLng(position.latitude, position.longitude);
     final previous = _vehicleDisplayPosition;
@@ -1396,8 +1294,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         newPos.latitude,
         newPos.longitude,
       );
-      // Below this, GPS noise makes the bearing meaningless — keep facing
-      // whichever way the puck was already facing instead of jittering.
+      // Por debajo de esto, el ruido del GPS hace inútil el rumbo — se
+      // mantiene la orientación previa del puck en vez de tembloriquear.
       if (movedMeters > 3) {
         final raw = Geolocator.bearingBetween(
           previous.latitude,
@@ -1468,12 +1366,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       });
     }
 
-    // Follows the vehicle with the map turned in the direction of travel
-    // and tilted, the way a turn-by-turn view reads — not the flat
-    // north-up frame the exploration states use. Skipped once the user has
-    // dragged the map away (see [_isCameraLocked]/`onCameraMoveStarted` in
-    // build()): the next fix would otherwise instantly snap their manual
-    // pan back to the vehicle.
+    // Sigue al vehículo con el mapa orientado hacia el rumbo e inclinado,
+    // como una vista turn-by-turn. Se omite si el usuario ya arrastró el
+    // mapa (ver [_isCameraLocked]) para no revertir su pan manual.
     if (_isCameraLocked) {
       unawaited(
         _animateNavigationCamera(
@@ -1488,11 +1383,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
-  /// ETA for what's *left* of the trip: the route's total duration scaled
-  /// by the fraction of its distance still ahead. Deliberately derived from
-  /// the one Directions call made when navigation started — a truly live
-  /// ETA would mean re-requesting a route on every GPS fix, far past what
-  /// this MVP's single-call approach covers.
+  /// ETA de lo que falta: duración total de la ruta escalada por la
+  /// fracción de distancia restante. Deliberadamente derivada de la única
+  /// llamada a Directions al iniciar — un ETA realmente en vivo implicaría
+  /// re-pedir ruta en cada fix de GPS, fuera del alcance de este MVP.
   String get _remainingEtaLabel {
     final route = _navigationRoute;
     if (route == null) return '';
@@ -1515,7 +1409,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         : '${km.toStringAsFixed(1)} km restantes';
   }
 
-  /// Trip preview's (Fase 1) total distance readout, e.g. "4.3 km"/"850 m".
   String get _tripPreviewDistanceLabel {
     final route = _navigationRoute;
     if (route == null) return '';
@@ -1524,9 +1417,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         : '${route.distanceKm.toStringAsFixed(1)} km';
   }
 
-  /// Trip preview's (Fase 1) estimated clock-time arrival, e.g. "14:32" —
-  /// `DateTime.now()` plus the route's total duration. Recomputed on every
-  /// build (not cached), same as [_remainingEtaLabel]/[_tripPreviewDistanceLabel].
+  /// Hora estimada de llegada (`DateTime.now()` + duración de la ruta),
+  /// recalculada en cada build, no cacheada.
   String get _tripPreviewArrivalLabel {
     final route = _navigationRoute;
     if (route == null) return '';
@@ -1537,7 +1429,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         '${arrival.minute.toString().padLeft(2, '0')}';
   }
 
-  /// Live navigation's (Fase 2) maneuver banner countdown, e.g. "En 350 m".
   String get _maneuverDistanceLabel {
     final meters = _distanceToStepMeters;
     if (meters == null) return '';
@@ -1561,10 +1452,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// Angular delta (in [-180, 180]) to rotate [from] by to reach [to] the
-  /// short way around the compass — without this, animating e.g. 350° ->
-  /// 10° would spin the puck almost all the way around instead of just
-  /// past north.
+  /// Delta angular ([-180, 180]) por el camino corto — sin esto, animar
+  /// 350° -> 10° giraría el puck casi una vuelta completa en vez de solo
+  /// cruzar el norte.
   static double _shortestBearingDelta(double from, double to) {
     var delta = (to - from) % 360;
     if (delta > 180) delta -= 360;
@@ -1573,8 +1463,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Set<Marker> _buildMarkers(List<BusinessModel> businesses) {
-    // Bitmaps for MapPinCategory.general (the fallback every other bucket
-    // also falls back to — see _pinBitmapFor) haven't loaded yet.
+    // Los bitmaps de MapPinCategory.general (fallback de todos los demás,
+    // ver _pinBitmapFor) aún no cargan.
     if (_pinIcons[MapPinCategory.general] == null ||
         _pinIconsSelected[MapPinCategory.general] == null) {
       return const {};
@@ -1582,11 +1472,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
     final markers = <Marker>{};
 
-    // Decluttered during both trip phases — only the destination pin (plus
-    // the vehicle puck below, once live) stays on screen, so the preview's
-    // bounds-fit camera and the live turn-by-turn view aren't cluttered
-    // with unrelated pins. No clustering needed either: it's always
-    // exactly one pin.
+    // Durante ambas fases de viaje solo queda el pin de destino (más el
+    // puck del vehículo si es en vivo) — sin clustering, siempre es un
+    // único pin.
     final target = _navigationTarget;
     if ((_isNavigating || _isPreviewingTrip) && target != null) {
       final icon = _pinBitmapFor(
@@ -1621,28 +1509,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             mapPinCategoryFor(business.category),
             selected: isSelected,
           );
-          if (icon == null) continue; // Bitmaps still loading.
+          if (icon == null) continue; // Bitmap aún no cargado.
           markers.add(
             Marker(
               markerId: MarkerId(business.id),
               position: cluster.position,
               icon: icon,
-              // The selected pin is anchored by its tail tip, the plain
-              // circles by their center.
+              // El pin seleccionado se ancla por la punta de su cola, los
+              // demás por su centro.
               anchor: isSelected ? _kSelectedPinAnchor : const Offset(0.5, 0.5),
-              // Above its neighbours, so a selected pin standing among
-              // close-together ones is never half-covered by them.
+              // Por encima de sus vecinos para no quedar tapado entre pines
+              // muy juntos.
               zIndexInt: isSelected ? 2 : 0,
-              // A direct pin tap both selects (camera + carousel sync,
-              // same as any other selection trigger) AND opens the
-              // Google-Maps-style detail sheet — see _onMarkerTapped.
               onTap: () => _onMarkerTapped(business),
             ),
           );
         } else {
           final icon = _clusterIcons[_clusterIconKey(cluster.count)];
           if (icon == null) {
-            continue; // Bitmaps still loading — skip this frame.
+            continue; // Bitmap aún no cargado — se omite este frame.
           }
           markers.add(
             Marker(
@@ -1679,12 +1564,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return markers;
   }
 
-  /// Tapping a cluster badge zooms/pans to fit exactly its members'
-  /// bounds — reuses [_boundsForPoints], the same helper
-  /// [_fitTripPreviewCamera] uses to fit a route — rather than a blind
-  /// fixed zoom-in step, so a
-  /// cluster of 2 close-together pins and one of 9 scattered pins each
-  /// resolve in one tap instead of sometimes needing a second.
+  /// Encuadra la cámara a los bordes exactos de los miembros del cluster
+  /// (en vez de un zoom fijo) para que se resuelva en un solo tap sin
+  /// importar qué tan dispersos estén.
   Future<void> _onClusterTap(MapCluster cluster) async {
     final points = [
       for (final business in cluster.businesses)
@@ -1706,32 +1588,27 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Edge-to-edge real map: fills the entire screen, including
-          // behind the status bar. Only the floating UI below respects
-          // SafeArea, per Pantalla 2b's "map first" layout.
+          // Mapa a pantalla completa, incluso detrás del status bar; solo
+          // el chrome flotante respeta SafeArea (layout "map first" de
+          // Pantalla 2b).
           GoogleMap(
             initialCameraPosition: const CameraPosition(
               target: _kDefaultMapCenter,
               zoom: 13,
             ),
-            // Hides Google's native POI/transit icons and retints the base
-            // map into the app's cream/sand palette — see map_style.dart.
+            // Oculta los íconos nativos de POI/transporte de Google y
+            // retiñe el mapa a la paleta crema/arena — ver map_style.dart.
             style: nikaraMapStyle,
             onMapCreated: _onMapCreated,
-            // No setState here deliberately — during a drag/pinch this can
-            // fire many times a second, and rebuilding the whole screen on
-            // every frame just to re-cluster isn't worth it. It only
-            // records the zoom so the re-cluster/re-fetch triggered by
-            // onCameraIdle below (which does setState) uses an up-to-date
-            // value once the gesture actually settles.
+            // Sin setState aquí a propósito: durante un drag/pinch esto
+            // puede dispararse muchas veces por segundo. Solo guarda el
+            // zoom para que onCameraIdle (que sí hace setState) lo use al
+            // asentarse el gesto.
             onCameraMove: (position) => _currentZoom = position.zoom,
-            // Waze/Google-Maps-style camera lock (see _isCameraLocked):
-            // this fires for BOTH the user dragging/pinching the map AND
-            // our own periodic GPS-follow `animateCamera` calls, so
-            // `_programmaticCameraMoves` (incremented for the duration of
-            // every call we issue — see _animateNavigationCamera) is what
-            // tells them apart. Only an actual user gesture mid-trip
-            // unlocks the camera.
+            // Este callback dispara tanto por gestos del usuario como por
+            // nuestras propias animaciones de seguimiento GPS;
+            // `_programmaticCameraMoves` distingue ambos casos — solo un
+            // gesto real de usuario debe desbloquear la cámara.
             onCameraMoveStarted: () {
               if (_isNavigating &&
                   _isCameraLocked &&
@@ -1739,28 +1616,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 setState(() => _isCameraLocked = false);
               }
             },
-            // Skipped while navigating: the camera moves on every GPS fix
-            // there, and each of those settling into a viewport re-fetch
-            // would be a request per fix for pins that are hidden anyway.
-            // Also skipped mid-preview, whose bounds-fit camera moves
-            // (initial fit, mode switches) aren't the user panning around.
+            // Se omite navegando (la cámara se mueve en cada fix de GPS, y
+            // recargar el viewport en cada uno sería un desperdicio con los
+            // pines ocultos) y a mitad de preview (esos movimientos de
+            // cámara son encuadres automáticos, no paneo del usuario).
             onCameraIdle: () {
               if (_isNavigating || _isPreviewingTrip) return;
               unawaited(_loadBusinessesInViewport());
             },
-            // Hard zoom limits + a bounds constraint are what keep the
-            // camera from panning/zooming out into empty ocean.
             minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
             cameraTargetBounds: CameraTargetBounds(_kMapBounds),
-            // Google's native 3D building extrusions render in their own
-            // flat industrial gray regardless of `style` (that JSON only
-            // covers 2D feature coloring) — most visible once navigation's
-            // tilted camera (see _onPositionUpdate) zooms in close, clashing
-            // with Níkara's cream palette. Disabling them keeps the custom
-            // style consistent at every zoom level, tilted or not.
+            // Las extrusiones 3D nativas de edificios de Google se ven en
+            // gris industrial sin importar `style` (ese JSON solo cubre
+            // colores 2D) y chocan con la paleta crema al inclinar la
+            // cámara en navegación — se desactivan para mantener el estilo
+            // consistente.
             buildingsEnabled: false,
             myLocationEnabled: _myLocationEnabled,
-            // Custom recenter button below replaces the default one.
+            // El botón de recentrar propio reemplaza al nativo.
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             mapToolbarEnabled: false,
@@ -1771,7 +1644,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           if (_isLoading)
             const Positioned.fill(
               child: ColoredBox(
-                color: Color(0x59FFF9F0),
+                color: AppColors.mapLoadingOverlay,
                 child: Center(
                   child: CircularProgressIndicator(color: AppColors.primary500),
                 ),
@@ -1784,11 +1657,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 onRetry: _loadAllBusinessesAndFitCamera,
               ),
             ),
-          // Floating chrome — search bar, filter button, category chips —
-          // each with its own hairline border/shadow directly over the
-          // map, per Pantalla 2b (no enclosing glass panel). Hidden during
-          // both trip phases: Fase 1's mode selector and Fase 2's maneuver
-          // banner take over the top of the screen instead.
+          // Oculto en ambas fases de viaje: el selector de modo (Fase 1) y
+          // el banner de maniobra (Fase 2) toman el tope de la pantalla.
           if (!_isNavigating && !_isPreviewingTrip)
             SafeArea(
               bottom: false,
@@ -1851,16 +1721,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          // Fase 1 — route preview: a close button to back out
-          // ([_cancelTripPreview]) plus the Automóvil/A pie mode selector
-          // ([_changeTripMode]), replacing the search chrome while a route
-          // is being planned but not yet started. Explicitly `Positioned`
-          // (not just a bare top-of-Stack child) — the enclosing Stack uses
-          // `fit: StackFit.expand`, which stretches any *non*-positioned
-          // child to fill the whole screen; a plain `Row` then centers its
-          // children in the middle of that forced height instead of
-          // hugging the top, which is what made this float dead-center
-          // over the map instead of sitting under the status bar.
+          // Fase 1 — preview: botón de cerrar + selector Automóvil/A pie.
+          // Explícitamente `Positioned` (no un hijo suelto del Stack): con
+          // `fit: StackFit.expand` un hijo no posicionado se estira a toda
+          // la pantalla y un `Row` centraría su contenido en medio de esa
+          // altura forzada en vez de pegarlo arriba.
           if (_isPreviewingTrip)
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
@@ -1883,12 +1748,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
-          // Persistent "Recomendaciones destacadas" carousel (Pantalla 2a) —
-          // replaces the old tap-to-open modal preview: every filtered
-          // business gets a card. Scrolling through them is browse-only —
-          // it neither selects nor moves the camera; only tapping a card
-          // (or its pin) commits to it (see _selectBusiness /
-          // _onCarouselCardTapped / _onMarkerTapped).
+          // Carrusel persistente "Recomendaciones destacadas" (Pantalla 2a):
+          // scrollear es solo navegar, no selecciona ni mueve la cámara —
+          // solo tocar una card o su pin lo hace.
           if (!_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty)
             Positioned(
               left: 0,
@@ -1952,9 +1814,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          // Fase 1 — route preview's bottom panel: total distance, ETA,
-          // hora estimada de llegada, and the gold "Iniciar viaje" button
-          // that hands off to live navigation (see [_confirmStartTrip]).
+          // Fase 1 — panel inferior del preview: distancia, ETA, hora de
+          // llegada y botón "Iniciar viaje" (ver [_confirmStartTrip]).
           if (_isPreviewingTrip && _navigationTarget != null)
             Positioned(
               left: 0,
@@ -1974,16 +1835,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          // Fase 2 — live navigation's top maneuver banner: next turn
-          // instruction + distance countdown, with an icon derived from
-          // Directions' `maneuver` keyword (see [_maneuverIcon]). A
-          // compact floating card, explicitly `Positioned` rather than a
-          // bare Stack child — the enclosing Stack's `fit: StackFit.expand`
-          // stretches any non-positioned child to fill the whole screen,
-          // which is what turned this into a giant white rectangle with
-          // the instruction centered in the middle of it instead of a
-          // small Waze/Google-Maps-style banner under the status bar, with
-          // the 3D map fully visible everywhere else.
+          // Fase 2 — banner de maniobra (siguiente giro + distancia, ícono
+          // derivado de `maneuver` de Directions, ver [_maneuverIcon]).
+          // `Positioned` explícito por la misma razón que el de arriba: sin
+          // eso, `StackFit.expand` lo estira a pantalla completa.
           if (_isNavigating &&
               _navigationRoute != null &&
               _currentStepIndex < _navigationRoute!.steps.length)
@@ -1998,10 +1853,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 distanceLabel: _maneuverDistanceLabel,
               ),
             ),
-          // Estado 19c — floating bottom panel: ETA badge, remaining
-          // distance + destination, and the Voz / Cancelar viaje actions.
-          // MainLayout's bottom nav is hidden while this shows (see
-          // _confirmStartTrip), so it sits directly on the bottom edge.
+          // Estado 19c — panel inferior con ETA, distancia restante y
+          // acciones Voz/Cancelar. El bottom nav de MainLayout está oculto
+          // mientras se muestra (ver _confirmStartTrip).
           if (_isNavigating && _navigationTarget != null)
             Positioned(
               left: 0,
@@ -2022,9 +1876,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
-          // Fase 2 — speedometer: current GPS speed (position.speed, m/s,
-          // converted to km/h in [_onPositionUpdate]), bottom-left so it
-          // never overlaps the recenter button or the bottom panel.
+          // Fase 2 — velocímetro, abajo a la izquierda para no solaparse
+          // con el botón de recentrar ni el panel inferior.
           if (_isNavigating && _currentSpeedKmh != null)
             Positioned(
               left: 16,
@@ -2035,22 +1888,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: _SpeedometerBadge(speedKmh: _currentSpeedKmh!),
               ),
             ),
-          // Hidden entirely while navigating with the camera already
-          // locked onto the vehicle — nothing to recenter. Once the user
-          // drags the map (see `onCameraMoveStarted` above), this becomes
-          // the crosshair "Recentrar" button instead of the exploration/
-          // preview "center on me" one.
+          // Oculto por completo mientras navega con la cámara ya bloqueada
+          // al vehículo — nada que recentrar. Al arrastrar el mapa (ver
+          // `onCameraMoveStarted`) se vuelve el botón de mira "Recentrar".
           if (!_isNavigating || !_isCameraLocked)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOutCubic,
               right: 16,
-              // Sits just above whatever occupies the bottom of the
-              // screen: the navigation panel (19c), the trip preview panel
-              // (Fase 1), the carousel (Pantalla 2a, whose own height
-              // animates between its compact and expanded states — see
-              // [_carouselHeight]), or nothing at all (Pantalla 2b's
-              // bottom-right corner).
+              // Se posiciona justo encima de lo que ocupe el fondo de la
+              // pantalla (panel de navegación, panel de preview, o carrusel).
               bottom: _isNavigating
                   ? _kNavigationPanelHeight + 16
                   : _isPreviewingTrip
@@ -2076,45 +1923,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Mutes/unmutes [TtsService] announcements for the rest of the trip —
-  /// disabling mid-utterance stops it immediately rather than letting it
-  /// finish. Toggling back on doesn't replay anything; it just lets the
-  /// *next* maneuver (see [_onPositionUpdate]) speak.
+  /// Desactivar a mitad de un anuncio lo corta de inmediato en vez de
+  /// dejarlo terminar; reactivar no repite nada, solo deja hablar a la
+  /// próxima maniobra.
   void _toggleVoiceGuidance() {
     setState(() => _voiceGuidanceEnabled = !_voiceGuidanceEnabled);
     if (!_voiceGuidanceEnabled) unawaited(TtsService().stop());
   }
 }
 
-/// Carousel height while no card is selected (Estado 19a) — tall enough
-/// for [_BusinessCarouselCard]'s compact layout (thumbnail, name,
-/// location, one fixed-height badge slot — no action buttons) with a
-/// little slack for font-metric rounding, so it never triggers a
-/// `RenderFlex` overflow.
+/// Altura del carrusel sin card seleccionada (Estado 19a) — con margen
+/// extra para redondeo de fuente, evita overflow de `RenderFlex`.
 const double _kCarouselCompactHeight = 108;
 
-/// Carousel height once a card is selected and expands to its full layout
-/// with "Cómo llegar" / "Ver perfil" (Estado 19b), Pantalla 2a.
+/// Altura del carrusel con card expandida y "Cómo llegar"/"Ver perfil"
+/// (Estado 19b), Pantalla 2a.
 const double _kCarouselExpandedHeight = 168;
 
-/// Fixed height of the compact card's badge line (see
-/// [_BusinessCarouselCard]) — reserved whether or not a badge actually
-/// renders there, so every compact card measures exactly the same total
-/// height no matter which business is in it.
+/// Altura fija de la línea de badge en la card compacta — reservada haya
+/// o no badge, para que todas las cards midan igual.
 const double _kCompactBadgeSlotHeight = 26;
 
-/// Vertical space [_NavigationPanel] takes at the bottom of the screen —
-/// what the recenter button clears while navigating.
+/// Espacio que ocupa [_NavigationPanel] al fondo — lo que el botón de
+/// recentrar debe despejar mientras navega.
 const double _kNavigationPanelHeight = 132;
 
-/// Vertical space [_TripPreviewPanel] takes at the bottom of the screen —
-/// what the recenter button clears during route preview (Fase 1).
+/// Espacio que ocupa [_TripPreviewPanel] al fondo durante el preview.
 const double _kTripPreviewPanelHeight = 170;
 
-/// Maps a Directions API `maneuver` keyword to the icon
-/// [_ManeuverBanner]/[_TripModeButton]-style chrome draws it with. `null`
-/// (a step with no special maneuver, typically the route's first "head on
-/// X street" step) falls back to a plain forward arrow.
+/// Mapea el `maneuver` de Directions al ícono correspondiente; `null`
+/// (paso sin maniobra especial, típicamente el primero de la ruta) cae a
+/// una flecha recta.
 IconData _maneuverIcon(String? maneuver) {
   return switch (maneuver) {
     'turn-left' => Icons.turn_left_rounded,
@@ -2134,17 +1973,13 @@ IconData _maneuverIcon(String? maneuver) {
   };
 }
 
-/// Icon for each [TravelMode] in [_TripModeSelector] — kept in the
-/// presentation layer rather than on the enum itself (a plain
-/// service-layer data type in `directions_service.dart`).
+/// Se mantiene en la capa de presentación en vez de en el enum porque
+/// [TravelMode] es un tipo plano de la capa de servicio.
 IconData _travelModeIcon(TravelMode mode) => switch (mode) {
   TravelMode.driving => Icons.directions_car_rounded,
   TravelMode.walking => Icons.directions_walk_rounded,
 };
 
-/// Small circular icon button — the preview's "close" affordance next to
-/// [_TripModeSelector], same hairline-surface chrome as [_RecenterButton]
-/// but sized for a top corner instead of floating over the map.
 class _CircleIconButton extends StatelessWidget {
   const _CircleIconButton({required this.icon, required this.onTap});
 
@@ -2177,9 +2012,6 @@ class _CircleIconButton extends StatelessWidget {
   }
 }
 
-/// Fase 1's top mode selector — a pill holding one [_TripModeButton] per
-/// [TravelMode], plus a small spinner while [isLoading] (a mode switch is
-/// re-fetching its route — see [_MapScreenState._changeTripMode]).
 class _TripModeSelector extends StatelessWidget {
   const _TripModeSelector({
     required this.mode,
@@ -2283,8 +2115,6 @@ class _TripModeButton extends StatelessWidget {
   }
 }
 
-/// Fase 1's bottom panel — total distance/ETA/hora de llegada plus the
-/// gold "Iniciar viaje" CTA that hands off to live navigation.
 class _TripPreviewPanel extends StatelessWidget {
   const _TripPreviewPanel({
     required this.destinationName,
@@ -2398,9 +2228,6 @@ class _TripStat extends StatelessWidget {
   }
 }
 
-/// Fase 2's top maneuver banner — the upcoming turn's icon (from
-/// [_maneuverIcon]), distance countdown, and instruction text, kept in
-/// sync with [_MapScreenState._currentStepIndex].
 class _ManeuverBanner extends StatelessWidget {
   const _ManeuverBanner({
     required this.instruction,
@@ -2414,11 +2241,8 @@ class _ManeuverBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Nikara gold, matching the rest of the live-nav chrome (the ETA badge
-    // and "Iniciar viaje" already use this exact fill) rather than a new
-    // dark-green tone reserved for the business-detail screen — a compact
-    // card that hugs its own content (MainAxisSize.min below), never a
-    // full-bleed background, so the 3D map stays visible everywhere else.
+    // Dorado Nikara, igual que el resto del chrome de navegación en vivo
+    // (badge de ETA, "Iniciar viaje"), no el verde oscuro de business-detail.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -2482,8 +2306,6 @@ class _ManeuverBanner extends StatelessWidget {
   }
 }
 
-/// Fase 2's speedometer — `position.speed * 3.6` (m/s -> km/h), refreshed
-/// on every GPS fix (see [_MapScreenState._onPositionUpdate]).
 class _SpeedometerBadge extends StatelessWidget {
   const _SpeedometerBadge({required this.speedKmh});
 
@@ -2529,11 +2351,9 @@ class _SpeedometerBadge extends StatelessWidget {
   }
 }
 
-/// Estado 19c — the only chrome left while a route is being followed:
-/// a white Níkara card floating over the bottom of the map with the live
-/// ETA badge, how much is left to the destination, and the two trip
-/// actions. Replaces the earlier top banner; the bottom navigation bar is
-/// hidden underneath it (see [MapFocusController.navigationActive]).
+/// Estado 19c — único chrome mientras se sigue una ruta: card flotante con
+/// ETA, distancia y las dos acciones del viaje. El bottom nav queda oculto
+/// debajo (ver [MapFocusController.navigationActive]).
 class _NavigationPanel extends StatelessWidget {
   const _NavigationPanel({
     required this.destinationName,
@@ -2545,13 +2365,8 @@ class _NavigationPanel extends StatelessWidget {
   });
 
   final String destinationName;
-
-  /// Remaining ETA, e.g. "12 min".
   final String etaLabel;
-
-  /// Remaining distance, e.g. "3.4 km restantes".
   final String remainingLabel;
-
   final bool voiceEnabled;
   final VoidCallback onToggleVoice;
   final VoidCallback onCancel;
@@ -2662,9 +2477,8 @@ class _NavigationPanel extends StatelessWidget {
                     icon: const Icon(Icons.close_rounded, size: 16),
                     label: const Text('Cancelar viaje'),
                     style: ElevatedButton.styleFrom(
-                      // Soft-alert pairing, not a solid red block: the pale
-                      // coral fill from the palette with the app's one
-                      // canonical destructive tint as its text/icon color.
+                      // Alerta suave, no un bloque rojo sólido: fondo coral
+                      // pálido con el tinte destructivo canónico del texto/ícono.
                       backgroundColor: AppColors.complementario1,
                       foregroundColor: AppColors.settingsDanger,
                       elevation: 0,
@@ -2690,8 +2504,6 @@ class _NavigationPanel extends StatelessWidget {
   }
 }
 
-/// Floating recenter/"my location" button — 46px circle, hairline border
-/// and soft ink shadow, per Pantalla 2b.
 class _RecenterButton extends StatelessWidget {
   const _RecenterButton({
     required this.isLoading,
@@ -2702,11 +2514,8 @@ class _RecenterButton extends StatelessWidget {
   final bool isLoading;
   final VoidCallback onPressed;
 
-  /// [Icons.my_location] for the exploration/preview "center on me" use —
-  /// [_MapScreenState] passes a crosshair instead for live navigation's
-  /// "Recentrar" (see [_MapScreenState._recenterNavigationCamera]), so the
-  /// same 46px circle chrome serves both without a second near-identical
-  /// widget.
+  /// `my_location` en exploración/preview; en navegación en vivo se pasa
+  /// una mira, así el mismo chrome sirve para ambos casos.
   final IconData icon;
 
   @override
@@ -2744,10 +2553,6 @@ class _RecenterButton extends StatelessWidget {
   }
 }
 
-/// Small floating pill labeling the carousel below as "Recomendaciones
-/// destacadas" — same hairline-surface chrome language as the search bar
-/// and category chips, self-sized so it doesn't compete with the map
-/// underneath it.
 class _CarouselHeaderLabel extends StatelessWidget {
   const _CarouselHeaderLabel();
 
@@ -2792,8 +2597,6 @@ class _CarouselHeaderLabel extends StatelessWidget {
   }
 }
 
-/// Floating search field — white surface, hairline border, soft ink
-/// shadow, per Pantalla 2b (no thick outline, no glass-blur panel).
 class _MapSearchBar extends StatelessWidget {
   const _MapSearchBar({
     required this.controller,
@@ -2803,9 +2606,6 @@ class _MapSearchBar extends StatelessWidget {
 
   final TextEditingController controller;
   final FocusNode? focusNode;
-
-  /// Submitting (return key / search action) jumps to the first matching
-  /// business — see [_MapScreenState._onSearchSubmitted].
   final ValueChanged<String>? onSubmitted;
 
   @override
@@ -2858,9 +2658,8 @@ class _MapSearchBar extends StatelessWidget {
   }
 }
 
-/// Separate square filter button beside the search bar (its own surface,
-/// not embedded inside the search field) — tapping it resets the category
-/// filter back to "Todos", per Pantalla 2b's chrome.
+/// Botón cuadrado junto a la búsqueda; al tocarlo resetea el filtro de
+/// categoría a "Todos".
 class _MapFilterButton extends StatelessWidget {
   const _MapFilterButton({required this.onTap});
 
@@ -2896,8 +2695,6 @@ class _MapFilterButton extends StatelessWidget {
   }
 }
 
-/// A single category pill — gold fill while selected, white/hairline
-/// otherwise, per Pantalla 2b's "Todos / Lagunas / Tours / Eco" row.
 class _CategoryChip extends StatelessWidget {
   const _CategoryChip({
     required this.label,
@@ -3051,11 +2848,9 @@ class _EmptyBusinessesBanner extends StatelessWidget {
   }
 }
 
-/// Rounded-top chrome for [MapScreen._showBusinessSheet]'s Google-Maps-style
-/// pin detail sheet — a drag handle over whatever [child] is (always a
-/// [_BusinessCarouselCard] in practice), so the sheet reads as "swipe down
-/// to dismiss" without needing a full [DraggableScrollableSheet] for
-/// content that doesn't scroll.
+/// Handle de arrastre sobre [child] para el sheet de detalle de pin (ver
+/// [MapScreen._showBusinessSheet]) — evita un [DraggableScrollableSheet]
+/// completo para contenido que no hace scroll.
 class _PinDetailSheetChrome extends StatelessWidget {
   const _PinDetailSheetChrome({required this.child});
 
@@ -3087,15 +2882,10 @@ class _PinDetailSheetChrome extends StatelessWidget {
   }
 }
 
-/// Photo, name, category tags, real GPS distance and exactly two actions
-/// ("Cómo llegar" / "Ver perfil"), per Pantalla 2b: no price, no
-/// reservation button. Both the persistent business carousel's cards
-/// (Pantalla 2a, inside a [PageView] whose height animates between
-/// [_kCarouselCompactHeight]/[_kCarouselExpandedHeight]) and
-/// [MapScreen._showBusinessSheet]'s Google-Maps-style pin detail sheet (no
-/// fixed height — sizes to its own content, always [expanded]) render this
-/// same card, so a business always looks identical whichever way it got
-/// selected.
+/// Card compartida por el carrusel persistente (Pantalla 2a) y el sheet de
+/// detalle de pin ([MapScreen._showBusinessSheet]), para que un negocio se
+/// vea igual sin importar cómo se seleccionó. Sin precio ni botón de
+/// reserva, por diseño de Pantalla 2b.
 class _BusinessCarouselCard extends StatelessWidget {
   const _BusinessCarouselCard({
     required this.business,
@@ -3108,30 +2898,20 @@ class _BusinessCarouselCard extends StatelessWidget {
 
   final BusinessModel business;
 
-  /// Straight-line (Haversine) distance from the device's last known
-  /// position, or `null` when it isn't available — in which case only the
-  /// city shows.
+  /// Distancia en línea recta (Haversine) desde la última posición
+  /// conocida, o `null` si no hay — en ese caso solo se muestra la ciudad.
   final double? distanceKm;
 
-  /// Starts the in-app trip preview (Fase 1) — see
-  /// [_MapScreenState._startTripPreview].
   final VoidCallback onNavigate;
   final VoidCallback onViewProfile;
 
-  /// Whether this renders the full layout (photo + tags + "Cómo llegar" /
-  /// "Ver perfil", Estado 19b, gold-bordered) or the compact one (small
-  /// thumbnail + name + location, Estado 19a) — the carousel expands only
-  /// its currently-selected card (see
-  /// [_MapScreenState._selectedBusinessId]) and keeps every other one
-  /// compact. Always `true` in the pin detail sheet
-  /// (`MapScreen._showBusinessSheet`), which only ever shows one card in
-  /// full.
+  /// Layout completo (Estado 19b, con borde dorado) vs. compacto (Estado
+  /// 19a) — el carrusel solo expande la card seleccionada. Siempre `true`
+  /// en el sheet de detalle de pin.
   final bool expanded;
 
-  /// Toggles this business's selection — tapping a compact card expands
-  /// it, tapping the expanded one's header collapses it back (see
-  /// [_MapScreenState._onCarouselCardTapped]). Left null in the pin detail
-  /// sheet, which has no compact state to toggle back to.
+  /// Alterna la selección (expande/colapsa). Null en el sheet de detalle,
+  /// que no tiene un estado compacto al cual volver.
   final VoidCallback? onTap;
 
   @override
@@ -3147,9 +2927,9 @@ class _BusinessCarouselCard extends StatelessWidget {
     final firstActivity = business.activities.isNotEmpty
         ? activityLabel(business.activities.first)
         : null;
-    // No `is_eco` column exists yet — real owner opt-in (Pantalla 4c's
-    // Sello ECO) takes priority; category/activities text is only a
-    // fallback for businesses saved before that field existed.
+    // Aún no existe columna `is_eco` — el opt-in real del dueño (Sello ECO,
+    // Pantalla 4c) tiene prioridad; category/activities es solo fallback
+    // para negocios guardados antes de ese campo.
     final isEco =
         business.ecoSealRequested ||
         business.category.toLowerCase().contains('eco') ||
@@ -3181,9 +2961,9 @@ class _BusinessCarouselCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Right padding reserves room for the floating favorite
-                // circle positioned over the expanded card's top-right
-                // corner — the compact layout has no favorite toggle.
+                // Padding derecho reserva espacio para el círculo de
+                // favorito flotante en la esquina superior — el layout
+                // compacto no tiene ese toggle.
                 Padding(
                   padding: EdgeInsets.only(right: expanded ? 32 : 0),
                   child: Text(
@@ -3246,14 +3026,10 @@ class _BusinessCarouselCard extends StatelessWidget {
                         ),
                     ],
                   )
-                // Compact layout shows at most one badge, ECO first — and
-                // always in a fixed-height slot (empty when neither badge
-                // applies) so every compact card has the exact same total
-                // height regardless of which business is in it. Letting
-                // this line's presence be optional was what made cards
-                // overflow/misalign in the first place: a business with a
-                // badge needed more room than one without, inside a
-                // carousel whose height only budgeted for one fixed case.
+                // El layout compacto muestra a lo sumo un badge (ECO
+                // primero) en un slot de altura fija (vacío si no aplica
+                // ninguno) — dejar esta línea opcional antes causaba
+                // overflow/desalineación entre cards con y sin badge.
                 else
                   SizedBox(
                     height: _kCompactBadgeSlotHeight,
@@ -3289,8 +3065,8 @@ class _BusinessCarouselCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(22),
-        // Always a 2px border so the compact/expanded swap only changes
-        // color, never the card's outer size.
+        // Borde de 2px siempre presente para que compacto/expandido solo
+        // cambie el color, nunca el tamaño exterior de la card.
         border: Border.all(
           color: expanded ? AppColors.primary500 : Colors.transparent,
           width: 2,
@@ -3386,9 +3162,6 @@ class _BusinessCarouselCard extends StatelessWidget {
   }
 }
 
-/// A small rounded tag used in the preview card ("Tour en lancha", "ECO",
-/// "★ 4.8") — [bordered] adds the hairline outline the neutral-fill tags
-/// use in Pantalla 2b (the solid ECO badge has none).
 class _MapTag extends StatelessWidget {
   const _MapTag({
     required this.label,
@@ -3424,11 +3197,9 @@ class _MapTag extends StatelessWidget {
   }
 }
 
-/// Floating favorite-heart circle over the carousel card's top-right
-/// corner (Pantalla 2a — pale-pink background, distinct from the general
-/// neutral-fill circle buttons elsewhere in the app) — same
-/// [FavoritesService]/[GuestGuard] wiring as Home's favorite buttons, so a
-/// business favorited from the map instantly reflects everywhere else.
+/// Misma integración de [FavoritesService]/[GuestGuard] que los botones de
+/// favorito de Home, para que un negocio marcado desde el mapa se refleje
+/// al instante en el resto de la app.
 class _FavoriteToggle extends StatelessWidget {
   const _FavoriteToggle({required this.businessId});
 

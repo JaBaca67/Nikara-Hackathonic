@@ -6,17 +6,7 @@ import 'package:nikara_app/features/profile/presentation/screens/public_user_pro
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// El bloque "Organizador" de una jornada, en sus dos formas: quién firma
-/// la actividad y a dónde lleva tocarlo.
-///
-/// Una jornada con `organization_id` la publica una fundación (logo, nombre
-/// y badge VERIFICADO, y el tap abre su perfil público); sin él, la publica
-/// una persona a título personal (sus iniciales y su nombre, y el tap abre
-/// su perfil público de usuario).
-
-/// Abre el perfil que corresponde al organizador de [activity]. No hace
-/// nada cuando la jornada es de las sembradas por el seed (sin fundación y
-/// sin `organizer_id`): no hay perfil real que mostrar.
+/// Sin perfil real que mostrar en jornadas sembradas por el seed (sin fundación ni `organizer_id`): no hace nada.
 Future<void> openEcoOrganizerProfile(
   BuildContext context,
   EcoActivityModel activity,
@@ -50,8 +40,6 @@ Future<void> openEcoOrganizerProfile(
   );
 }
 
-/// Avatar del organizador — el logo de la fundación, o sus iniciales/las de
-/// la persona cuando no hay imagen.
 class EcoOrganizerAvatar extends StatelessWidget {
   const EcoOrganizerAvatar({
     super.key,
@@ -63,8 +51,7 @@ class EcoOrganizerAvatar extends StatelessWidget {
   final EcoActivityModel activity;
   final double size;
 
-  /// Redondeado completo por defecto (avatar circular); la tarjeta de
-  /// detalle lo usa así y el perfil con esquinas suaves.
+  /// Redondeado completo por defecto (circular); el perfil pasa esquinas suaves en su lugar.
   final BorderRadius? borderRadius;
 
   @override
@@ -96,8 +83,6 @@ class EcoOrganizerAvatar extends StatelessWidget {
   }
 }
 
-/// Línea compacta de organizador para la tarjeta del feed — avatar pequeño,
-/// nombre y check de verificación.
 class EcoOrganizerRow extends StatelessWidget {
   const EcoOrganizerRow({super.key, required this.activity, this.onTap});
 

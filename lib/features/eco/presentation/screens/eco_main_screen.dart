@@ -14,15 +14,9 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todas';
 
-/// Cuántas actividades entran al carrusel de destacadas. Las mismas siguen
-/// apareciendo en "Todas las actividades" de abajo: el carrusel promociona,
-/// no reemplaza al listado (si no, filtrar por categoría podía dejar la
-/// lista vacía teniendo actividades).
+/// El carrusel promociona, no reemplaza el listado: las mismas actividades siguen apareciendo abajo en "Todas las actividades".
 const int _kFeaturedCount = 3;
 
-/// Pestaña "Actividades Ambientales" — filtros por categoría, banner de
-/// "ya te uniste a X", carrusel deslizable de destacadas y el listado
-/// completo con la tarjeta extendida ([EcoActivityCard]).
 class EcoMainScreen extends StatefulWidget {
   const EcoMainScreen({super.key});
 
@@ -67,9 +61,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
         _loadError = null;
         _isLoading = false;
       });
-      // Se abre después de la primera carga exitosa, mismo criterio que la
-      // suscripción realtime de BusinessStorageService — no tiene sentido
-      // mantener un socket abierto para una pantalla que nunca cargó.
+      // Se abre solo tras la primera carga exitosa: no tiene sentido un socket abierto para una pantalla que nunca cargó.
       _unsubscribe ??= EcoService().subscribeToChanges(_onChanged);
     } on EcoServiceException catch (e) {
       if (!mounted) return;
@@ -87,10 +79,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   int get _joinedCount =>
       _activities.where((a) => a.isJoinedByCurrentUser).length;
 
-  /// Las destacadas del carrusel: primero las que aún no se unió (leen como
-  /// "únete a esta") y luego el resto, siempre en orden de proximidad —
-  /// `getUpcomingActivities` ya devuelve la lista de la más próxima a la
-  /// más lejana.
+  /// Primero las que aún no se unió (leen como "únete a esta"), luego el resto, siempre en orden de proximidad.
   List<EcoActivityModel> get _featured {
     final filtered = _filtered;
     final ordered = [
@@ -367,8 +356,6 @@ class _JoinedBanner extends StatelessWidget {
   }
 }
 
-/// Carrusel de destacadas — [PageView] de tarjetas grandes con sus puntos
-/// indicadores, en lugar de la única tarjeta destacada que había antes.
 class _FeaturedCarousel extends StatelessWidget {
   const _FeaturedCarousel({
     required this.activities,
@@ -379,9 +366,6 @@ class _FeaturedCarousel extends StatelessWidget {
     required this.onJoin,
   });
 
-  /// Alto fijo del [PageView]: la portada, los dos textos y los botones son
-  /// de alto conocido, y el texto largo se recorta con ellipsis dentro de
-  /// los [Flexible] de la tarjeta.
   static const _cardHeight = 340.0;
 
   final List<EcoActivityModel> activities;
@@ -442,9 +426,6 @@ class _FeaturedCarousel extends StatelessWidget {
   }
 }
 
-/// Tarjeta destacada — portada, chip del organizador, tag "Empieza pronto",
-/// título/descripción y las dos acciones principales ("Unirme"/"Unido" y
-/// "Más información").
 class _FeaturedCard extends StatelessWidget {
   const _FeaturedCard({
     required this.activity,
@@ -618,10 +599,6 @@ class _FeaturedCard extends StatelessWidget {
   }
 }
 
-/// "FUNDACIÓN NICARAGUA VERDE" — quién firma la jornada, sobre la portada
-/// de la tarjeta destacada: el logo de la fundación (o el ícono genérico
-/// cuando publica una persona), su nombre y el check de verificación.
-/// Tocarlo abre el perfil público correspondiente.
 class _OrganizerChip extends StatelessWidget {
   const _OrganizerChip({required this.activity, required this.onTap});
 

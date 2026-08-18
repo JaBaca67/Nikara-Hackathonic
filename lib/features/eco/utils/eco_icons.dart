@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Íconos del módulo ECO derivados de texto libre, con el mismo criterio
-/// que `business_icons.dart`: `category` y `requirements` son columnas
-/// libres en Supabase, así que se emparejan por palabra clave y siempre hay
-/// un ícono genérico de respaldo — nunca se inventa un dato que la fila no
-/// tenga.
-
-/// Ícono de la categoría ("Reforestación", "Fauna", "Limpieza"…), usado en
-/// el placeholder de la miniatura y en la portada del detalle.
+/// `category`/`requirements` son texto libre en Supabase (mismo criterio que `business_icons.dart`): se empareja por palabra clave con un ícono genérico de respaldo.
 IconData ecoCategoryIcon(String category) {
   final value = category.toLowerCase();
   if (value.contains('refores') || value.contains('árbol')) {
@@ -27,8 +20,6 @@ IconData ecoCategoryIcon(String category) {
   return Icons.eco_rounded;
 }
 
-/// Ícono de una línea de "Requisitos y qué llevar" ("Ropa cómoda y botas
-/// cerradas" → percha, "Botella de agua" → gota…).
 IconData ecoRequirementIcon(String requirement) {
   final value = requirement.toLowerCase();
   if (value.contains('ropa') ||
