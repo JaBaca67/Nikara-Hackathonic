@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/user_avatar.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Tarjeta de una ruta en `RoutesMainScreen` — collage de fotos de portada
@@ -99,45 +101,60 @@ class RouteCard extends StatelessWidget {
   }
 }
 
-/// Cabecera "de {creador}" de una tarjeta de la pestaña Comunidad — avatar
-/// con iniciales (`profiles` no tiene foto real, ver
-/// `RouteModel.creatorInitials`), nombre y el botón rápido "Copiar ruta".
+/// Cabecera "de {creador}" de una tarjeta de la pestaña Comunidad: foto real
+/// del creador, su nombre —ambos enlazan a su perfil público— y el botón
+/// rápido "Copiar ruta".
 class _CreatorHeader extends StatelessWidget {
   const _CreatorHeader({required this.route, required this.onCopy});
 
   final RouteModel route;
   final VoidCallback? onCopy;
 
+  void _openCreator(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicUserProfileScreen(
+          userId: route.ownerId,
+          fallbackName: route.creatorName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.warmChipBackground,
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            route.creatorInitials,
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 12,
-              color: AppColors.settingsTextDark,
-            ),
+        // GestureDetector propio, igual que el de "Copiar ruta": abrir el
+        // perfil del creador no debe abrir además el detalle de la ruta.
+        GestureDetector(
+          onTap: route.ownerId.isEmpty ? null : () => _openCreator(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              UserAvatar(
+                avatarUrl: route.creatorAvatarUrl,
+                initials: route.creatorInitials,
+                size: 32,
+                background: AppColors.warmChipBackground,
+                foreground: AppColors.settingsTextDark,
+              ),
+              const SizedBox(width: 10),
+            ],
           ),
         ),
-        const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            route.creatorDisplayName,
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 13,
-              color: AppColors.settingsTextMuted,
+          child: GestureDetector(
+            onTap: route.ownerId.isEmpty ? null : () => _openCreator(context),
+            child: Text(
+              route.creatorDisplayName,
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 13,
+                color: AppColors.settingsTextMuted,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
         if (onCopy != null) ...[

@@ -173,10 +173,10 @@ class _AvatarWithBadge extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               color: AppColors.surface100,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.surface100, width: 3),
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.mapControlShadowSoft,
@@ -185,8 +185,13 @@ class _AvatarWithBadge extends StatelessWidget {
                 ),
               ],
             ),
-            clipBehavior: Clip.antiAlias,
-            child: avatar,
+            // El recorte va dentro del padding y no sobre el borde: así el
+            // marco blanco es un anillo parejo y la foto llena su cuadrado,
+            // en vez de dejar franjas cuando no es cuadrada.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(25),
+              child: SizedBox.expand(child: avatar),
+            ),
           ),
           if (badgeIcon != null)
             Positioned(

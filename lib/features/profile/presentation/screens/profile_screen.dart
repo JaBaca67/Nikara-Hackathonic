@@ -6,14 +6,20 @@ import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/edit_business_hub_screen.dart';
+import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/utils/eco_format.dart';
+import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
+import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -30,7 +36,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
   final _favoritesService = FavoritesService();
   final _userStatsService = UserStatsService();
   final _businessStorageService = BusinessStorageService();
@@ -38,7 +43,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   String? _loadError;
   UserModel? _profile;
-  String? _avatarPath;
+
+  /// Deshabilita el avatar mientras la foto nueva sube a Storage, para que no
+  /// se disparen dos subidas en paralelo.
+  bool _isSavingAvatar = false;
   List<DestinationModel> _favoriteDestinations = const [];
   List<BusinessModel> _favoriteBusinesses = const [];
   UserStats _stats = const UserStats(
@@ -47,6 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     reviewsCount: 0,
   );
   List<BusinessModel> _myBusinesses = const [];
+  List<EcoActivityModel> _myEcoActivities = const [];
   int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
 
   @override
@@ -55,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Mantienen la pantalla sincronizada sin refresco manual, incluso mientras Profile está inerte en el IndexedStack de MainLayout.
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
+    EcoService.revision.addListener(_onDataChanged);
     _loadAll();
   }
 
@@ -62,6 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _favoritesService.idsNotifier.removeListener(_onDataChanged);
     BusinessStorageService.revision.removeListener(_onDataChanged);
+    EcoService.revision.removeListener(_onDataChanged);
     super.dispose();
   }
 
@@ -74,7 +85,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _loadError = null);
     try {
       final profile = await _authService.getCurrentProfile();
-      final avatarPath = await _extrasService.getAvatarPath();
       final favoriteIds = await _favoritesService.getFavoriteIds();
       final stats = await _userStatsService.getStats();
       final allBusinesses = await _businessStorageService.getBusinesses();
@@ -95,13 +105,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 .where((b) => b.ownerId == currentUserId)
                 .toList(growable: false);
 
+      // Falla suave a propósito: el perfil completo no debe quedar en estado
+      // de error solo porque el feed ECO no respondió.
+      var myEcoActivities = const <EcoActivityModel>[];
+      try {
+        myEcoActivities = await EcoService().getMyActivities();
+      } on EcoServiceException {
+        // Se muestra el apartado vacío.
+      }
+      if (!mounted) return;
+
       setState(() {
         _profile = profile;
-        _avatarPath = avatarPath;
         _favoriteDestinations = favoriteDestinations;
         _favoriteBusinesses = favoriteBusinesses;
         _stats = stats;
         _myBusinesses = myBusinesses;
+        _myEcoActivities = myEcoActivities;
         _isLoading = false;
       });
     } on AuthServiceException catch (e) {
@@ -159,6 +179,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _loadAll();
   }
 
+  Future<void> _openEcoActivity(EcoActivityModel activity) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
+    );
+    await _loadAll();
+  }
+
+  Future<void> _editEcoActivity(EcoActivityModel activity) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CreateEcoActivityScreen(existingActivity: activity),
+      ),
+    );
+    await _loadAll();
+  }
+
+  Future<void> _confirmDeleteEcoActivity(EcoActivityModel activity) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface100,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('¿Eliminar actividad?'),
+        content: Text(
+          activity.participantCount == 0
+              ? 'Se eliminará "${activity.title}" de forma permanente. '
+                    'Esta acción no se puede deshacer.'
+              : 'Se eliminará "${activity.title}" y se cancelará la '
+                    'inscripción de ${activity.participantCount} '
+                    'participante(s). Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(
+              'Eliminar',
+              style: TextStyle(color: AppColors.settingsDanger),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await EcoService().deleteActivity(activity.id);
+    } on EcoServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+    await _loadAll();
+  }
+
   Future<void> _toggleFavorite(String id) async {
     // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
     await _favoritesService.toggleFavorite(id);
@@ -167,17 +246,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _pickAvatar() async {
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      maxWidth: 800,
+      maxWidth: 512,
+      imageQuality: 85,
     );
-    if (picked == null) return;
-    await _extrasService.updateAvatar(picked.path);
-    await _loadAll();
+    if (picked == null || !mounted) return;
+    setState(() => _isSavingAvatar = true);
+    try {
+      await _authService.updateAvatar(picked);
+      await _loadAll();
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _isSavingAvatar = false);
+    }
   }
 
   void _openSettings() {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+  }
+
+  Future<void> _openAccountSwitcher() async {
+    await showAccountSwitcherSheet(context);
+    if (!mounted) return;
+    // Alternar de cuenta reconstruye la app entera, así que este recargar solo
+    // cubre el caso de cerrar la hoja sin cambiar nada.
+    await _loadAll();
   }
 
   void _showComingSoon() {
@@ -403,7 +501,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _ProfileHeaderCard(
                       fullName: fullName,
                       initials: initials,
-                      avatarPath: _avatarPath,
+                      avatarUrl: _profile?.avatarUrl,
+                      isSavingAvatar: _isSavingAvatar,
                       tripsCount: _stats.tripsCount,
                       badgesCount: unlockedCount,
                       points: points,
@@ -411,6 +510,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onEditTap: _openSettings,
                       onSettingsTap: _openSettings,
                       onShareTap: _showComingSoon,
+                      onSwitchAccountTap: _openAccountSwitcher,
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -447,8 +547,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                       ),
                     ),
-                    // Solo bajo Favoritos: no tiene relación con insignias/gamificación. El divider + gap extra la distingue visualmente del contenido del tab.
-                    if (_activeTab == 0 && _myBusinesses.isNotEmpty) ...[
+                    // Solo bajo Favoritos: no tienen relación con insignias/gamificación. El divider + gap extra las distingue visualmente del contenido del tab.
+                    if (_activeTab == 0 &&
+                        (_myBusinesses.isNotEmpty ||
+                            _myEcoActivities.isNotEmpty)) ...[
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
                         child: Divider(
@@ -457,14 +559,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: AppColors.profileDivider,
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                        child: _MyBusinessesSection(
-                          businesses: _myBusinesses,
-                          onEdit: _editBusiness,
-                          onDelete: _confirmDeleteBusiness,
+                      if (_myBusinesses.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                          child: _MyBusinessesSection(
+                            businesses: _myBusinesses,
+                            onEdit: _editBusiness,
+                            onDelete: _confirmDeleteBusiness,
+                          ),
                         ),
-                      ),
+                      if (_myEcoActivities.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                          child: _MyEcoActivitiesSection(
+                            activities: _myEcoActivities,
+                            onOpen: _openEcoActivity,
+                            onEdit: _editEcoActivity,
+                            onDelete: _confirmDeleteEcoActivity,
+                          ),
+                        ),
                     ],
                   ],
                 ),
@@ -481,7 +594,8 @@ class _ProfileHeaderCard extends StatelessWidget {
   const _ProfileHeaderCard({
     required this.fullName,
     required this.initials,
-    required this.avatarPath,
+    required this.avatarUrl,
+    required this.isSavingAvatar,
     required this.tripsCount,
     required this.badgesCount,
     required this.points,
@@ -489,11 +603,13 @@ class _ProfileHeaderCard extends StatelessWidget {
     required this.onEditTap,
     required this.onSettingsTap,
     required this.onShareTap,
+    required this.onSwitchAccountTap,
   });
 
   final String fullName;
   final String initials;
-  final String? avatarPath;
+  final String? avatarUrl;
+  final bool isSavingAvatar;
   final int tripsCount;
   final int badgesCount;
   final int points;
@@ -501,6 +617,7 @@ class _ProfileHeaderCard extends StatelessWidget {
   final VoidCallback onEditTap;
   final VoidCallback onSettingsTap;
   final VoidCallback onShareTap;
+  final VoidCallback onSwitchAccountTap;
 
   @override
   Widget build(BuildContext context) {
@@ -517,6 +634,11 @@ class _ProfileHeaderCard extends StatelessWidget {
                 Text('Perfil', style: AppTextStyles.profileScreenTitle),
                 Row(
                   children: [
+                    _HeaderIconButton(
+                      icon: Icons.switch_account_outlined,
+                      onTap: onSwitchAccountTap,
+                    ),
+                    const SizedBox(width: 10),
                     _HeaderIconButton(
                       icon: Icons.edit_outlined,
                       onTap: onEditTap,
@@ -539,7 +661,8 @@ class _ProfileHeaderCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 _ProfileAvatar(
-                  avatarPath: avatarPath,
+                  avatarUrl: avatarUrl,
+                  isSaving: isSavingAvatar,
                   initials: initials,
                   onTap: onAvatarTap,
                 ),
@@ -592,22 +715,27 @@ class _HeaderIconButton extends StatelessWidget {
 
 class _ProfileAvatar extends StatelessWidget {
   const _ProfileAvatar({
-    required this.avatarPath,
+    required this.avatarUrl,
+    required this.isSaving,
     required this.initials,
     required this.onTap,
   });
 
-  final String? avatarPath;
+  /// URL pública de `profiles.avatar_url`; nula = iniciales.
+  final String? avatarUrl;
+
+  /// Subida en curso: se tapa la foto con un spinner y se ignoran los toques.
+  final bool isSaving;
   final String initials;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final path = avatarPath;
+    final path = avatarUrl;
     final hasPhoto = path != null && path.isNotEmpty;
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: isSaving ? null : onTap,
       child: Container(
         width: 80,
         height: 80,
@@ -636,9 +764,13 @@ class _ProfileAvatar extends StatelessWidget {
             ),
           ),
           child: ClipOval(
-            child: hasPhoto
-                ? LocalImage(path: path)
-                : Container(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (hasPhoto)
+                  LocalImage(path: path)
+                else
+                  Container(
                     color: AppColors.profileDivider,
                     alignment: Alignment.center,
                     child: Text(
@@ -648,6 +780,23 @@ class _ProfileAvatar extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (isSaving)
+                  Container(
+                    color: AppColors.detailCoverCounterBg,
+                    alignment: Alignment.center,
+                    child: const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation(
+                          AppColors.surface100,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1373,6 +1522,229 @@ class _BadgeCard extends StatelessWidget {
 }
 
 /// Solo se renderiza cuando la cuenta es dueña de al menos un [BusinessModel] ([BusinessModel.ownerId]).
+/// "Mis actividades ECO" — el equivalente de [_MyBusinessesSection] para las
+/// jornadas que organiza el usuario, con las mismas acciones editar/eliminar.
+class _MyEcoActivitiesSection extends StatelessWidget {
+  const _MyEcoActivitiesSection({
+    required this.activities,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<EcoActivityModel> activities;
+  final ValueChanged<EcoActivityModel> onOpen;
+  final ValueChanged<EcoActivityModel> onEdit;
+  final ValueChanged<EcoActivityModel> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Mis actividades ECO', style: AppTextStyles.detailSectionTitle),
+        const SizedBox(height: 10),
+        for (final activity in activities) ...[
+          _MyEcoActivityCard(
+            activity: activity,
+            onOpen: () => onOpen(activity),
+            onEdit: () => onEdit(activity),
+            onDelete: () => onDelete(activity),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _MyEcoActivityCard extends StatelessWidget {
+  const _MyEcoActivityCard({
+    required this.activity,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final EcoActivityModel activity;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final isPast = activity.isPast;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardGlowSoft,
+            offset: Offset(0, 2),
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: onOpen,
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: 58,
+                    height: 52,
+                    child: LocalImage(
+                      path: activity.imageUrl,
+                      fallbackIcon: ecoCategoryIcon(activity.category),
+                      fallbackIconSize: 20,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        activity.title,
+                        style: AppTextStyles.favoriteCardTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            isPast
+                                ? Icons.event_available
+                                : Icons.calendar_month,
+                            size: 9,
+                            color: AppColors.settingsTextMuted,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              formatEcoDateTimeLong(activity.startTime),
+                              style: AppTextStyles.favoriteCardCaption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _EcoMetaPill(
+                icon: Icons.people_alt_outlined,
+                label: activity.maxCapacity == null
+                    ? '${activity.participantCount} inscritos'
+                    : '${activity.participantCount}/${activity.maxCapacity} '
+                          'inscritos',
+              ),
+              if (isPast)
+                const _EcoMetaPill(icon: Icons.history, label: 'Finalizada'),
+              if (activity.isFromOrganization)
+                _EcoMetaPill(
+                  icon: Icons.groups_outlined,
+                  label: activity.organizerDisplayName,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Editar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.wizardFocus,
+                    side: const BorderSide(color: AppColors.warmChipBorder),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                  label: const Text('Eliminar'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.settingsDanger,
+                    side: BorderSide(
+                      color: AppColors.settingsDanger.withValues(alpha: 0.4),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EcoMetaPill extends StatelessWidget {
+  const _EcoMetaPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.detailActivityIconBg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: AppColors.ecoActive),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.profileCaption10.copyWith(
+                color: AppColors.ecoActive,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MyBusinessesSection extends StatelessWidget {
   const _MyBusinessesSection({
     required this.businesses,

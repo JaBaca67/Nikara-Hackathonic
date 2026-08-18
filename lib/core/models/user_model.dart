@@ -23,6 +23,7 @@ class UserModel {
     required this.role,
     this.phone = '',
     this.points = 0,
+    this.avatarUrl,
   });
 
   final String id;
@@ -30,6 +31,13 @@ class UserModel {
   final String email;
   final UserRole role;
   final String phone;
+
+  /// `profiles.avatar_url` — URL pública del bucket `avatars` de Storage (ver
+  /// supabase/sql/015_profile_avatars.sql). Es la única fuente de verdad del
+  /// avatar: guardarlo en `SharedPreferences` hacía que al alternar de cuenta
+  /// el avatar del usuario anterior se le pintara al siguiente, y que nadie
+  /// más pudiera verlo. Nula = se cae a [initials].
+  final String? avatarUrl;
 
   /// `profiles.points` — ningún flujo de la app escribe aquí todavía (sin sync de gamificación a Supabase); 0 en una cuenta nueva.
   final int points;
@@ -41,7 +49,7 @@ class UserModel {
     return trimmed.split(RegExp(r'\s+')).first;
   }
 
-  /// Inicial de nombre + apellido, p. ej. "Ixchel Galo" -> "IG"; fallback de avatar ya que `profiles` no tiene columna de avatar.
+  /// Inicial de nombre + apellido, p. ej. "Ixchel Galo" -> "IG"; fallback cuando [avatarUrl] es nula.
   String get initials {
     final parts = fullName
         .trim()
@@ -59,6 +67,7 @@ class UserModel {
       role: _roleFromString(row['role'] as String?),
       phone: row['phone'] as String? ?? '',
       points: (row['points'] as num?)?.toInt() ?? 0,
+      avatarUrl: row['avatar_url'] as String?,
     );
   }
 }

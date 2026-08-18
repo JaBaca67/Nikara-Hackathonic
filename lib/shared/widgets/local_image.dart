@@ -11,12 +11,17 @@ class LocalImage extends StatelessWidget {
     super.key,
     required this.path,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.fallbackIcon = Icons.image_outlined,
     this.fallbackIconSize = 28,
   });
 
   final String? path;
   final BoxFit fit;
+
+  /// Qué parte se conserva al recortar con [BoxFit.cover]. Las fotos de perfil
+  /// usan un encuadre más alto que el centro, donde suele estar la cara.
+  final Alignment alignment;
   final IconData fallbackIcon;
   final double fallbackIconSize;
 
@@ -36,6 +41,12 @@ class LocalImage extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             fit: fit,
+            alignment: alignment,
+            // Sin esto el hueco queda en blanco mientras descarga, que sobre
+            // un avatar recortado se lee como un borde mal hecho en vez de
+            // como una carga en curso.
+            loadingBuilder: (context, child, progress) =>
+                progress == null ? child : _placeholder(),
             errorBuilder: (context, error, stackTrace) => _fallback(),
           )
         : Image.file(
@@ -43,8 +54,17 @@ class LocalImage extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             fit: fit,
+            alignment: alignment,
             errorBuilder: (context, error, stackTrace) => _fallback(),
           );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: AppColors.placeholderTan,
+    );
   }
 
   Widget _fallback() {

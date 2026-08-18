@@ -116,8 +116,10 @@ class _RouteMiniMapState extends State<RouteMiniMap> {
     final textPainter = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: label,
+        // Sin fontFamily: ver la nota equivalente en MapScreen — el bitmap
+        // del pin se pinta en un canvas de dart:ui, fuera del alcance de
+        // google_fonts.
         style: TextStyle(
-          fontFamily: 'Leelawadee',
           fontWeight: FontWeight.w700,
           fontSize: label.length > 1 ? 12 : 14,
           color: AppColors.surface100,

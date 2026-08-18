@@ -6,6 +6,7 @@ import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart'
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
+import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de Ajustes (nodo Figma 361:323). Los toggles de
@@ -25,6 +26,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _email = '';
   String _phone = '';
 
+  /// Cuentas guardadas además de la activa; alimenta el subtítulo de la fila
+  /// "Cambiar de cuenta".
+  int _otherAccountsCount = 0;
+
   bool _tripAlerts = true;
   bool _ecoCampaigns = true;
   bool _offers = false;
@@ -35,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+    _loadSavedAccounts();
   }
 
   Future<void> _loadProfile() async {
@@ -45,6 +51,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _email = profile.email;
       _phone = profile.phone;
     });
+  }
+
+  Future<void> _loadSavedAccounts() async {
+    final accounts = await _authService.getSavedAccounts();
+    if (!mounted) return;
+    setState(() => _otherAccountsCount = accounts.length);
+  }
+
+  String get _savedAccountsCaption => switch (_otherAccountsCount) {
+    0 => 'Agrega otra cuenta y alterna sin volver a iniciar sesión',
+    1 => '1 cuenta más guardada en este dispositivo',
+    final n => '$n cuentas más guardadas en este dispositivo',
+  };
+
+  Future<void> _openAccountSwitcher() async {
+    await showAccountSwitcherSheet(context);
+    if (!mounted) return;
+    // La hoja puede haber quitado una cuenta guardada (o haber guardado la
+    // activa por primera vez), así que el contador se recalcula al cerrarla.
+    await _loadSavedAccounts();
   }
 
   Future<void> _openEditProfile() async {
@@ -321,6 +347,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _SettingsSection(
                 label: 'Sesión',
                 children: [
+                  _SettingsRow(
+                    icon: Icons.switch_account_outlined,
+                    iconTint: AppColors.accent300,
+                    title: 'Cambiar de cuenta',
+                    caption: _savedAccountsCaption,
+                    onTap: _openAccountSwitcher,
+                  ),
                   _SettingsRow(
                     icon: Icons.logout,
                     iconTint: AppColors.settingsDanger,

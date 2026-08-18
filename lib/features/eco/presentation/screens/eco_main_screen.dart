@@ -464,7 +464,7 @@ class _FeaturedCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   LocalImage(
-                    path: null,
+                    path: activity.imageUrl,
                     fallbackIcon: ecoCategoryIcon(activity.category),
                     fallbackIconSize: 36,
                   ),

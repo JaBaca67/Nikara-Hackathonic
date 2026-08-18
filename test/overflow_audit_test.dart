@@ -10,6 +10,7 @@ import 'package:nikara_app/features/business/presentation/screens/business_detai
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
@@ -116,6 +117,23 @@ final _stressActivity = EcoActivityModel(
     'Guantes de jardinería (opcional, la organización presta algunos)',
   ],
   createdAt: DateTime(2030, 1, 1),
+  // Inscritos con nombre y foto: ejercita la pila de avatares reales de la
+  // tarjeta y las filas enlazables de la pestaña "Participantes".
+  participants: [
+    EcoParticipant(
+      userId: 'stress-participant-1',
+      joinedAt: DateTime(2030, 1, 2),
+      fullName: 'María Auxiliadora de los Ángeles Sandoval Bermúdez',
+      avatarUrl:
+          'https://example.supabase.co/storage/v1/object/public/'
+          'avatars/stress/1.jpg',
+    ),
+    EcoParticipant(
+      userId: 'stress-participant-2',
+      joinedAt: DateTime(2030, 1, 3),
+      fullName: 'Juan',
+    ),
+  ],
   participantCount: 18,
 );
 
@@ -253,6 +271,12 @@ void main() {
             '$exception',
       );
     }
+    // Desmonta antes de terminar y deja correr el reloj: las pantallas que se
+    // suscriben a Realtime cierran su canal en dispose(), y ese cierre agenda
+    // un timer de desconexión que, sin drenar, haría fallar el test por
+    // "pending timers" aunque el layout esté bien.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(minutes: 1));
   }
 
   testWidgets('LoginScreen no desborda en pantallas pequeñas', (tester) async {
@@ -320,6 +344,47 @@ void main() {
         fallbackName: _stressActivity.organizerName,
       ),
       'PublicUserProfileScreen',
+    );
+  });
+
+  testWidgets('CreateEcoActivityScreen no desborda en pantallas pequeñas', (
+    tester,
+  ) async {
+    // Audita el formulario vacío: el peor caso de texto dinámico (nombres de
+    // fundación en "Publicar como") ya lo cubre OrganizationProfileScreen, y
+    // sin sesión la lista de fundaciones viene vacía de todas formas.
+    await expectNoOverflow(
+      tester,
+      const CreateEcoActivityScreen(),
+      'CreateEcoActivityScreen',
+    );
+  });
+
+  testWidgets('PublicUserProfileScreen con foto de perfil no desborda', (
+    tester,
+  ) async {
+    // Con avatar remoto: en el test la descarga falla y cae al placeholder,
+    // que es justo el camino que antes dejaba el hueco en blanco.
+    await expectNoOverflow(
+      tester,
+      const PublicUserProfileScreen(
+        userId: 'stress-organizer-id',
+        fallbackName: 'Bartolomé de las Casas y Fuentes Rodríguez de la Vega',
+      ),
+      'PublicUserProfileScreen (con foto)',
+    );
+  });
+
+  testWidgets('CreateEcoActivityScreen en modo edición no desborda', (
+    tester,
+  ) async {
+    // Precargado con los peores textos posibles: el formulario de edición
+    // pinta el título/descripción/requisitos guardados dentro de los campos y
+    // las pastillas, no solo placeholders cortos.
+    await expectNoOverflow(
+      tester,
+      CreateEcoActivityScreen(existingActivity: _stressActivity),
+      'CreateEcoActivityScreen (edición)',
     );
   });
 

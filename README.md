@@ -84,7 +84,7 @@ Derivado 1:1 del archivo Figma **"UI-NÍKARA"** — 2 tipografías y 3 colores p
 
 ![League Spartan](https://img.shields.io/badge/Aa-League_Spartan-121212?style=flat-square) ![Nunito](https://img.shields.io/badge/Aa-Nunito-121212?style=flat-square)
 
-![](https://img.shields.io/badge/%20-FDBE02?style=flat-square) `Gold #FDBE02` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-8B922A?style=flat-square) `Olive #8B922A` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-FFF9F0?style=flat-square) `Cream #FFF9F0`
+![](https://img.shields.io/badge/%20-FDBE02?style=flat-square) `Gold #FDBE02` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-C2CA5B?style=flat-square) `Lima #C2CA5B` &nbsp;&nbsp; ![](https://img.shields.io/badge/%20-FF8243?style=flat-square) `Coral #FF8243`
 
 <br />
 

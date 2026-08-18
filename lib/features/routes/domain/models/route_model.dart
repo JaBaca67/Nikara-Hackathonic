@@ -29,6 +29,7 @@ class RouteModel {
     this.stops = const [],
     this.imageUrls = const [],
     this.creatorName,
+    this.creatorAvatarUrl,
   });
 
   final String id;
@@ -58,6 +59,9 @@ class RouteModel {
   /// Lo que pinta la cabecera "de {creador}" de la pestaña Comunidad.
   final String? creatorName;
 
+  /// `profiles.avatar_url` de [ownerId], por el mismo embed que [creatorName].
+  final String? creatorAvatarUrl;
+
   int get stopCount => stops.length;
 
   bool get isClone => clonedFromRouteId != null;
@@ -72,9 +76,7 @@ class RouteModel {
     return (name == null || name.trim().isEmpty) ? 'Alguien de Níkara' : name;
   }
 
-  /// Iniciales del creador para el avatar de la tarjeta de Comunidad — no
-  /// hay foto de perfil real que mostrar (`profiles` no tiene columna de
-  /// avatar, ver `UserModel.initials`).
+  /// Iniciales del creador, respaldo cuando no tiene [creatorAvatarUrl].
   String get creatorInitials {
     final parts = creatorDisplayName
         .trim()
@@ -149,6 +151,7 @@ class RouteModel {
       stops: stops ?? this.stops,
       imageUrls: imageUrls ?? this.imageUrls,
       creatorName: creatorName,
+      creatorAvatarUrl: creatorAvatarUrl,
     );
   }
 
@@ -202,6 +205,7 @@ class RouteModel {
       imageUrls:
           (row['image_urls'] as List<dynamic>?)?.cast<String>() ?? const [],
       creatorName: owner?['full_name'] as String?,
+      creatorAvatarUrl: owner?['avatar_url'] as String?,
     );
   }
 }

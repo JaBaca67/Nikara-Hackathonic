@@ -51,3 +51,8 @@ app.*.map.json
 # Archivos de entorno y claves secretas
 .env
 *.env
+
+# Migraciones SQL de Supabase — se mantienen solo en local.
+# Ojo: son la definición del esquema (ver docs/database_erd.md), no secretos;
+# quien clone el repo no podrá recrear la base de datos sin ellas.
+/supabase/sql/

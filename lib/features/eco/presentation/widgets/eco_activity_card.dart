@@ -51,7 +51,7 @@ class EcoActivityCard extends StatelessWidget {
                 width: 84,
                 height: 118,
                 child: LocalImage(
-                  path: null,
+                  path: activity.imageUrl,
                   fallbackIcon: ecoCategoryIcon(activity.category),
                   fallbackIconSize: 26,
                 ),
@@ -106,6 +106,7 @@ class EcoActivityCard extends StatelessWidget {
                     children: [
                       EcoParticipantAvatars(
                         count: activity.participantCount,
+                        participants: activity.participants,
                         size: 28,
                       ),
                       EcoStatusBadge(status: activity.status),

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
@@ -13,6 +12,7 @@ import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bot
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Reutiliza la estructura de `BusinessDetailScreen`/`detail_sections.dart`; recibe el [EcoActivityModel] completo y se refresca al montarse por si quedó desactualizado.
@@ -33,8 +33,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   bool _showFullDescription = false;
   bool _isSubmitting = false;
 
-  List<({String userId, DateTime joinedAt})>? _participants;
-  Map<String, String> _participantNames = const {};
+  List<EcoParticipant>? _participants;
   bool _loadingParticipants = false;
 
   @override
@@ -90,20 +89,12 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     setState(() => _loadingParticipants = true);
     try {
       final participants = await EcoService().getParticipants(_activity.id);
-      final names = <String, String>{};
-      await Future.wait(
-        participants.map((p) async {
-          final profile = await AuthService().getProfileById(p.userId);
-          if (profile != null) names[p.userId] = profile.fullName;
-        }),
-      );
       if (!mounted) return;
       setState(() {
         _participants = participants;
-        _participantNames = names;
         _loadingParticipants = false;
       });
-    } on Exception {
+    } on EcoServiceException {
       if (!mounted) return;
       setState(() => _loadingParticipants = false);
     }
@@ -176,7 +167,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DetailCoverImage(
-              photos: const [],
+              // Portada única (`eco_activities.image_url`): la lista lleva a lo
+              // sumo un elemento, así que el carrusel de DetailCoverImage nunca
+              // muestra flechas aquí.
+              photos: [?activity.imageUrl],
               height: _coverHeight,
               fallbackIcon: ecoCategoryIcon(activity.category),
               onBack: () => Navigator.of(context).maybePop(),
@@ -236,7 +230,6 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                           )
                         : _ParticipantsTab(
                             participants: _participants,
-                            names: _participantNames,
                             isLoading: _loadingParticipants,
                           ),
                   ),
@@ -326,7 +319,7 @@ class _InformationTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sections = <Widget>[
-      _ParticipantsPreview(count: activity.participantCount),
+      _ParticipantsPreview(activity: activity),
       _DescriptionSection(
         activity: activity,
         expanded: showFullDescription,
@@ -395,19 +388,102 @@ class _InformationTab extends StatelessWidget {
 }
 
 class _ParticipantsPreview extends StatelessWidget {
-  const _ParticipantsPreview({required this.count});
+  const _ParticipantsPreview({required this.activity});
 
-  final int count;
+  final EcoActivityModel activity;
 
   @override
   Widget build(BuildContext context) {
-    if (count <= 0) {
+    if (activity.participantCount <= 0) {
       return Text(
         'Nadie se ha unido todavía — ¡sé la primera persona!',
         style: AppTextStyles.settingsSubtitle,
       );
     }
-    return EcoParticipantAvatars(count: count);
+    return EcoParticipantAvatars(
+      count: activity.participantCount,
+      participants: activity.participants,
+    );
+  }
+}
+
+/// Fila de participante con foto real y enlace a su perfil público.
+class _ParticipantRow extends StatelessWidget {
+  const _ParticipantRow({required this.participant, required this.onTap});
+
+  final EcoParticipant participant;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = participant.avatarUrl;
+    final hasPhoto = avatarUrl != null && avatarUrl.isNotEmpty;
+
+    return Material(
+      color: AppColors.surface100,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.detailActivityIconBg,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: hasPhoto
+                    ? LocalImage(path: avatarUrl, fallbackIcon: Icons.person)
+                    : Center(
+                        child: Text(
+                          participant.initials,
+                          style: AppTextStyles.mapRowTitle.copyWith(
+                            fontSize: 14,
+                            color: AppColors.ecoActive,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      participant.displayName,
+                      style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Se unió el ${formatEcoDateTimeShort(participant.joinedAt)}',
+                      style: AppTextStyles.settingsSubtitle.copyWith(
+                        fontSize: 11.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.neutral400,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -465,14 +541,9 @@ class _DescriptionSection extends StatelessWidget {
 }
 
 class _ParticipantsTab extends StatelessWidget {
-  const _ParticipantsTab({
-    required this.participants,
-    required this.names,
-    required this.isLoading,
-  });
+  const _ParticipantsTab({required this.participants, required this.isLoading});
 
-  final List<({String userId, DateTime joinedAt})>? participants;
-  final Map<String, String> names;
+  final List<EcoParticipant>? participants;
   final bool isLoading;
 
   @override
@@ -504,11 +575,9 @@ class _ParticipantsTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final participant in list) ...[
-            DetailIconRow(
-              icon: Icons.person,
-              label: names[participant.userId] ?? 'Voluntario',
-              iconColor: AppColors.ecoActive,
-              iconBackground: AppColors.detailActivityIconBg,
+            _ParticipantRow(
+              participant: participant,
+              onTap: () => openParticipantProfile(context, participant),
             ),
             if (participant != list.last) const SizedBox(height: 8),
           ],

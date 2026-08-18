@@ -6,7 +6,6 @@ import 'package:uuid/uuid.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
@@ -14,6 +13,7 @@ import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
@@ -36,13 +36,16 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
 
   final _favoritesService = FavoritesService();
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
   final _businessStorageService = BusinessStorageService();
 
   int _tab = 0;
   bool _isFavorite = false;
   UserModel? _currentProfile;
-  String? _currentAvatarPath;
+
+  /// Perfil del dueño real del negocio, sea o no la sesión actual. Antes solo
+  /// se resolvía cuando el dueño era el usuario logueado, así que al cambiar
+  /// de cuenta el anfitrión aparecía como texto libre y sin perfil que abrir.
+  UserModel? _ownerProfile;
   Position? _userPosition;
 
   /// Se actualiza in-place al enviar una reseña para reflejar el cambio sin salir y reentrar a la pantalla.
@@ -72,12 +75,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _loadCurrentUser() async {
-    final profile = await _authService.getCurrentProfile();
-    final avatarPath = await _extrasService.getAvatarPath();
+    UserModel? profile;
+    UserModel? owner;
+    try {
+      profile = await _authService.getCurrentProfile();
+      final ownerId = _business.ownerId;
+      if (ownerId.isEmpty) {
+        owner = null;
+      } else if (ownerId == profile?.id) {
+        // Mismo perfil: se evita el segundo round-trip.
+        owner = profile;
+      } else {
+        owner = await _authService.getProfileById(ownerId);
+      }
+    } on AuthServiceException {
+      // RLS solo deja leer `profiles` a cuentas autenticadas: en modo
+      // invitado el bloque cae al `hostName` de texto libre, como antes.
+    }
     if (!mounted) return;
     setState(() {
       _currentProfile = profile;
-      _currentAvatarPath = avatarPath;
+      _ownerProfile = owner;
     });
   }
 
@@ -88,10 +106,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     setState(() => _userPosition = position);
   }
 
+  /// El propio dueño va a su ProfileScreen (editable); cualquier otro
+  /// visitante va al perfil público de esa persona. Antes esto abría siempre
+  /// ProfileScreen, así que tocar "Anfitrión" en un negocio ajeno te llevaba a
+  /// tu propio perfil.
   void _openOwnerProfile() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+    final ownerId = _business.ownerId;
+    if (ownerId.isEmpty) return;
+    if (ownerId == _currentProfile?.id) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicUserProfileScreen(
+          userId: ownerId,
+          fallbackName: _business.hostName,
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleFavorite() async {
@@ -233,7 +268,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         ? _InformationTab(
                             business: _business,
                             currentProfile: _currentProfile,
-                            currentAvatarPath: _currentAvatarPath,
+                            ownerProfile: _ownerProfile,
                             onOwnerTap: _openOwnerProfile,
                             onDirections: _openDirections,
                             onReport: _showComingSoon,
@@ -355,7 +390,7 @@ class _InformationTab extends StatefulWidget {
   const _InformationTab({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onOwnerTap,
     required this.onDirections,
     required this.onReport,
@@ -363,7 +398,7 @@ class _InformationTab extends StatefulWidget {
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onOwnerTap;
   final VoidCallback onDirections;
   final VoidCallback onReport;
@@ -413,7 +448,7 @@ class _InformationTabState extends State<_InformationTab> {
       _HostSection(
         business: business,
         currentProfile: widget.currentProfile,
-        currentAvatarPath: widget.currentAvatarPath,
+        ownerProfile: widget.ownerProfile,
         onTap: widget.onOwnerTap,
       ),
       _ScheduleSection(business: business),
@@ -769,36 +804,42 @@ class _ContactSection extends StatelessWidget {
   }
 }
 
-/// Al ser la app local por dispositivo (sin sesión compartida), solo se resuelve a un perfil real cuando [BusinessModel.ownerId] coincide con la sesión actual; el resto cae al [BusinessModel.hostName] de texto libre.
+/// El anfitrión se resuelve contra `profiles` por [BusinessModel.ownerId], sin
+/// importar qué cuenta esté activa; [BusinessModel.hostName] queda solo como
+/// respaldo para negocios sin `owner_id` (los sembrados) o cuando `profiles` no
+/// es legible (modo invitado).
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onTap,
   });
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onTap;
 
-  bool get _isLinkedToCurrentUser =>
+  bool get _isOwnBusiness =>
       business.ownerId.isNotEmpty &&
       currentProfile != null &&
       business.ownerId == currentProfile!.id;
 
   @override
   Widget build(BuildContext context) {
-    final isLinked = _isLinkedToCurrentUser;
+    final owner = ownerProfile;
     return DetailSection(
       title: 'Anfitrión',
       child: _HostRow(
         hostName: business.hostName,
-        linkedName: isLinked ? currentProfile!.fullName : null,
-        linkedAvatarPath: isLinked ? currentAvatarPath : null,
+        linkedName: owner?.fullName,
+        linkedAvatarUrl: owner?.avatarUrl,
+        isOwnBusiness: _isOwnBusiness,
         hasWhatsapp: business.contactPhone.isNotEmpty,
-        onTap: isLinked ? onTap : null,
+        // Hay perfil que abrir siempre que exista owner_id: el propio va a
+        // ProfileScreen, el ajeno al perfil público.
+        onTap: business.ownerId.isEmpty ? null : onTap,
       ),
     );
   }
@@ -809,14 +850,16 @@ class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
     required this.linkedName,
-    required this.linkedAvatarPath,
+    required this.linkedAvatarUrl,
+    required this.isOwnBusiness,
     required this.hasWhatsapp,
     required this.onTap,
   });
 
   final String hostName;
   final String? linkedName;
-  final String? linkedAvatarPath;
+  final String? linkedAvatarUrl;
+  final bool isOwnBusiness;
   final bool hasWhatsapp;
   final VoidCallback? onTap;
 
@@ -826,7 +869,7 @@ class _HostRow extends StatelessWidget {
     final displayName = linkedName != null && linkedName.trim().isNotEmpty
         ? linkedName
         : (hostName.isEmpty ? 'Anfitrión Níkara' : hostName);
-    final avatarPath = linkedAvatarPath;
+    final avatarPath = linkedAvatarUrl;
     final initial = displayName.trim().isEmpty
         ? '?'
         : displayName.trim()[0].toUpperCase();
@@ -844,11 +887,11 @@ class _HostRow extends StatelessWidget {
             ),
       name: displayName,
       verified: true,
-      caption: hasWhatsapp || onTap != null
-          ? (onTap != null
-                ? 'Toca para ver el perfil'
-                : 'Disponible por WhatsApp')
-          : null,
+      caption: onTap != null
+          ? (isOwnBusiness
+                ? 'Tu negocio · toca para ver tu perfil'
+                : 'Toca para ver el perfil')
+          : (hasWhatsapp ? 'Disponible por WhatsApp' : null),
       captionColor: onTap != null ? AppColors.accent300 : null,
       onTap: onTap,
     );

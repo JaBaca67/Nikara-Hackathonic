@@ -51,7 +51,8 @@ class RouteService {
   // Comunidad. Se pide siempre y no solo en [getPublicRoutes]: es un embed
   // liviano y así una ruta propia recién vuelta a cargar también trae el
   // nombre, sin duplicar la constante de select.
-  static const _select = '*, route_stops(*), profiles(id, full_name)';
+  static const _select =
+      '*, route_stops(*), profiles(id, full_name, avatar_url)';
 
   /// Las rutas de la cuenta con sesión abierta, la más reciente primero.
   /// Lista vacía para un invitado: una ruta necesita `owner_id`.
@@ -407,4 +408,21 @@ class RouteService {
       .cast<Map<String, dynamic>>()
       .map(RouteModel.fromRow)
       .toList(growable: false);
+
+  /// Cambios hechos desde otras cuentas o dispositivos: [revision] solo cubre
+  /// los propios, y la pestaña Comunidad es un feed compartido. Si falta la
+  /// migración 016 no llegan eventos y la pantalla sigue funcionando con sus
+  /// fetches normales.
+  Future<void> Function() subscribeToChanges(VoidCallback onChange) {
+    final channel = _client
+        .channel('public:routes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'routes',
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => _client.removeChannel(channel);
+  }
 }

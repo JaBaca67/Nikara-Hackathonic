@@ -62,7 +62,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
-  String? _avatarPath;
+
+  /// Foto elegida en el paso "Perfil", antes de que la cuenta exista. Se sube
+  /// a Storage recién después del signUp, cuando ya hay sesión y un user id
+  /// bajo el que guardarla (ver [AuthService.updateAvatar]).
+  XFile? _avatarImage;
   CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
 
@@ -181,7 +185,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       imageQuality: 85,
     );
     if (picked == null || !mounted) return;
-    setState(() => _avatarPath = picked.path);
+    setState(() => _avatarImage = picked);
   }
 
   Future<void> _showCountryPicker() async {
@@ -194,6 +198,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Valida Perfil, crea la cuenta real en Supabase (necesita email y
   /// contraseña de Identidad más el teléfono de acá) y guarda
   /// usuario/foto localmente — no hay "Atrás" después de esto.
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _createAccountAndContinue() async {
     FocusScope.of(context).unfocus();
     if (!(_step2FormKey.currentState?.validate() ?? false)) {
@@ -226,14 +237,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     // Best-effort: la cuenta real ya existe, así que si estas escrituras
-    // locales fallan no bloquean el flujo.
+    // fallan no bloquean el flujo.
     final username = _usernameController.text.trim();
     if (username.isNotEmpty) {
       await _extrasService.updateUsername(username);
     }
-    final avatarPath = _avatarPath;
-    if (avatarPath != null) {
-      await _extrasService.updateAvatar(avatarPath);
+    final avatarImage = _avatarImage;
+    if (avatarImage != null) {
+      if (!_authService.isLoggedIn) {
+        // Con confirmación de correo activada, signUp crea el usuario pero no
+        // deja sesión — y sin sesión no hay a qué perfil subirle la foto ni
+        // carpeta de Storage donde ponerla. Se avisa en vez de mostrar un
+        // "necesitas iniciar sesión" justo después de registrarse.
+        _showSnack(
+          'Tu foto se podrá subir cuando confirmes tu correo e inicies '
+          'sesión, desde tu perfil.',
+        );
+      } else {
+        try {
+          await _authService.updateAvatar(avatarImage);
+        } on AuthServiceException catch (e) {
+          // La cuenta ya se creó: quedarse sin foto no justifica abortar el
+          // registro, pero sí decirlo en vez de tragarse el error.
+          _showSnack(e.message);
+        }
+      }
     }
     if (!mounted) return;
 
@@ -497,7 +525,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
               Center(
-                child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar),
+                child: _AvatarPicker(
+                  path: _avatarImage?.path,
+                  onTap: _pickAvatar,
+                ),
               ),
               const SizedBox(height: 18),
               Row(

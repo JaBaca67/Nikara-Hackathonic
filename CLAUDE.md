@@ -9,7 +9,7 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
 - **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).
-- **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Fuente custom `Leelawadee`.
+- **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Sin fuentes empaquetadas — toda la tipografía sale de `google_fonts` (League Spartan + Nunito).
 
 ## Arquitectura de carpetas
 

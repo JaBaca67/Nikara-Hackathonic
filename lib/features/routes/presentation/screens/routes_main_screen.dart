@@ -46,16 +46,20 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
   List<RouteModel> _communityRoutes = const [];
   _RoutesTab _tab = _RoutesTab.active;
 
+  Future<void> Function()? _unsubscribe;
+
   @override
   void initState() {
     super.initState();
     RouteService.revision.addListener(_onChanged);
+    _unsubscribe = RouteService().subscribeToChanges(_onChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
     RouteService.revision.removeListener(_onChanged);
+    unawaited(_unsubscribe?.call());
     super.dispose();
   }
 

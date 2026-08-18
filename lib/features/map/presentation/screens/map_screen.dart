@@ -490,8 +490,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final textPainter = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: label,
+        // Sin fontFamily: este TextPainter dibuja sobre un canvas de
+        // dart:ui para generar el bitmap del pin, donde google_fonts no puede
+        // resolver una familia — se usa la del sistema, como cualquier otro
+        // texto pintado a mano.
         style: TextStyle(
-          fontFamily: 'Leelawadee',
           fontWeight: FontWeight.w700,
           fontSize: label.length > 1 ? 13 : 15,
           color: AppColors.settingsTextDark,

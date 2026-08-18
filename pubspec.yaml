@@ -116,25 +116,19 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  fonts:
-    - family: Leelawadee
-      fonts:
-      - asset: assets/fonts/LEELAWUI.TTF  # Tu fuente normal
-      - asset: assets/fonts/LEELAUIB.TTF  # Tu fuente Bold (Negrita)
-        weight: 700
-      - asset: assets/fonts/LEELUISL.TTF  # Tu fuente Light (Delgada)
-        weight: 300
-  #         style: italic
-  #   - family: Trajan Pro
+  # Sin fuentes empaquetadas: toda la tipografía sale de `google_fonts`
+  # (League Spartan + Nunito, ver lib/theme/app_theme.dart). La familia
+  # Leelawadee se removió junto con assets/fonts/ — no la usaba ninguna
+  # pantalla, solo dos etiquetas numéricas de pines de mapa.
+  #
+  # Para volver a empaquetar una fuente propia:
+  # fonts:
+  #   - family: Ejemplo
   #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
+  #       - asset: assets/fonts/Ejemplo-Regular.ttf
+  #       - asset: assets/fonts/Ejemplo-Bold.ttf
   #         weight: 700
+  #         style: italic
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
