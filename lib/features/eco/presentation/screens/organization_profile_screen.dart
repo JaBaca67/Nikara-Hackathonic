@@ -2,14 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Acepta [organization] ya cargada (pantalla de gestión) o solo [organizationId] (feed, que no tiene el objeto completo).
@@ -83,6 +86,32 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
 
   int get _upcoming => _activities.where((a) => !a.isPast).length;
 
+  /// Solo el dueño ve el acceso a gestionarla; para el resto es un perfil
+  /// público de lectura.
+  bool get _isOwner {
+    final organization = _organization;
+    return organization != null &&
+        organization.ownerId.isNotEmpty &&
+        organization.ownerId == AuthService().currentAuthUser?.id;
+  }
+
+  Future<void> _manage(OrganizationModel organization) async {
+    final stillExists = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditOrganizationScreen(organization: organization),
+      ),
+    );
+    if (!mounted) return;
+    // `false` = se eliminó desde esa pantalla: este perfil ya no tiene qué
+    // mostrar, así que se cierra en vez de recargar un id inexistente.
+    if (stillExists == false) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() => _organization = null);
+    await _load();
+  }
+
   Future<void> _openActivity(EcoActivityModel activity) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
@@ -94,10 +123,10 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
     final organization = _organization;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.ecoActive),
+              child: CircularProgressIndicator(color: AppColors.oliveText),
             )
           : organization == null
           ? _ErrorState(
@@ -105,19 +134,22 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
               onBack: () => Navigator.of(context).maybePop(),
             )
           : ListView(
-              padding: const EdgeInsets.only(bottom: 32),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
               children: [
                 PublicProfileHeader(
                   name: organization.name,
                   handle: organization.handleTag,
                   bannerPath: organization.bannerUrl,
-                  accent: AppColors.ecoActive,
+                  accent: AppColors.oliveText,
                   verified: organization.isVerified,
                   badgeIcon: Icons.eco_rounded,
                   badgeLabel: organization.isVerified
                       ? 'Fundación Ecológica Verificada'
                       : 'Fundación en revisión',
                   onBack: () => Navigator.of(context).maybePop(),
+                  action: _isOwner
+                      ? _ManageButton(onTap: () => _manage(organization))
+                      : null,
                   avatar: organization.logoUrl == null
                       ? _InitialsAvatar(initials: organization.initials)
                       : LocalImage(
@@ -135,7 +167,9 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 if (organization.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 22),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xl,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -154,7 +188,9 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 ],
                 const SizedBox(height: 22),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                  ),
                   child: Text(
                     'Próximas jornadas',
                     style: AppTextStyles.detailSectionTitle,
@@ -164,8 +200,8 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 if (_activities.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 24,
+                      horizontal: AppSpacing.xl,
+                      vertical: AppSpacing.xxl,
                     ),
                     child: Text(
                       'Esta fundación todavía no ha publicado jornadas.',
@@ -189,6 +225,54 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   }
 }
 
+/// Acceso a "Gestionar" desde la cabecera del perfil, en el slot de acción de
+/// [PublicProfileHeader].
+class _ManageButton extends StatelessWidget {
+  const _ManageButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(color: AppColors.oliveText.withValues(alpha: 0.4)),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.mapControlShadowSoft,
+              offset: Offset(0, 2),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.tune_rounded,
+              size: 15,
+              color: AppColors.oliveText,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Gestionar',
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 12,
+                color: AppColors.oliveText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _InitialsAvatar extends StatelessWidget {
   const _InitialsAvatar({required this.initials});
 
@@ -201,7 +285,7 @@ class _InitialsAvatar extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         initials,
-        style: AppTextStyles.h6.copyWith(color: AppColors.ecoActive),
+        style: AppTextStyles.h6.copyWith(color: AppColors.oliveText),
       ),
     );
   }
@@ -218,7 +302,7 @@ class _ErrorState extends StatelessWidget {
     return SafeArea(
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

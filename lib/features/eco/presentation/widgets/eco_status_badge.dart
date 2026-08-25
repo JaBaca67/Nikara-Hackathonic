@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Único badge de estado compartido por tarjeta y detalle, para que los 3 estados vivan en un solo lugar.
@@ -22,7 +23,7 @@ class EcoStatusBadge extends StatelessWidget {
       EcoActivityStatus.joined => (
         'Participando',
         Icons.groups_rounded,
-        AppColors.ecoActive,
+        AppColors.oliveText,
         AppColors.surface100,
         false,
       ),
@@ -38,7 +39,7 @@ class EcoStatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: bordered ? Border.all(color: AppColors.mapControlBorder) : null,
       ),
       child: Row(

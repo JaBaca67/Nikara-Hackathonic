@@ -19,6 +19,8 @@ import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de detalle de [BusinessModel], sin precio ni CTA de reserva — mismo pivote "discovery-first" ya aplicado al rediseño del Mapa.
@@ -228,23 +230,28 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                 DetailCoverIconButton(
                   icon: Icons.add_road_rounded,
                   onTap: _addToRoute,
+                  label: 'Agregar a una ruta',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
                   onTap: _toggleFavorite,
+                  label: _isFavorite
+                      ? 'Quitar de favoritos'
+                      : 'Agregar a favoritos',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: Icons.ios_share,
                   onTap: _showComingSoon,
+                  label: 'Compartir negocio',
                 ),
               ],
             ),
             Transform.translate(
               offset: const Offset(0, -18),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: _QuickInfoCard(
                   business: _business,
                   distanceKm: _distanceKm,
@@ -263,7 +270,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                    ),
                     child: _tab == 0
                         ? _InformationTab(
                             business: _business,
@@ -378,7 +387,7 @@ class _QuickInfoCard extends StatelessWidget {
           value: _todayValue,
           valueColor: business.schedules.trim().isEmpty
               ? AppColors.settingsTextMuted
-              : AppColors.accent300,
+              : AppColors.oliveText,
         ),
       ],
     );
@@ -509,7 +518,7 @@ class _DescriptionSection extends StatelessWidget {
               const Icon(
                 Icons.expand_more,
                 size: 15,
-                color: AppColors.accent300,
+                color: AppColors.oliveText,
               ),
             ],
           ),
@@ -529,7 +538,12 @@ class _FullDescriptionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,6 +567,7 @@ class _FullDescriptionSheet extends StatelessWidget {
                     ),
                     child: const Icon(
                       Icons.close,
+                      semanticLabel: 'Cerrar',
                       size: 18,
                       color: AppColors.settingsTextDark,
                     ),
@@ -655,7 +670,7 @@ class _ActivitiesSection extends StatelessWidget {
                   Icon(
                     expanded ? Icons.expand_less : Icons.chevron_right,
                     size: 15,
-                    color: AppColors.accent300,
+                    color: AppColors.oliveText,
                   ),
                 ],
               ),
@@ -684,20 +699,11 @@ class _ActivityRow extends StatelessWidget {
     return DetailIconRow(
       icon: activityIcon(label),
       label: activityLabel(label),
-      iconColor: isEco ? AppColors.accent300 : AppColors.settingsTextMuted,
+      iconColor: isEco ? AppColors.oliveText : AppColors.settingsTextMuted,
       iconBackground: isEco
           ? AppColors.detailActivityIconBg
           : AppColors.settingsBackground,
-      trailing: isEco
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.detailActivityIconBg,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text('ECO', style: AppTextStyles.detailEcoBadge),
-            )
-          : null,
+      trailing: isEco ? const EcoBadge() : null,
     );
   }
 }
@@ -720,7 +726,7 @@ class _ServicesSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(color: AppColors.mapControlBorder),
               ),
               child: Row(
@@ -763,7 +769,7 @@ class _ScheduleSection extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         child: Row(
@@ -878,7 +884,7 @@ class _HostRow extends StatelessWidget {
       avatar: avatarPath != null && avatarPath.isNotEmpty
           ? LocalImage(path: avatarPath)
           : Container(
-              color: AppColors.accent300,
+              color: AppColors.oliveText,
               alignment: Alignment.center,
               child: Text(
                 initial,
@@ -892,7 +898,7 @@ class _HostRow extends StatelessWidget {
                 ? 'Tu negocio · toca para ver tu perfil'
                 : 'Toca para ver el perfil')
           : (hasWhatsapp ? 'Disponible por WhatsApp' : null),
-      captionColor: onTap != null ? AppColors.accent300 : null,
+      captionColor: onTap != null ? AppColors.oliveText : null,
       onTap: onTap,
     );
   }
@@ -962,7 +968,7 @@ class _ReviewsTab extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,
               side: const BorderSide(color: AppColors.primary500),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -1017,7 +1023,7 @@ class _ReviewsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
       child: Column(
         children: [
           const Icon(
@@ -1056,11 +1062,11 @@ class _RatingSummaryCard extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Row(
@@ -1101,7 +1107,7 @@ class _RatingSummaryCard extends StatelessWidget {
               children: [
                 for (var star = 5; star >= 1; star--)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
                     child: _RatingBarRow(
                       star: star,
                       fraction: total == 0 ? 0 : counts[star] / total,
@@ -1138,7 +1144,7 @@ class _RatingBarRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
             child: LinearProgressIndicator(
               value: fraction,
               minHeight: 6,
@@ -1181,11 +1187,11 @@ class _ReviewCard extends StatelessWidget {
         : review.authorName.trim()[0].toUpperCase();
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Column(
@@ -1195,7 +1201,7 @@ class _ReviewCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: AppColors.ecoForest,
+                backgroundColor: AppColors.success,
                 child: Text(
                   initial,
                   style: AppTextStyles.reviewAuthor.copyWith(
@@ -1298,9 +1304,9 @@ class _ContactBar extends StatelessWidget {
                 backgroundColor: AppColors.settingsBackground,
                 foregroundColor: AppColors.settingsTextDark,
                 side: const BorderSide(color: AppColors.mapControlBorder),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.detailBottomBarSecondary,
               ),
@@ -1319,13 +1325,13 @@ class _ContactBar extends StatelessWidget {
                         backgroundColor: AppColors.segmentedTrackBg,
                         foregroundColor: AppColors.settingsTextMuted,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                     )
                   : DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         boxShadow: const [
                           BoxShadow(
                             color: AppColors.detailPrimaryButtonGlow,
@@ -1346,7 +1352,7 @@ class _ContactBar extends StatelessWidget {
                           backgroundColor: AppColors.primary500,
                           foregroundColor: AppColors.settingsTextDark,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
                           textStyle: AppTextStyles.detailBottomBarPrimary,
                         ),
@@ -1425,13 +1431,13 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
       fillColor: AppColors.surface100,
       contentPadding: const EdgeInsets.all(14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
@@ -1476,6 +1482,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     ),
                     child: const Icon(
                       Icons.close,
+                      semanticLabel: 'Cerrar',
                       size: 18,
                       color: AppColors.settingsTextDark,
                     ),
@@ -1492,7 +1499,9 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     GestureDetector(
                       onTap: () => setState(() => _rating = i),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xs,
+                        ),
                         child: Icon(
                           i <= _rating
                               ? Icons.star_rounded
@@ -1526,7 +1535,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: AppColors.surface200.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   border: Border.all(
                     color: AppColors.primary500.withValues(alpha: 0.4),
                   ),
@@ -1560,7 +1569,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     return Stack(
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           child: SizedBox(
                             width: 72,
                             height: 72,
@@ -1589,6 +1598,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                               ),
                               child: const Icon(
                                 Icons.close,
+                                semanticLabel: 'Quitar foto',
                                 size: 14,
                                 color: AppColors.surface100,
                               ),
@@ -1610,7 +1620,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary500,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
                 child: Text(

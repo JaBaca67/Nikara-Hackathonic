@@ -1,13 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/organization_image_field.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// `is_verified` no se pide ni se manda: arranca en `true` por default de columna, igual que `businesses.is_verified`.
@@ -24,8 +26,10 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   final _nameController = TextEditingController();
   final _handleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _logoController = TextEditingController();
-  final _bannerController = TextEditingController();
+
+  // Sin `existingUrl`: en el alta siempre se parte de cero.
+  var _logo = OrganizationImageSlot();
+  var _banner = OrganizationImageSlot();
 
   List<OrganizationModel> _myOrganizations = const [];
   bool _isLoading = true;
@@ -42,8 +46,6 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     _nameController.dispose();
     _handleController.dispose();
     _descriptionController.dispose();
-    _logoController.dispose();
-    _bannerController.dispose();
     super.dispose();
   }
 
@@ -65,55 +67,70 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   }
 
   Future<void> _save() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     try {
+      // Las imágenes suben antes del insert: si Storage falla, no queda una
+      // fundación registrada apuntando a una imagen que nunca se subió.
+      final logo = await _logo.resolve();
+      final banner = await _banner.resolve();
+
       final organization = await OrganizationService().createOrganization(
         name: _nameController.text.trim(),
         handle: _handleController.text,
         description: _descriptionController.text.trim(),
-        logoUrl: _emptyToNull(_logoController.text),
-        bannerUrl: _emptyToNull(_bannerController.text),
+        logoUrl: logo.url,
+        bannerUrl: banner.url,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('¡${organization.name} quedó registrada!')),
-      );
+      _snack('¡${organization.name} quedó registrada!');
       _nameController.clear();
       _handleController.clear();
       _descriptionController.clear();
-      _logoController.clear();
-      _bannerController.clear();
-      setState(() => _myOrganizations = [..._myOrganizations, organization]);
+      setState(() {
+        _logo = OrganizationImageSlot();
+        _banner = OrganizationImageSlot();
+        _myOrganizations = [..._myOrganizations, organization];
+      });
     } on OrganizationServiceException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      _snack(e.message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  static String? _emptyToNull(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _openOrganization(OrganizationModel organization) {
-    Navigator.of(context).push(
+  Future<void> _openOrganization(OrganizationModel organization) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => OrganizationProfileScreen(organization: organization),
       ),
     );
+    await _loadMine();
+  }
+
+  Future<void> _editOrganization(OrganizationModel organization) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EditOrganizationScreen(organization: organization),
+      ),
+    );
+    await _loadMine();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.backgroundCream,
+        backgroundColor: AppColors.background,
         elevation: 0,
         title: Text(
           'Fundaciones',
@@ -123,13 +140,18 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.sm,
+            AppSpacing.xl,
+            AppSpacing.xxxl,
+          ),
           children: [
             if (_isLoading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                 child: Center(
-                  child: CircularProgressIndicator(color: AppColors.ecoActive),
+                  child: CircularProgressIndicator(color: AppColors.oliveText),
                 ),
               )
             else if (_myOrganizations.isNotEmpty) ...[
@@ -137,10 +159,11 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
               const SizedBox(height: 10),
               for (final organization in _myOrganizations)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: _OrganizationRow(
                     organization: organization,
                     onTap: () => _openOrganization(organization),
+                    onEdit: () => _editOrganization(organization),
                   ),
                 ),
               const SizedBox(height: 22),
@@ -192,18 +215,20 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             ),
             const SizedBox(height: 16),
             const EcoFieldLabel('Logo'),
-            _ImageField(
-              controller: _logoController,
-              hint: 'Pega una URL o elige una imagen',
-              previewHeight: 72,
-              previewWidth: 72,
+            OrganizationImageField(
+              slot: _logo,
+              onChanged: () => setState(() {}),
+              previewHeight: 96,
+              previewWidth: 96,
+              emptyHint: 'Sin logo · se usan las iniciales',
             ),
             const SizedBox(height: 16),
             const EcoFieldLabel('Banner'),
-            _ImageField(
-              controller: _bannerController,
-              hint: 'Pega una URL o elige una imagen',
-              previewHeight: 96,
+            OrganizationImageField(
+              slot: _banner,
+              onChanged: () => setState(() {}),
+              previewHeight: 120,
+              emptyHint: 'Sin banner',
             ),
             const SizedBox(height: 28),
             EcoPrimaryButton(
@@ -218,110 +243,32 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   }
 }
 
-/// URL escrita a mano o ruta local (mismo campo); ambas se guardan como texto plano, igual que las fotos de un negocio.
-class _ImageField extends StatefulWidget {
-  const _ImageField({
-    required this.controller,
-    required this.hint,
-    required this.previewHeight,
-    this.previewWidth,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final double previewHeight;
-  final double? previewWidth;
-
-  @override
-  State<_ImageField> createState() => _ImageFieldState();
-}
-
-class _ImageFieldState extends State<_ImageField> {
-  @override
-  void initState() {
-    super.initState();
-    // El controller es del padre: solo se quita el listener, nunca se hace dispose aquí.
-    widget.controller.addListener(_onTextChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onTextChanged);
-    super.dispose();
-  }
-
-  void _onTextChanged() => setState(() {});
-
-  Future<void> _pick() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
-    widget.controller.text = picked.path;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final value = widget.controller.text.trim();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        EcoTextField(controller: widget.controller, hint: widget.hint),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: EcoPickerButton(
-                icon: Icons.image_outlined,
-                label: 'Elegir del dispositivo',
-                onTap: _pick,
-              ),
-            ),
-            if (value.isNotEmpty) ...[
-              const SizedBox(width: 10),
-              EcoPickerButton(
-                icon: Icons.close_rounded,
-                label: 'Quitar',
-                onTap: () => setState(() => widget.controller.clear()),
-              ),
-            ],
-          ],
-        ),
-        if (value.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: SizedBox(
-              height: widget.previewHeight,
-              width: widget.previewWidth,
-              child: LocalImage(path: value),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
 class _OrganizationRow extends StatelessWidget {
-  const _OrganizationRow({required this.organization, required this.onTap});
+  const _OrganizationRow({
+    required this.organization,
+    required this.onTap,
+    required this.onEdit,
+  });
 
   final OrganizationModel organization;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
               child: SizedBox(
                 width: 44,
                 height: 44,
@@ -332,7 +279,7 @@ class _OrganizationRow extends StatelessWidget {
                         child: Text(
                           organization.initials,
                           style: AppTextStyles.mapRowTitle.copyWith(
-                            color: AppColors.ecoActive,
+                            color: AppColors.oliveText,
                           ),
                         ),
                       )
@@ -363,7 +310,7 @@ class _OrganizationRow extends StatelessWidget {
                         const Icon(
                           Icons.verified_rounded,
                           size: 14,
-                          color: AppColors.ecoActive,
+                          color: AppColors.oliveText,
                         ),
                       ],
                     ],
@@ -378,6 +325,16 @@ class _OrganizationRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
+              ),
+            ),
+            IconButton(
+              onPressed: onEdit,
+              tooltip: 'Gestionar fundación',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(
+                Icons.tune_rounded,
+                size: 18,
+                color: AppColors.oliveText,
               ),
             ),
             const Icon(Icons.chevron_right, color: AppColors.neutral400),

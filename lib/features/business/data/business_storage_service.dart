@@ -111,7 +111,7 @@ class BusinessStorageService {
       'location="${row['location']}"',
     );
     try {
-      await _client.from('businesses').insert(row);
+      await _insertRow(row);
       debugPrint(
         '[BusinessStorageService] addBusiness("${business.name}") -> OK',
       );
@@ -147,7 +147,7 @@ class BusinessStorageService {
       'location="${row['location']}"',
     );
     try {
-      await _client.from('businesses').update(row).eq('id', business.id);
+      await _updateRow(business.id, row);
       debugPrint(
         '[BusinessStorageService] updateBusiness("${business.name}") -> OK',
       );
@@ -262,6 +262,45 @@ class BusinessStorageService {
     }
   }
 
+  /// PostgREST no conoce `schedules`/`facebook_handle` porque falta la
+  /// migración 018. Se reintenta sin esas dos claves en vez de impedir que se
+  /// registre un negocio: el resto de los datos sí se puede guardar, y los
+  /// horarios/Facebook siguen viviendo en el cache local como antes.
+  static const _post018Columns = ['schedules', 'facebook_handle'];
+
+  static bool _isMissingPost018Column(PostgrestException e) =>
+      (e.code == 'PGRST204' || e.code == '42703') &&
+      _post018Columns.any(e.message.contains);
+
+  Future<void> _insertRow(Map<String, dynamic> row) async {
+    try {
+      await _client.from('businesses').insert(row);
+    } on PostgrestException catch (e) {
+      if (!_isMissingPost018Column(e)) rethrow;
+      await _client.from('businesses').insert(_withoutPost018(row));
+    }
+  }
+
+  Future<void> _updateRow(String id, Map<String, dynamic> row) async {
+    try {
+      await _client.from('businesses').update(row).eq('id', id);
+    } on PostgrestException catch (e) {
+      if (!_isMissingPost018Column(e)) rethrow;
+      await _client
+          .from('businesses')
+          .update(_withoutPost018(row))
+          .eq('id', id);
+    }
+  }
+
+  static Map<String, dynamic> _withoutPost018(Map<String, dynamic> row) {
+    final trimmed = Map<String, dynamic>.of(row);
+    for (final column in _post018Columns) {
+      trimmed.remove(column);
+    }
+    return trimmed;
+  }
+
   BusinessModel _mergeExtras(BusinessModel core, BusinessModel cached) {
     return core.copyWith(
       allowsReservations: cached.allowsReservations,
@@ -270,9 +309,11 @@ class BusinessStorageService {
       activities: cached.activities,
       ecoSealRequested: cached.ecoSealRequested,
       ecoPractices: cached.ecoPractices,
-      facebookLink: cached.facebookLink,
+      // Solo si el cache local tiene algo: desde 018 estas dos viven en la
+      // tabla, así que un cache vacío no debe borrar lo que vino del servidor.
+      facebookLink: cached.facebookLink.isEmpty ? null : cached.facebookLink,
       socialMediaLink: cached.socialMediaLink,
-      schedules: cached.schedules,
+      schedules: cached.schedules.isEmpty ? null : cached.schedules,
       accessDetails: cached.accessDetails,
       otherNotes: cached.otherNotes,
       reviews: cached.reviews,
@@ -292,6 +333,8 @@ class BusinessStorageService {
       'location': 'SRID=4326;POINT(${b.longitude} ${b.latitude})',
       'phone': b.contactPhone,
       'instagram_handle': b.instagramLink,
+      'facebook_handle': b.facebookLink,
+      'schedules': b.schedules,
       'photos': b.localImagePaths,
     };
   }
@@ -322,6 +365,9 @@ class BusinessStorageService {
       longitude: point?.$2,
       contactPhone: row['phone'] as String? ?? '',
       instagramLink: row['instagram_handle'] as String? ?? '',
+      // Ausentes (no vacías) mientras no haya corrido la migración 018.
+      facebookLink: row['facebook_handle'] as String? ?? '',
+      schedules: row['schedules'] as String? ?? '',
       localImagePaths:
           (row['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
       isVerified: row['is_verified'] as bool? ?? false,

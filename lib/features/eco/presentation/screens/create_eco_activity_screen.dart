@@ -13,6 +13,7 @@ import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Formulario "Registrar actividad"; al guardar refresca el feed ECO vía
@@ -191,7 +192,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
             ListTile(
               leading: const Icon(
                 Icons.photo_library_outlined,
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
               title: Text(
                 'Elegir de la galería',
@@ -202,7 +203,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
             ListTile(
               leading: const Icon(
                 Icons.photo_camera_outlined,
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
               title: Text(
                 'Tomar una foto',
@@ -389,7 +390,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -556,7 +557,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.settingsBackground,
                       border: Border.all(color: AppColors.mapControlBorder),
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -597,7 +598,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
             const SizedBox(height: 10),
             _HintRow(
               icon: Icons.touch_app,
-              iconColor: AppColors.accent300,
+              iconColor: AppColors.oliveText,
               text:
                   'Arrastra el mapa o toca cualquier punto para dejar el pin '
                   'sobre el lugar de encuentro.',
@@ -614,7 +615,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                   border: Border.all(
                     color: AppColors.primary500.withValues(alpha: 0.45),
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -653,7 +654,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                     const Icon(
                       Icons.check_circle,
                       size: 16,
-                      color: AppColors.ecoActive,
+                      color: AppColors.oliveText,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -795,7 +796,12 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
 
   Widget _buildFooter() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface100,
         boxShadow: [
@@ -840,7 +846,7 @@ class _CoverPicker extends StatelessWidget {
           height: 158,
           decoration: BoxDecoration(
             color: AppColors.wizardUploadZoneBg,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: AppColors.primary500.withValues(alpha: 0.6),
               width: 1.5,
@@ -879,7 +885,7 @@ class _CoverPicker extends StatelessWidget {
     }
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
         height: 158,
         width: double.infinity,
@@ -982,12 +988,12 @@ class _CategoryPicker extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
                 color: category == selected
-                    ? AppColors.ecoActive
+                    ? AppColors.oliveText
                     : AppColors.settingsBackground,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(
                   color: category == selected
-                      ? AppColors.ecoActive
+                      ? AppColors.oliveText
                       : AppColors.settingsTextDark.withValues(alpha: 0.07),
                 ),
               ),
@@ -1074,15 +1080,15 @@ class _PublishAsOption extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.detailActivityIconBg
               : AppColors.settingsBackground,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
             color: selected
-                ? AppColors.ecoActive
+                ? AppColors.oliveText
                 : AppColors.settingsTextDark.withValues(alpha: 0.07),
             width: selected ? 1.5 : 1,
           ),
@@ -1111,7 +1117,7 @@ class _PublishAsOption extends StatelessWidget {
                         const Icon(
                           Icons.verified_rounded,
                           size: 13,
-                          color: AppColors.ecoActive,
+                          color: AppColors.oliveText,
                         ),
                       ],
                     ],
@@ -1132,7 +1138,7 @@ class _PublishAsOption extends StatelessWidget {
                   ? Icons.radio_button_checked_rounded
                   : Icons.radio_button_unchecked_rounded,
               size: 20,
-              color: selected ? AppColors.ecoActive : AppColors.neutral400,
+              color: selected ? AppColors.oliveText : AppColors.neutral400,
             ),
           ],
         ),
@@ -1151,7 +1157,7 @@ class _PublishAsAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = imagePath;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: SizedBox(
         width: 40,
         height: 40,
@@ -1159,7 +1165,7 @@ class _PublishAsAvatar extends StatelessWidget {
             ? Container(
                 color: AppColors.detailActivityIconBg,
                 alignment: Alignment.center,
-                child: Icon(icon, size: 20, color: AppColors.ecoActive),
+                child: Icon(icon, size: 20, color: AppColors.oliveText),
               )
             : LocalImage(path: path, fallbackIcon: icon),
       ),

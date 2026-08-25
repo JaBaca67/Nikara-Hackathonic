@@ -21,6 +21,7 @@ import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Figma nodes 377:483/421:361. Todo se calcula en vivo desde Supabase/[FavoritesService]/[UserStatsService], sin datos mock de respaldo.
@@ -153,7 +154,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: const Text('¿Eliminar negocio?'),
         content: Text(
           'Se eliminará "${business.name}" de forma permanente. Esta '
@@ -168,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(
               'Eliminar',
-              style: TextStyle(color: AppColors.settingsDanger),
+              style: TextStyle(color: AppColors.destructive),
             ),
           ),
         ],
@@ -200,7 +203,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: const Text('¿Eliminar actividad?'),
         content: Text(
           activity.participantCount == 0
@@ -219,7 +224,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(
               'Eliminar',
-              style: TextStyle(color: AppColors.settingsDanger),
+              style: TextStyle(color: AppColors.destructive),
             ),
           ),
         ],
@@ -289,7 +294,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Row(
           children: [
             Container(
@@ -343,7 +350,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Row(
           children: [
             Container(
@@ -376,7 +385,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: badge.tint.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 '✓ Insignia obtenida',
@@ -423,14 +432,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         body: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.wifi_off_rounded,
                     size: 44,
-                    color: AppColors.settingsDanger,
+                    color: AppColors.destructive,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -627,7 +636,12 @@ class _ProfileHeaderCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.md,
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -635,21 +649,28 @@ class _ProfileHeaderCard extends StatelessWidget {
                 Row(
                   children: [
                     _HeaderIconButton(
+                      label: 'Cambiar de cuenta',
                       icon: Icons.switch_account_outlined,
                       onTap: onSwitchAccountTap,
                     ),
                     const SizedBox(width: 10),
                     _HeaderIconButton(
+                      label: 'Editar perfil',
                       icon: Icons.edit_outlined,
                       onTap: onEditTap,
                     ),
                     const SizedBox(width: 10),
                     _HeaderIconButton(
+                      label: 'Ajustes',
                       icon: Icons.settings_outlined,
                       onTap: onSettingsTap,
                     ),
                     const SizedBox(width: 10),
-                    _HeaderIconButton(icon: Icons.ios_share, onTap: onShareTap),
+                    _HeaderIconButton(
+                      icon: Icons.ios_share,
+                      onTap: onShareTap,
+                      label: 'Compartir perfil',
+                    ),
                   ],
                 ),
               ],
@@ -690,24 +711,35 @@ class _ProfileHeaderCard extends StatelessWidget {
 }
 
 class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.onTap});
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.label,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Descripción para lectores de pantalla — el botón no tiene texto visible.
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: AppColors.profileDivider,
-          shape: BoxShape.circle,
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: AppColors.profileDivider,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
         ),
-        child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
       ),
     );
   }
@@ -745,7 +777,7 @@ class _ProfileAvatar extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [AppColors.settingsAccent, AppColors.settingsDanger],
+            colors: [AppColors.settingsAccent, AppColors.destructive],
           ),
           boxShadow: [
             BoxShadow(
@@ -893,10 +925,10 @@ class _LevelProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.cardGlowSoft,
@@ -1007,10 +1039,10 @@ class _ProfileTabSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 52,
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: const [
           BoxShadow(
             color: AppColors.profileCardShadow,
@@ -1020,7 +1052,7 @@ class _ProfileTabSelector extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Stack(
           children: [
             Positioned.fill(
@@ -1038,7 +1070,7 @@ class _ProfileTabSelector extends StatelessWidget {
                       gradient: const LinearGradient(
                         colors: [AppColors.primary500, AppColors.primary700],
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),
@@ -1088,7 +1120,7 @@ class _ProfileTabButton extends StatelessWidget {
       child: AnimatedDefaultTextStyle(
         duration: const Duration(milliseconds: 200),
         style: AppTextStyles.buttonMd.copyWith(
-          color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+          color: selected ? AppColors.textPrimary : AppColors.neutral700,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1099,7 +1131,7 @@ class _ProfileTabButton extends StatelessWidget {
                 icon,
                 key: ValueKey(selected),
                 size: 24,
-                color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+                color: selected ? AppColors.textPrimary : AppColors.neutral700,
               ),
             ),
             const SizedBox(width: 6),
@@ -1173,7 +1205,7 @@ class _FavoritesEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         children: [
@@ -1218,7 +1250,7 @@ class _FavoritesEmptyState extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 textStyle: AppTextStyles.buttonLg,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
               ),
             ),
@@ -1302,11 +1334,12 @@ class _FavoritePlaceCard extends StatelessWidget {
           GestureDetector(
             onTap: onFavoriteToggle,
             child: const Padding(
-              padding: EdgeInsets.all(4),
+              padding: EdgeInsets.all(AppSpacing.xs),
               child: Icon(
                 Icons.favorite,
                 size: 20,
                 color: AppColors.favoriteActive,
+                semanticLabel: 'Quitar de favoritos',
               ),
             ),
           ),
@@ -1395,11 +1428,12 @@ class _FavoriteBusinessCard extends StatelessWidget {
           GestureDetector(
             onTap: onFavoriteToggle,
             child: const Padding(
-              padding: EdgeInsets.all(4),
+              padding: EdgeInsets.all(AppSpacing.xs),
               child: Icon(
                 Icons.favorite,
                 size: 20,
                 color: AppColors.favoriteActive,
+                semanticLabel: 'Quitar de favoritos',
               ),
             ),
           ),
@@ -1504,7 +1538,7 @@ class _BadgeCard extends StatelessWidget {
                   color: unlocked
                       ? badge.tint.withValues(alpha: 0.08)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
                 child: Text(
                   unlocked ? '✓ Obtenida' : 'Bloqueada',
@@ -1576,7 +1610,7 @@ class _MyEcoActivityCard extends StatelessWidget {
     final isPast = activity.isPast;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -1679,7 +1713,7 @@ class _MyEcoActivityCard extends StatelessWidget {
                     side: const BorderSide(color: AppColors.warmChipBorder),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),
@@ -1691,13 +1725,13 @@ class _MyEcoActivityCard extends StatelessWidget {
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: const Text('Eliminar'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.settingsDanger,
+                    foregroundColor: AppColors.destructive,
                     side: BorderSide(
-                      color: AppColors.settingsDanger.withValues(alpha: 0.4),
+                      color: AppColors.destructive.withValues(alpha: 0.4),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),
@@ -1722,18 +1756,18 @@ class _EcoMetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.detailActivityIconBg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: AppColors.ecoActive),
+          Icon(icon, size: 11, color: AppColors.oliveText),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               label,
               style: AppTextStyles.profileCaption10.copyWith(
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1802,7 +1836,7 @@ class _MyBusinessCard extends StatelessWidget {
         : null;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -1878,7 +1912,7 @@ class _MyBusinessCard extends StatelessWidget {
                     side: const BorderSide(color: AppColors.warmChipBorder),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),
@@ -1890,13 +1924,13 @@ class _MyBusinessCard extends StatelessWidget {
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: const Text('Eliminar'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.settingsDanger,
+                    foregroundColor: AppColors.destructive,
                     side: BorderSide(
-                      color: AppColors.settingsDanger.withValues(alpha: 0.4),
+                      color: AppColors.destructive.withValues(alpha: 0.4),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),

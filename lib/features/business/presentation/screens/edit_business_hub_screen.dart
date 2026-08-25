@@ -4,6 +4,8 @@ import 'package:nikara_app/features/business/data/business_storage_service.dart'
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// No muestra el "Rendimiento del último mes" del wireframe (no hay pipeline de analítica real) ni activa "Pausar" (falta columna `is_active`) para no mostrar datos o efectos falsos al dueño.
@@ -56,7 +58,9 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: const Text('¿Eliminar negocio?'),
         content: Text(
           'Se eliminará "${_business.name}" de forma permanente. Esta '
@@ -71,7 +75,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
             onPressed: () => Navigator.of(context).pop(true),
             child: Text(
               'Eliminar',
-              style: TextStyle(color: AppColors.settingsDanger),
+              style: TextStyle(color: AppColors.destructive),
             ),
           ),
         ],
@@ -102,23 +106,10 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                 child: Row(
                   children: [
-                    GestureDetector(
+                    CircleBackButton(
                       onTap: () => Navigator.of(
                         context,
                       ).pop(_changed ? _business : null),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: AppColors.profileDivider,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: AppColors.settingsTextDark,
-                        ),
-                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -143,22 +134,24 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                        ),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: AppColors.surface100,
                           border: Border.all(
-                            color: AppColors.accent300.withValues(alpha: 0.28),
+                            color: AppColors.oliveText.withValues(alpha: 0.28),
                           ),
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.accent300.withValues(
+                              color: AppColors.oliveText.withValues(
                                 alpha: 0.10,
                               ),
                               offset: const Offset(0, 2),
@@ -181,7 +174,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                                     ? Icons.verified
                                     : Icons.verified_outlined,
                                 size: 18,
-                                color: AppColors.accent300,
+                                color: AppColors.oliveText,
                               ),
                             ),
                             const SizedBox(width: 11),
@@ -208,12 +201,14 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                               onTap: _comingSoon,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 8,
+                                  horizontal: AppSpacing.md,
+                                  vertical: AppSpacing.sm,
                                 ),
                                 decoration: BoxDecoration(
                                   color: AppColors.settingsBackground,
-                                  borderRadius: BorderRadius.circular(999),
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.pill,
+                                  ),
                                 ),
                                 child: Text(
                                   'Pausar',
@@ -277,7 +272,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                             _EditRow(
                               icon: Icons.eco,
                               iconBg: AppColors.detailActivityIconBg,
-                              iconColor: AppColors.accent300,
+                              iconColor: AppColors.oliveText,
                               title: 'Sello ECO y actividades',
                               subtitle:
                                   '${_business.ecoSealRequested ? 'Sello activo' : 'Sin sello ECO'} · '
@@ -289,7 +284,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.only(top: 16),
+                        padding: const EdgeInsets.only(top: AppSpacing.lg),
                         child: Center(
                           child: GestureDetector(
                             onTap: _confirmDelete,
@@ -332,7 +327,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.settingsBackground,
                           border: Border.all(color: AppColors.mapControlBorder),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -362,7 +357,7 @@ class _EditBusinessHubScreenState extends State<EditBusinessHubScreen> {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: AppColors.primary500,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             boxShadow: const [
                               BoxShadow(
                                 color: AppColors.detailPrimaryButtonGlow,
@@ -417,7 +412,7 @@ class _EditRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface100,
           border: Border.all(color: AppColors.mapControlBorder),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Row(
           children: [
@@ -457,7 +452,7 @@ class _EditRow extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
                   color: AppColors.wizardReviewBadgeBg,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text(
                   badge!,

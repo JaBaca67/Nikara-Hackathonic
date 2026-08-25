@@ -13,6 +13,7 @@ import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
@@ -385,6 +386,16 @@ void main() {
       tester,
       CreateEcoActivityScreen(existingActivity: _stressActivity),
       'CreateEcoActivityScreen (edición)',
+    );
+  });
+
+  testWidgets('EditOrganizationScreen no desborda en pantallas pequeñas', (
+    tester,
+  ) async {
+    await expectNoOverflow(
+      tester,
+      EditOrganizationScreen(organization: _stressOrganization),
+      'EditOrganizationScreen',
     );
   });
 

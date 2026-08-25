@@ -7,6 +7,7 @@ import 'package:nikara_app/features/business/presentation/screens/register_busin
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de Ajustes (nodo Figma 361:323). Los toggles de
@@ -101,7 +102,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text(
           'Cerrar sesión',
           style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -120,7 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(
               'Cerrar sesión',
               style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
             ),
           ),
@@ -142,7 +145,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text(
           'Eliminar cuenta',
           style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -163,7 +168,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Text(
               'Eliminar cuenta',
               style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
             ),
           ),
@@ -201,7 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         bottom: false,
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -279,7 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SettingsRow(
                     icon: Icons.storefront_outlined,
-                    iconTint: AppColors.accent300,
+                    iconTint: AppColors.oliveText,
                     title: 'Registrar mi negocio',
                     caption: 'Llega a más viajeros en Nicaragua',
                     onTap: () {
@@ -297,7 +302,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SettingsRow(
                     icon: Icons.eco_outlined,
-                    iconTint: AppColors.ecoActive,
+                    iconTint: AppColors.oliveText,
                     title: 'Registrar actividad ECO',
                     caption: 'Organiza una jornada ambiental',
                     onTap: () {
@@ -310,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _SettingsRow(
                     icon: Icons.groups_outlined,
-                    iconTint: AppColors.ecoActive,
+                    iconTint: AppColors.oliveText,
                     title: 'Registrar / Gestionar Fundación',
                     caption: 'Publica jornadas a nombre de tu organización',
                     onTap: () {
@@ -349,15 +354,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SettingsRow(
                     icon: Icons.switch_account_outlined,
-                    iconTint: AppColors.accent300,
+                    iconTint: AppColors.oliveText,
                     title: 'Cambiar de cuenta',
                     caption: _savedAccountsCaption,
                     onTap: _openAccountSwitcher,
                   ),
                   _SettingsRow(
                     icon: Icons.logout,
-                    iconTint: AppColors.settingsDanger,
-                    titleColor: AppColors.settingsDanger,
+                    iconTint: AppColors.destructive,
+                    titleColor: AppColors.destructive,
                     title: 'Cerrar sesión',
                     onTap: _confirmLogout,
                   ),
@@ -368,8 +373,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   _SettingsRow(
                     icon: Icons.delete_forever_outlined,
-                    iconTint: AppColors.settingsDanger,
-                    titleColor: AppColors.settingsDanger,
+                    iconTint: AppColors.destructive,
+                    titleColor: AppColors.destructive,
                     title: 'Eliminar cuenta',
                     caption: 'Borra tu perfil y datos de forma permanente',
                     onTap: _confirmDeleteAccount,
@@ -393,7 +398,12 @@ class _SettingsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface100,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.xl,
+      ),
       child: Row(
         children: [
           GestureDetector(
@@ -408,6 +418,7 @@ class _SettingsHeader extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.arrow_back,
+                semanticLabel: 'Volver',
                 size: 18,
                 color: AppColors.settingsTextDark,
               ),
@@ -448,12 +459,12 @@ class _SettingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text(
               label.toUpperCase(),
               style: AppTextStyles.settingsSectionLabel,
@@ -658,7 +669,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text(
         'Editar perfil',
         style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -743,7 +756,9 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text(
         'Cambiar contraseña',
         style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),

@@ -8,6 +8,7 @@ import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart'
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Abre el selector "Cambiar de cuenta" como hoja modal. Al alternar de cuenta
@@ -110,7 +111,9 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Text(
           'Quitar cuenta',
           style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -131,7 +134,7 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
             child: Text(
               'Quitar',
               style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
             ),
           ),
@@ -151,7 +154,12 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.md,
+          AppSpacing.xl,
+          AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -162,7 +170,7 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
                 height: 4,
                 decoration: BoxDecoration(
                   color: AppColors.surface200,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
               ),
             ),
@@ -276,7 +284,7 @@ class _AccountTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           onTap: isBusy || isDimmed ? null : onTap,
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
@@ -360,13 +368,13 @@ class _RolePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
         color: isActive ? AppColors.surface100 : AppColors.detailActivityIconBg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         isActive ? 'Cuenta activa · $label' : label,
         style: AppTextStyles.settingsRowCaption.copyWith(
           fontSize: 10.5,
-          color: isActive ? AppColors.settingsTextDark : AppColors.ecoActive,
+          color: isActive ? AppColors.settingsTextDark : AppColors.oliveText,
         ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -391,13 +399,13 @@ class _Avatar extends StatelessWidget {
         height: 44,
         child: url == null || url.isEmpty
             ? Container(
-                color: AppColors.primario1,
+                color: AppColors.goldPaleFill,
                 alignment: Alignment.center,
                 child: Text(
                   initials,
                   style: AppTextStyles.settingsRowTitle.copyWith(
                     fontSize: 15,
-                    color: AppColors.primario7,
+                    color: AppColors.goldDeepText,
                   ),
                 ),
               )
@@ -426,7 +434,7 @@ class _AddAccountButton extends StatelessWidget {
           backgroundColor: AppColors.settingsBackground,
           textStyle: AppTextStyles.settingsRowTitle,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
         ),
       ),

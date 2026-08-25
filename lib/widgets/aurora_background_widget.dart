@@ -73,7 +73,7 @@ class _AuroraPainter extends CustomPainter {
     // Cada oscilador usa un múltiplo ENTERO de `t` a propósito: así sin/cos coinciden en ambos extremos del ciclo y el loop no se corta visiblemente (un múltiplo no entero sí producía un salto).
     _blob(
       canvas,
-      color: AppColors.accent300,
+      color: AppColors.oliveText,
       alpha: 0.55,
       center: Offset(
         size.width * (0.18 + 0.3 * math.sin(t)),

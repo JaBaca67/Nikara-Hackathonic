@@ -13,8 +13,10 @@ import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todos';
@@ -217,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final businesses = _businesses;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -271,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(AppRadius.lg),
                 child: _HeroCarousel(
                   controller: _heroPageController,
                   businesses: heroBusinesses,
@@ -319,7 +321,12 @@ class _SortSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.md,
+          AppSpacing.xl,
+          AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,7 +393,7 @@ class _CategoryChipsRow extends StatelessWidget {
       height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         physics: const ClampingScrollPhysics(),
         itemCount: categories.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
@@ -401,7 +408,7 @@ class _CategoryChipsRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: isSelected ? AppColors.primary500 : AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: isSelected
                     ? null
                     : Border.all(
@@ -542,7 +549,7 @@ class _HeroCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.tagGold600,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 business.category,
@@ -553,36 +560,10 @@ class _HeroCard extends StatelessWidget {
             ),
           ),
           if (isEco)
-            Positioned(
-              right: 14,
-              top: 14,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.ecoGreen500,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.eco,
-                      size: 12,
-                      color: AppColors.surface100,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'ECO',
-                      style: AppTextStyles.homeHeroPill.copyWith(
-                        color: AppColors.surface100,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const Positioned(
+              right: AppSpacing.lg - 2,
+              top: AppSpacing.lg - 2,
+              child: EcoBadge(size: EcoBadgeSize.large),
             ),
           Positioned(
             left: 16,
@@ -644,7 +625,9 @@ class _HeroCard extends StatelessWidget {
                                     ),
                                   ),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.xs,
+                                    ),
                                     child: LocalImage(
                                       path: photos[index],
                                       fallbackIconSize: 14,
@@ -662,7 +645,7 @@ class _HeroCard extends StatelessWidget {
                     GestureDetector(
                       onTap: onTap,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                           child: Container(
@@ -674,7 +657,9 @@ class _HeroCard extends StatelessWidget {
                               color: AppColors.surface100.withValues(
                                 alpha: 0.18,
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.pill,
+                              ),
                               border: Border.all(
                                 color: AppColors.surface100.withValues(
                                   alpha: 0.42,
@@ -721,7 +706,7 @@ class _DestacadosSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Row(
               children: [
                 Expanded(
@@ -741,7 +726,7 @@ class _DestacadosSection extends StatelessWidget {
           const SizedBox(height: 8),
           if (businesses.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Text(
                 'Ningún negocio coincide con esta categoría.',
                 style: AppTextStyles.bodyText2.copyWith(
@@ -754,7 +739,7 @@ class _DestacadosSection extends StatelessWidget {
               height: 220,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 physics: const ClampingScrollPhysics(),
                 itemCount: businesses.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
@@ -834,26 +819,7 @@ class _DestacadoCard extends StatelessWidget {
                           fallbackIcon: Icons.storefront_outlined,
                         ),
                         if (isEco)
-                          Positioned(
-                            left: 8,
-                            top: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.ecoGreen500,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'ECO',
-                                style: AppTextStyles.homeMiniBadge.copyWith(
-                                  color: AppColors.surface100,
-                                ),
-                              ),
-                            ),
-                          ),
+                          Positioned(left: 8, top: 8, child: const EcoBadge()),
                         Positioned(
                           right: 8,
                           top: 8,
@@ -933,17 +899,17 @@ class _CercaDeTiSection extends StatelessWidget {
     if (nearest.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text('Cerca de ti', style: AppTextStyles.homeSectionTitle),
           ),
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Column(
               children: [
                 for (final business in nearest)
@@ -1043,22 +1009,7 @@ class _NearbyRow extends StatelessWidget {
                           ),
                           if (isEco) ...[
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.ecoGreen500,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'ECO',
-                                style: AppTextStyles.homeMiniBadge.copyWith(
-                                  color: AppColors.surface100,
-                                ),
-                              ),
-                            ),
+                            const EcoBadge(),
                           ],
                         ],
                       ),
@@ -1129,7 +1080,10 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxxl,
+          vertical: AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1175,7 +1129,7 @@ class _EmptyState extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   textStyle: AppTextStyles.buttonLg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
               ),
@@ -1198,7 +1152,10 @@ class _LoadErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxxl,
+          vertical: AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1207,13 +1164,13 @@ class _LoadErrorState extends StatelessWidget {
               height: 96,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.settingsDanger.withValues(alpha: 0.12),
+                color: AppColors.destructive.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.wifi_off_rounded,
                 size: 44,
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
             ),
             const SizedBox(height: 20),
@@ -1243,7 +1200,7 @@ class _LoadErrorState extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   textStyle: AppTextStyles.buttonLg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
               ),

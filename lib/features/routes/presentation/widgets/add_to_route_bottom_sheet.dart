@@ -12,6 +12,7 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Selector "Agregar a ruta" — asocia un negocio o una jornada ECO a una
@@ -131,7 +132,12 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.md,
+          AppSpacing.xl,
+          AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -142,7 +148,7 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
                 height: 5,
                 decoration: BoxDecoration(
                   color: AppColors.profileDivider,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
               ),
             ),
@@ -159,7 +165,7 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
             const SizedBox(height: 18),
             if (_isLoading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
                 child: Center(
                   child: CircularProgressIndicator(color: AppColors.primary500),
                 ),
@@ -169,7 +175,7 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
                 Text(
                   _error!,
                   style: AppTextStyles.mapRowCaption.copyWith(
-                    color: AppColors.settingsDanger,
+                    color: AppColors.destructive,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -209,7 +215,7 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
                     disabledBackgroundColor: AppColors.segmentedTrackBg,
                     disabledForegroundColor: AppColors.settingsTextMuted,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                     ),
                     textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 16),
                   ),
@@ -251,12 +257,12 @@ class _RouteOption extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.warmChipBackground
               : AppColors.settingsBackground,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
             color: selected ? AppColors.primary500 : Colors.transparent,
             width: 1.5,

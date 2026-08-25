@@ -5,6 +5,7 @@ import 'package:nikara_app/features/profile/presentation/screens/public_user_pro
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/user_avatar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Tarjeta de una ruta en `RoutesMainScreen` — collage de fotos de portada
@@ -33,10 +34,10 @@ class RouteCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           boxShadow: const [
             BoxShadow(
               color: AppColors.mapControlShadowSoft,
@@ -169,13 +170,14 @@ class _CreatorHeader extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: AppColors.settingsBackground,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.copy_rounded,
+                    semanticLabel: 'Copiar ruta',
                     size: 13,
                     color: AppColors.settingsTextDark,
                   ),
@@ -242,7 +244,7 @@ class _CollageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
         height: height,
         width: double.infinity,
@@ -306,7 +308,7 @@ class RouteCategoryChip extends StatelessWidget {
         color: isEco
             ? AppColors.detailActivityIconBg
             : AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         compact ? category.label.toUpperCase() : category.label,
@@ -315,7 +317,7 @@ class RouteCategoryChip extends StatelessWidget {
         style: AppTextStyles.mapRowTitle.copyWith(
           fontSize: compact ? 9.5 : 12,
           letterSpacing: compact ? 0.3 : 0,
-          color: isEco ? AppColors.ecoActive : AppColors.settingsTextDark,
+          color: isEco ? AppColors.oliveText : AppColors.settingsTextDark,
         ),
       ),
     );

@@ -13,6 +13,7 @@ import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Reutiliza la estructura de `BusinessDetailScreen`/`detail_sections.dart`; recibe el [EcoActivityModel] completo y se refresca al montarse por si quedó desactualizado.
@@ -140,12 +141,12 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
         value: activity.spotsAvailable == null
             ? 'Abierto'
             : '${activity.spotsAvailable} disponibles',
-        valueColor: AppColors.ecoActive,
+        valueColor: AppColors.oliveText,
       ),
       EcoActivityStatus.joined => const DetailQuickInfoItem(
         label: 'Tu estado',
         value: 'Participando',
-        valueColor: AppColors.ecoActive,
+        valueColor: AppColors.oliveText,
       ),
       EcoActivityStatus.completed => const DetailQuickInfoItem(
         label: 'Estado',
@@ -179,18 +180,20 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                 DetailCoverIconButton(
                   icon: Icons.add_road_rounded,
                   onTap: _addToRoute,
+                  label: 'Agregar a una ruta',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: Icons.ios_share,
                   onTap: _showComingSoon,
+                  label: 'Compartir jornada',
                 ),
               ],
             ),
             Transform.translate(
               offset: const Offset(0, -18),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: DetailQuickInfoCard(
                   items: [
                     DetailQuickInfoItem(
@@ -217,7 +220,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                    ),
                     child: _tab == 0
                         ? _InformationTab(
                             activity: activity,
@@ -263,7 +268,7 @@ class _CoverCaption extends StatelessWidget {
           DetailCoverTagPill(
             label: activity.category.toUpperCase(),
             background: AppColors.surface100,
-            foreground: AppColors.ecoActive,
+            foreground: AppColors.oliveText,
           ),
         const SizedBox(height: 10),
         Text(
@@ -336,9 +341,9 @@ class _InformationTab extends StatelessWidget {
               (activity.isFromOrganization
                   ? 'Organiza actividades ambientales'
                   : 'Toca para ver su perfil'),
-          captionColor: AppColors.ecoActive,
+          captionColor: AppColors.oliveText,
           verified: activity.organizerIsVerified,
-          accent: AppColors.ecoActive,
+          accent: AppColors.oliveText,
           onTap: () => openEcoOrganizerProfile(context, activity),
         ),
       ),
@@ -352,7 +357,7 @@ class _InformationTab extends StatelessWidget {
                 DetailIconRow(
                   icon: ecoRequirementIcon(requirement),
                   label: requirement,
-                  iconColor: AppColors.ecoActive,
+                  iconColor: AppColors.oliveText,
                   iconBackground: AppColors.detailActivityIconBg,
                 ),
                 if (requirement != activity.requirements.last)
@@ -369,7 +374,7 @@ class _InformationTab extends StatelessWidget {
               : activity.location,
           caption: 'Se abrirá en el mapa de Níkara',
           onTap: onDirections,
-          pinColor: AppColors.ecoActive,
+          pinColor: AppColors.oliveText,
           pinIconColor: AppColors.surface100,
         ),
       ),
@@ -421,9 +426,9 @@ class _ParticipantRow extends StatelessWidget {
 
     return Material(
       color: AppColors.surface100,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -444,7 +449,7 @@ class _ParticipantRow extends StatelessWidget {
                           participant.initials,
                           style: AppTextStyles.mapRowTitle.copyWith(
                             fontSize: 14,
-                            color: AppColors.ecoActive,
+                            color: AppColors.oliveText,
                           ),
                         ),
                       ),
@@ -523,13 +528,13 @@ class _DescriptionSection extends StatelessWidget {
                 Text(
                   expanded ? 'Mostrar menos' : 'Mostrar más',
                   style: AppTextStyles.detailInlineLink.copyWith(
-                    color: AppColors.ecoActive,
+                    color: AppColors.oliveText,
                   ),
                 ),
                 Icon(
                   expanded ? Icons.expand_less : Icons.expand_more,
                   size: 15,
-                  color: AppColors.ecoActive,
+                  color: AppColors.oliveText,
                 ),
               ],
             ),
@@ -550,7 +555,7 @@ class _ParticipantsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
         child: Center(
           child: CircularProgressIndicator(color: AppColors.primary500),
         ),
@@ -559,7 +564,7 @@ class _ParticipantsTab extends StatelessWidget {
     final list = participants ?? const [];
     if (list.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
         child: Text(
           'Nadie se ha unido todavía — ¡sé la primera persona!',
           textAlign: TextAlign.center,
@@ -614,7 +619,7 @@ class _EcoActionBar extends StatelessWidget {
               backgroundColor: AppColors.segmentedTrackBg,
               foregroundColor: AppColors.settingsTextMuted,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               textStyle: AppTextStyles.detailBottomBarPrimary,
             ),
@@ -622,21 +627,21 @@ class _EcoActionBar extends StatelessWidget {
           EcoActivityStatus.joined => OutlinedButton(
             onPressed: isSubmitting ? null : onTap,
             style: OutlinedButton.styleFrom(
-              backgroundColor: AppColors.complementario1,
-              foregroundColor: AppColors.settingsDanger,
-              side: const BorderSide(color: AppColors.complementario2),
+              backgroundColor: AppColors.coralPaleFill,
+              foregroundColor: AppColors.destructive,
+              side: const BorderSide(color: AppColors.coralPaleBorder),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               textStyle: AppTextStyles.detailBottomBarSecondary,
             ),
             child: isSubmitting
-                ? const _ButtonSpinner(color: AppColors.settingsDanger)
+                ? const _ButtonSpinner(color: AppColors.destructive)
                 : const Text('Abandonar actividad'),
           ),
           EcoActivityStatus.available => DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.detailPrimaryButtonGlow,
@@ -651,7 +656,7 @@ class _EcoActionBar extends StatelessWidget {
                 backgroundColor: AppColors.primary500,
                 foregroundColor: AppColors.settingsTextDark,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.detailBottomBarPrimary,
               ),

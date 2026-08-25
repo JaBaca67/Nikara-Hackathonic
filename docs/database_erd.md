@@ -1,7 +1,7 @@
 # Modelo Entidad-Relación — Nikara
 
 Resumen del esquema completo de Supabase (Postgres) tras aplicar
-`supabase/sql/001` a `016`. Generado para la fase de diagramación —
+`supabase/sql/001` a `018`. Generado para la fase de diagramación —
 `erDiagram` (Mermaid.js) y DBML (dbdiagram.io) al final del documento.
 
 El 100% de las relaciones de identidad de usuario del esquema apuntan a
@@ -14,7 +14,7 @@ el trigger de `001_profiles_trigger_and_rls.sql`.
 
 > Ninguna migración en `supabase/sql/` se aplica automáticamente: cada una
 > se corre a mano en el SQL Editor del dashboard de Supabase, en orden. Este
-> documento asume que las 16 ya corrieron sobre la misma base de datos.
+> documento asume que las 18 ya corrieron sobre la misma base de datos.
 
 ## Tablas
 
@@ -49,7 +49,9 @@ y columnas creadas fuera de `supabase/sql/` (dashboard); `003`/`007`/`008`/
 | `address_text` | text | |
 | `location` | geography(Point,4326) | índice GiST (`003`) |
 | `phone` | text | |
-| `instagram_handle` | text | |
+| `instagram_handle` | text | sin arroba |
+| `facebook_handle` | text, null | agregada en `018`; antes solo existía en el cache local del dispositivo |
+| `schedules` | text, null | horarios de atención; agregada en `018`, mismo motivo |
 | `photos` | text[] | URL http(s) o ruta local |
 | `is_verified` | bool | solo lo escribe un auditor, fuera de la app |
 | `created_at` | timestamptz | |
@@ -64,8 +66,8 @@ RLS deshabilitada. (`010_organizations.sql`)
 | `name` | text | |
 | `handle` | text, UNIQUE | sin arroba, minúsculas |
 | `description` | text | |
-| `logo_url` | text, null | |
-| `banner_url` | text, null | |
+| `logo_url` | text, null | URL pública del bucket `organizations` de Storage (`017`) |
+| `banner_url` | text, null | igual que `logo_url` |
 | `owner_id` | uuid FK → `profiles.id` | `on delete cascade` |
 | `is_verified` | bool | default `true` (fase de prueba) |
 | `created_at` | timestamptz | |
@@ -217,11 +219,12 @@ diagrama de abajo como en la base de datos real.
 |---|---|---|---|
 | `eco_activities` | sí | usuarios autenticados, en `<user_id>/…` | portadas de jornadas ECO (`014_eco_activity_image.sql`) |
 | `avatars` | sí | solo el dueño, en `<user_id>/…` | fotos de perfil (`015_profile_avatars.sql`) |
+| `organizations` | sí | solo el dueño, en `<user_id>/…` | logo y banner de fundaciones (`017_organization_assets.sql`) |
 
-Las demás imágenes (`businesses.image_paths`, `organizations.logo_url`,
-`routes.image_urls`) todavía guardan rutas locales de `image_picker`, que solo
-se ven en el dispositivo que las eligió — migrarlas a Storage es el siguiente
-paso natural, no algo que `014`/`015` ya hayan hecho.
+Las demás imágenes (`businesses.image_paths`, `routes.image_urls`) todavía
+guardan rutas locales de `image_picker`, que solo se ven en el dispositivo que
+las eligió — migrarlas a Storage es el siguiente paso natural, no algo que
+`014`/`015`/`017` ya hayan hecho.
 
 A diferencia del resto del esquema, `storage.objects` sí tiene RLS activa
 (no se puede desactivar desde el dashboard), así que cada migración crea sus

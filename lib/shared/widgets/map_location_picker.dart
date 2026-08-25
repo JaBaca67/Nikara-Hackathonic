@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Managua — centro por defecto de todo mapa de la app hasta que se resuelve
@@ -44,7 +45,7 @@ class MapLocationPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
         height: height,
         child: Stack(
@@ -99,7 +100,7 @@ class MapLocationPicker extends StatelessWidget {
                       Container(
                         width: 8,
                         height: 8,
-                        margin: const EdgeInsets.only(top: 4),
+                        margin: const EdgeInsets.only(top: AppSpacing.xs),
                         decoration: BoxDecoration(
                           color: AppColors.settingsTextDark.withValues(
                             alpha: 0.22,

@@ -100,7 +100,7 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       // Bloquea el gesto/botón de back mientras dura la transición.
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.secundario6,
+        backgroundColor: AppColors.oliveMidFill,
         body: AuroraBackgroundWidget(
           child: Center(
             child: Padding(

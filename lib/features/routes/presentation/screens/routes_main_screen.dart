@@ -7,6 +7,7 @@ import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/presentation/screens/create_route_wizard_screen.dart';
 import 'package:nikara_app/features/routes/presentation/screens/route_detail_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Las 3 pestañas pill de `RoutesMainScreen` — las dos primeras filtran las
@@ -137,7 +138,7 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
     final isCommunity = _tab == _RoutesTab.community;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
         child: _isLoading
@@ -151,10 +152,10 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
                     onRefresh: _load,
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(
-                        20,
-                        16,
-                        20,
-                        _navBarClearance + 32,
+                        AppSpacing.xl,
+                        AppSpacing.lg,
+                        AppSpacing.xl,
+                        _navBarClearance + AppSpacing.xxxl,
                       ),
                       children: [
                         _RoutesHeader(count: _myRoutes.length),
@@ -174,7 +175,9 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
                         else
                           for (final route in filtered)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.only(
+                                bottom: AppSpacing.lg,
+                              ),
                               child: RouteCard(
                                 route: route,
                                 onTap: () => _openDetail(route),
@@ -224,7 +227,7 @@ class _RoutesHeader extends StatelessWidget {
         ),
         if (count > 0)
           Padding(
-            padding: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
             child: Text(
               '$count ${count == 1 ? 'ruta' : 'rutas'}',
               style: AppTextStyles.mapRowTitle.copyWith(
@@ -291,7 +294,7 @@ class _StatusPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 22),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.surface100,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: selected
               ? null
               : Border.all(color: AppColors.mapControlBorder),
@@ -377,7 +380,7 @@ class _RoutesEmptyState extends StatelessWidget {
             const SizedBox(height: 24),
             DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 boxShadow: const [
                   BoxShadow(
                     color: AppColors.detailPrimaryButtonGlow,
@@ -396,7 +399,7 @@ class _RoutesEmptyState extends StatelessWidget {
                     vertical: 16,
                   ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                   textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
                 ),
@@ -459,7 +462,7 @@ class _RoutesErrorState extends StatelessWidget {
           const Icon(
             Icons.wifi_off_rounded,
             size: 40,
-            color: AppColors.settingsDanger,
+            color: AppColors.destructive,
           ),
           const SizedBox(height: 12),
           Text(

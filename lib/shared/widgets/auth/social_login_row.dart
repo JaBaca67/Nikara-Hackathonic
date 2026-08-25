@@ -11,6 +11,7 @@ import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/models/mock_data.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Divisor "o continúa con" + 3 botones de provider social; Google/Apple resuelven de inmediato, Facebook solo lanza el flujo y este widget espera [AuthService.authStateChanges] para completar la navegación.
@@ -210,15 +211,15 @@ class _SocialButton extends StatelessWidget {
       label: 'Continuar con ${provider.label}',
       child: Material(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: isLoading ? null : onTap,
           child: Container(
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(
                 color: AppColors.settingsTextDark.withValues(alpha: 0.08),
               ),

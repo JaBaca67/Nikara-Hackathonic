@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// CTA "Explorar como invitado" del Login; la navegación como invitado es un camino de primera clase, no un extra.
@@ -15,14 +16,14 @@ class GuestExploreButton extends StatelessWidget {
       child: Container(
         width: double.infinity,
         height: 46,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment(-1, -1),
             end: Alignment(1, 1),
             colors: [AppColors.authGuestPillStart, AppColors.authGuestPillEnd],
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: AppColors.authLink.withValues(alpha: 0.4)),
           boxShadow: [
             BoxShadow(

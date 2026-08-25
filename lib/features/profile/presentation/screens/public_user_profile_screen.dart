@@ -14,6 +14,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.d
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/shared/widgets/user_avatar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Sin correo ni teléfono (privados en `profiles`). La foto sale de
@@ -129,11 +130,11 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
               child: CircularProgressIndicator(color: AppColors.primary500),
             )
           : ListView(
-              padding: const EdgeInsets.only(bottom: 32),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
               children: [
                 PublicProfileHeader(
                   name: _displayName,
-                  accent: AppColors.accent300,
+                  accent: AppColors.oliveText,
                   badgeIcon: Icons.hiking_rounded,
                   badgeLabel: _roleLabel,
                   contextLine: _isCurrentUser ? 'Este eres tú' : null,
@@ -143,10 +144,10 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
                     initials: _profile?.initials ?? _fallbackInitials,
                     borderRadius: BorderRadius.circular(25),
                     background: AppColors.detailActivityIconBg,
-                    foreground: AppColors.accent300,
+                    foreground: AppColors.oliveText,
                     initialsStyle: AppTextStyles.sectionTitle.copyWith(
                       fontSize: 28,
-                      color: AppColors.accent300,
+                      color: AppColors.oliveText,
                     ),
                   ),
                 ),
@@ -311,13 +312,13 @@ class _SectionTitle extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.detailActivityIconBg,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 '$count',
                 style: AppTextStyles.mapRowTitle.copyWith(
                   fontSize: 11.5,
-                  color: AppColors.ecoActive,
+                  color: AppColors.oliveText,
                 ),
               ),
             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 class _NavItem {
@@ -12,14 +13,14 @@ class _NavItem {
   final IconData icon;
   final String label;
 
-  /// Color de la píldora activa — dorado de marca en todas las tabs excepto ECO, que usa su propio olivo ([AppColors.ecoActive]).
+  /// Color de la píldora activa — dorado de marca en todas las tabs excepto ECO, que usa su propio olivo ([AppColors.oliveText]).
   final Color activeColor;
 }
 
 const List<_NavItem> _kNavItems = [
   _NavItem(Icons.home_rounded, 'Inicio'),
   _NavItem(Icons.map_rounded, 'Mapa'),
-  _NavItem(Icons.eco_rounded, 'ECO', activeColor: AppColors.ecoActive),
+  _NavItem(Icons.eco_rounded, 'ECO', activeColor: AppColors.oliveText),
   _NavItem(Icons.route_rounded, 'Rutas'),
   _NavItem(Icons.person_rounded, 'Perfil'),
 ];
@@ -51,7 +52,7 @@ class MainNavigationBar extends StatelessWidget {
           border: Border.all(color: AppColors.mapControlBorder),
           boxShadow: const [
             BoxShadow(
-              color: AppColors.cardBorder,
+              color: AppColors.border,
               offset: Offset(0, 8),
               blurRadius: 24,
             ),
@@ -114,16 +115,19 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tint = selected ? AppColors.neutral1100 : AppColors.neutral700;
+    final tint = selected ? AppColors.textPrimary : AppColors.neutral700;
     return Semantics(
       button: true,
       selected: selected,
       label: item.label,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xs,
+            vertical: AppSpacing.xs,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -134,7 +138,7 @@ class _NavButton extends StatelessWidget {
                   item.icon,
                   size: 18,
                   color: selected
-                      ? AppColors.neutral1100
+                      ? AppColors.textPrimary
                       : AppColors.neutral400,
                 ),
               ),

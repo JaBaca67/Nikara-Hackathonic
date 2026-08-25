@@ -10,6 +10,7 @@ import 'package:nikara_app/features/routes/presentation/screens/routes_main_scre
 import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Shell de las 5 tabs principales; [IndexedStack] mantiene vivo el estado/scroll de cada una entre cambios de tab.
@@ -102,10 +103,10 @@ class _GuestLockedTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

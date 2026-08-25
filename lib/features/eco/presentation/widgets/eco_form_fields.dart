@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Campos compartidos por `CreateEcoActivityScreen` y `CreateOrganizationScreen`.
@@ -8,7 +10,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// (`wizardFieldLabel`/`wizardFieldValue`/`wizardFocus`, tarjeta blanca sobre
 /// fondo crema, radio 20/14): registrar una jornada y registrar un negocio son
 /// el mismo gesto para el usuario, así que se ven igual. Lo único propio del
-/// módulo ECO es el verde [AppColors.ecoActive] en los acentos de estado.
+/// módulo ECO es el verde [AppColors.oliveText] en los acentos de estado.
 
 /// Etiqueta encima de un campo. Recibe el texto en capitalización normal
 /// ('Título') y lo pinta en mayúsculas, como los labels del wizard.
@@ -20,7 +22,7 @@ class EcoFieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Text(text.toUpperCase(), style: AppTextStyles.wizardFieldLabel),
     );
   }
@@ -72,8 +74,8 @@ class EcoTextField extends StatelessWidget {
           AppColors.settingsTextDark.withValues(alpha: 0.07),
         ),
         focusedBorder: _border(AppColors.wizardFocus, width: 1.5),
-        errorBorder: _border(AppColors.formError),
-        focusedErrorBorder: _border(AppColors.formError, width: 1.5),
+        errorBorder: _border(AppColors.error),
+        focusedErrorBorder: _border(AppColors.error, width: 1.5),
         errorStyle: AppTextStyles.errorText.copyWith(fontSize: 11),
       ),
     );
@@ -99,11 +101,11 @@ class EcoFormCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: padding ?? const EdgeInsets.all(16),
+      padding: padding ?? const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         border: Border.all(color: AppColors.mapControlBorder),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailCardGlow,
@@ -166,22 +168,7 @@ class EcoFormHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onBack,
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.profileDivider,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                color: AppColors.settingsTextDark,
-              ),
-            ),
-          ),
+          CircleBackButton(onTap: onBack),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -205,11 +192,14 @@ class EcoFormHeader extends StatelessWidget {
           GestureDetector(
             onTap: onBack,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
                 border: Border.all(color: AppColors.mapControlBorder),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text('Salir', style: AppTextStyles.detailPillAction),
             ),
@@ -243,7 +233,7 @@ class EcoPickerButton extends StatelessWidget {
       icon: Icon(
         icon,
         size: 16,
-        color: isSet ? AppColors.ecoActive : AppColors.settingsTextMuted,
+        color: isSet ? AppColors.oliveText : AppColors.settingsTextMuted,
       ),
       label: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
       style: OutlinedButton.styleFrom(
@@ -252,7 +242,7 @@ class EcoPickerButton extends StatelessWidget {
         textStyle: AppTextStyles.wizardChipLabel,
         side: BorderSide(
           color: isSet
-              ? AppColors.ecoActive.withValues(alpha: 0.55)
+              ? AppColors.oliveText.withValues(alpha: 0.55)
               : AppColors.settingsTextDark.withValues(alpha: 0.07),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
@@ -278,7 +268,7 @@ class EcoPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailPrimaryButtonGlow,
@@ -300,7 +290,7 @@ class EcoPrimaryButton extends StatelessWidget {
             ),
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             textStyle: AppTextStyles.wizardFooterPrimary,
           ),

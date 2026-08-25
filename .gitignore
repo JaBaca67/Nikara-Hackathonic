@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+desktop.ini
 .atom/
 .build/
 .buildlog/
@@ -11,6 +12,11 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+# Configuración y contexto local de Claude Code — no se versiona (ver
+# CLAUDE.md → Seguridad en Git). No afecta a los archivos que ya estaban
+# trackeados antes de esta regla (settings.json, skills del equipo).
+.claude/
 
 # IntelliJ related
 *.iml

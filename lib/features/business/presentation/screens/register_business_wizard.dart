@@ -12,6 +12,9 @@ import 'package:nikara_app/features/business/presentation/screens/business_succe
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const List<String> _kCategoryPresets = [
@@ -802,11 +805,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   Widget _card({required List<Widget> children, EdgeInsets? padding}) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: padding ?? const EdgeInsets.all(16),
+      padding: padding ?? const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         border: Border.all(color: AppColors.mapControlBorder),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailCardGlow,
@@ -843,7 +846,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 0),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -946,7 +949,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         const Icon(
                           Icons.info_outline,
                           size: 14,
-                          color: AppColors.accent300,
+                          color: AppColors.oliveText,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -1037,7 +1040,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             const Icon(
                               Icons.add,
                               size: 16,
-                              color: AppColors.accent300,
+                              color: AppColors.oliveText,
                             ),
                             const SizedBox(width: 4),
                             Flexible(
@@ -1076,7 +1079,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 1),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1159,7 +1162,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                               border: Border.all(
                                 color: AppColors.mapControlBorder,
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.pill,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1207,7 +1212,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         const Icon(
                           Icons.touch_app,
                           size: 15,
-                          color: AppColors.accent300,
+                          color: AppColors.oliveText,
                         ),
                         const SizedBox(width: 7),
                         Expanded(
@@ -1230,7 +1235,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           border: Border.all(
                             color: AppColors.primary500.withValues(alpha: 0.45),
                           ),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1262,14 +1267,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.detailActivityIconBg,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Row(
                           children: [
                             const Icon(
                               Icons.check_circle,
                               size: 16,
-                              color: AppColors.accent300,
+                              color: AppColors.oliveText,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -1281,7 +1286,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     .copyWith(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.accent300,
+                                      color: AppColors.oliveText,
                                     ),
                               ),
                             ),
@@ -1316,7 +1321,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 2),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1338,7 +1343,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           height: 158,
                           decoration: BoxDecoration(
                             color: AppColors.wizardUploadZoneBg,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             border: Border.all(
                               color: AppColors.primary500.withValues(
                                 alpha: 0.6,
@@ -1378,7 +1383,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       )
                     else
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         child: SizedBox(
                           height: 158,
                           width: double.infinity,
@@ -1389,14 +1394,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.only(top: AppSpacing.lg),
                           child: Text(
                             'GALERÍA',
                             style: AppTextStyles.wizardFieldLabel,
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.only(top: AppSpacing.lg),
                           child: Text(
                             '${photos.length} de 10',
                             style: AppTextStyles.wizardCaption.copyWith(
@@ -1473,7 +1478,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: AppColors.detailCoverCounterBg,
-                                      borderRadius: BorderRadius.circular(999),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.pill,
+                                      ),
                                     ),
                                     child: Text(
                                       'Portada',
@@ -1499,6 +1506,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     ),
                                     child: const Icon(
                                       Icons.close,
+                                      semanticLabel: 'Quitar foto',
                                       size: 12,
                                       color: AppColors.surface100,
                                     ),
@@ -1518,7 +1526,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                   ],
                 ),
                 _card(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   children: [
                     Row(
                       children: [
@@ -1532,7 +1540,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                           child: const Icon(
                             Icons.eco,
-                            color: AppColors.accent300,
+                            color: AppColors.oliveText,
                           ),
                         ),
                         const SizedBox(width: 11),
@@ -1557,7 +1565,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           onChanged: (v) =>
                               setState(() => _ecoSealRequested = v),
                           activeThumbColor: AppColors.surface100,
-                          activeTrackColor: AppColors.accent300,
+                          activeTrackColor: AppColors.oliveText,
                         ),
                       ],
                     ),
@@ -1580,7 +1588,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: _ecoPractices.contains(practice)
-                                        ? AppColors.accent300
+                                        ? AppColors.oliveText
                                         : null,
                                     border: _ecoPractices.contains(practice)
                                         ? null
@@ -1624,7 +1632,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                           decoration: BoxDecoration(
                             color: AppColors.settingsBackground,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1733,6 +1741,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             ),
                             child: const Icon(
                               Icons.add,
+                              semanticLabel: 'Agregar actividad',
                               size: 22,
                               color: AppColors.settingsTextDark,
                             ),
@@ -1807,7 +1816,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 3),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1816,7 +1825,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                   'Revisa tu tarjeta antes de enviarla a publicación.',
                 ),
                 _card(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
@@ -1918,7 +1927,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.settingsBackground,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1982,22 +1991,7 @@ class _WizardHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onBack,
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.profileDivider,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                color: AppColors.settingsTextDark,
-              ),
-            ),
-          ),
+          CircleBackButton(onTap: onBack),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2021,11 +2015,14 @@ class _WizardHeader extends StatelessWidget {
           GestureDetector(
             onTap: onBack,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
                 border: Border.all(color: AppColors.mapControlBorder),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text('Salir', style: AppTextStyles.detailPillAction),
             ),
@@ -2046,12 +2043,12 @@ class _WizardStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         border: Border.all(color: AppColors.mapControlBorder),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailCardGlow,
@@ -2069,7 +2066,9 @@ class _WizardStepper extends StatelessWidget {
                   Expanded(
                     child: Container(
                       height: 2,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xs,
+                      ),
                       color: i <= step
                           ? AppColors.primary500
                           : AppColors.profileDivider,
@@ -2231,7 +2230,7 @@ class _WizardDropdown extends StatelessWidget {
           ),
           style: AppTextStyles.wizardFieldValue,
           dropdownColor: AppColors.surface100,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           items: [
             for (final item in items)
               DropdownMenuItem(
@@ -2258,7 +2257,7 @@ class _CountryCodeField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
         borderRadius: BorderRadius.circular(14),
@@ -2310,7 +2309,7 @@ class _SocialField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
         borderRadius: BorderRadius.circular(14),
@@ -2428,7 +2427,7 @@ class _ScheduleRow extends StatelessWidget {
             width: double.infinity,
             height: 40,
             alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
             decoration: BoxDecoration(
               color: AppColors.settingsBackground,
               borderRadius: BorderRadius.circular(14),
@@ -2455,7 +2454,7 @@ class _ScheduleRow extends StatelessWidget {
               child: _timeChip(_ScheduleEntry._fmt(entry.start)),
             ),
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.xs),
               child: Text(
                 '–',
                 style: TextStyle(color: AppColors.settingsTextMuted),
@@ -2469,6 +2468,7 @@ class _ScheduleRow extends StatelessWidget {
             if (onRemove != null)
               IconButton(
                 onPressed: onRemove,
+                tooltip: 'Quitar este horario',
                 icon: const Icon(
                   Icons.close,
                   size: 16,
@@ -2521,7 +2521,7 @@ class _OpenNowPill extends StatelessWidget {
         color: open
             ? AppColors.detailActivityIconBg
             : AppColors.segmentedTrackBg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2530,7 +2530,7 @@ class _OpenNowPill extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: open ? AppColors.accent300 : AppColors.settingsTextMuted,
+              color: open ? AppColors.oliveText : AppColors.settingsTextMuted,
               shape: BoxShape.circle,
             ),
           ),
@@ -2538,7 +2538,7 @@ class _OpenNowPill extends StatelessWidget {
           Text(
             open ? 'ABIERTO AHORA' : 'CERRADO AHORA',
             style: AppTextStyles.detailEcoBadge.copyWith(
-              color: open ? AppColors.accent300 : AppColors.settingsTextMuted,
+              color: open ? AppColors.oliveText : AppColors.settingsTextMuted,
             ),
           ),
         ],
@@ -2572,7 +2572,7 @@ class _WizardChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.settingsBackground,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: selected
               ? null
               : Border.all(color: AppColors.mapControlBorder),
@@ -2661,7 +2661,7 @@ class _WizardFooter extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.settingsBackground,
                 border: Border.all(color: AppColors.mapControlBorder),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -2693,7 +2693,7 @@ class _WizardFooter extends StatelessWidget {
                   color: onPrimary == null
                       ? AppColors.primary500.withValues(alpha: 0.5)
                       : AppColors.primary500,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   boxShadow: onPrimary == null
                       ? null
                       : const [
@@ -2746,11 +2746,11 @@ class _WizardPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(color: AppColors.mapControlBorder),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2771,7 +2771,7 @@ class _WizardPreviewCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.tagGold600,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
                       child: Text(
                         business.category,
@@ -2783,32 +2783,12 @@ class _WizardPreviewCard extends StatelessWidget {
                     ),
                   ),
                   if (_isEco)
-                    Positioned(
-                      right: 10,
-                      top: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.ecoGreen500,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'ECO',
-                          style: AppTextStyles.detailEcoBadge.copyWith(
-                            color: AppColors.surface100,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                    ),
+                    Positioned(right: 10, top: 10, child: const EcoBadge()),
                 ],
               ),
             ),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.md),
               color: AppColors.surface100,
               child: Row(
                 children: [
@@ -2857,7 +2837,7 @@ class _WizardPreviewCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.settingsBackground,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Text(
                       'Ver perfil',
@@ -2921,7 +2901,7 @@ class _ChecklistRow extends StatelessWidget {
               child: Icon(
                 done ? Icons.check : Icons.priority_high,
                 size: 15,
-                color: done ? AppColors.accent300 : AppColors.settingsTextDark,
+                color: done ? AppColors.oliveText : AppColors.settingsTextDark,
               ),
             ),
             const SizedBox(width: 10),
@@ -2971,7 +2951,12 @@ class _ActivityIconPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.md,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3009,14 +2994,14 @@ class _ActivityIconPickerSheet extends StatelessWidget {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: AppColors.settingsBackground,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             border: Border.all(
                               color: AppColors.mapControlBorder,
                             ),
                           ),
                           child: Icon(
                             activityIconLibrary[key],
-                            color: AppColors.accent300,
+                            color: AppColors.oliveText,
                           ),
                         ),
                         const SizedBox(height: 5),

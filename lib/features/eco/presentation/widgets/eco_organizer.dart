@@ -74,7 +74,7 @@ class EcoOrganizerAvatar extends StatelessWidget {
                   activity.organizerInitials,
                   style: AppTextStyles.mapRowTitle.copyWith(
                     fontSize: size * 0.34,
-                    color: AppColors.ecoActive,
+                    color: AppColors.oliveText,
                   ),
                 ),
               ),
@@ -114,7 +114,7 @@ class EcoOrganizerRow extends StatelessWidget {
             const Icon(
               Icons.verified_rounded,
               size: 13,
-              color: AppColors.ecoActive,
+              color: AppColors.oliveText,
             ),
           ],
         ],

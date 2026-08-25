@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Card de fuerza de contraseña puramente informativo: el gate real de envío es el validator de cada pantalla, así que esto nunca endurece la política de creación de cuenta por debajo.
@@ -25,14 +26,14 @@ class PasswordStrengthChecker extends StatelessWidget {
     0 || 1 => ('Débil', AppColors.strengthWeak),
     2 => ('Media', AppColors.primary400),
     3 => ('Fuerte', AppColors.statusSuccess),
-    _ => ('Muy fuerte', AppColors.ecoForest),
+    _ => ('Muy fuerte', AppColors.success),
   };
 
   @override
   Widget build(BuildContext context) {
     final (label, color) = _label;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(14),
@@ -66,7 +67,7 @@ class PasswordStrengthChecker extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
             child: LinearProgressIndicator(
               value: _score / 4,
               minHeight: 4,
@@ -108,11 +109,7 @@ class _Criterion extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         met
-            ? const Icon(
-                Icons.check_circle,
-                size: 14,
-                color: AppColors.ecoForest,
-              )
+            ? const Icon(Icons.check_circle, size: 14, color: AppColors.success)
             : Container(
                 width: 14,
                 height: 14,

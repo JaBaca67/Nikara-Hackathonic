@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 String _timeOfDayGreeting() {
@@ -40,7 +41,12 @@ class SearchHeaderWidget extends StatelessWidget {
         : '${_timeOfDayGreeting()}, $name';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.sm,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface100,
         border: Border(bottom: BorderSide(color: AppColors.profileDivider)),
@@ -109,7 +115,7 @@ class _SearchField extends StatelessWidget {
       height: 46,
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: TextField(
@@ -120,7 +126,7 @@ class _SearchField extends StatelessWidget {
         ),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
           hintText: 'Buscar lagunas, tours, restaurantes...',
           hintStyle: AppTextStyles.homeSearchHint,
           prefixIcon: const Icon(
@@ -148,9 +154,9 @@ class _FilterButton extends StatelessWidget {
       label: 'Filtros y orden',
       child: Material(
         color: AppColors.primary500,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: onTap,
           child: const SizedBox(
             width: 46,

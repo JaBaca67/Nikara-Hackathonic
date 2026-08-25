@@ -17,8 +17,8 @@ class UserAvatar extends StatelessWidget {
     required this.initials,
     this.size,
     this.borderRadius,
-    this.background = AppColors.primario1,
-    this.foreground = AppColors.primario7,
+    this.background = AppColors.goldPaleFill,
+    this.foreground = AppColors.goldDeepText,
     this.initialsStyle,
   });
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Beat celebratorio tras guardar un negocio, antes de volver a Home.
@@ -70,7 +71,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
         backgroundColor: AppColors.surface100,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -131,7 +132,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                         widget.businessName,
                         textAlign: TextAlign.center,
                         style: AppTextStyles.subtitle1.copyWith(
-                          color: AppColors.ecoForest,
+                          color: AppColors.success,
                         ),
                       ),
                     ],
@@ -149,7 +150,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                         backgroundColor: AppColors.primary500,
                         foregroundColor: AppColors.textInk,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                       child: Text(

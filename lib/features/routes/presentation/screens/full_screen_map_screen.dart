@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Mapa a pantalla completa centrado en un único punto — a donde lleva
@@ -148,7 +149,7 @@ class _FullScreenMapScreenState extends State<FullScreenMapScreen> {
   Widget build(BuildContext context) {
     final icon = _markerIcon;
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -252,11 +253,11 @@ class _PlaceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final subtitle = this.subtitle;
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -296,7 +297,7 @@ class _PlaceCard extends StatelessWidget {
                 backgroundColor: AppColors.primary500,
                 foregroundColor: AppColors.settingsTextDark,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 14),
               ),
