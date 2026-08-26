@@ -37,6 +37,19 @@ abstract class AppSpacing {
 
   /// 32px — separación mayor (top/bottom de pantalla, bloques grandes).
   static const xxxl = 32.0;
+
+  /// 112px — espacio que debe dejar libre el fondo de una pantalla con la
+  /// barra de navegación flotante encima, para que el último elemento
+  /// interactivo siga siendo alcanzable.
+  ///
+  /// No sale de la grilla de 4pt por estética: es la altura real de la barra
+  /// más su margen inferior. Antes de existir este token, las cuatro
+  /// pantallas que lo necesitan resolvían el mismo problema por separado
+  /// (Inicio 110, Perfil 110, Rutas 108 como constante local, ECO 32) —
+  /// cuatro implementaciones y tres valores distintos. Ninguna produce
+  /// contenido inalcanzable hoy, pero el margen de ECO es tan ajustado que
+  /// alcanza con agregar un elemento al final de esa lista para romperlo.
+  static const navBarClearance = 112.0;
 }
 
 abstract class AppRadius {

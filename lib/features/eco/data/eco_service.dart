@@ -3,8 +3,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
+import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 
 class EcoServiceException implements Exception {
@@ -123,7 +125,15 @@ class EcoService {
     String? personalOrganizerId,
     bool skipOrganizationFilter = false,
   }) async {
-    var query = _client.from('eco_activities').select(select);
+    // Todas las consultas que pasan por acá son listados públicos (feed,
+    // perfil de una fundación, perfil de una persona), así que el filtro de
+    // estado va fijo. "Mis actividades" no pasa por acá: usa
+    // [_runMineSelect], que no filtra, porque el organizador tiene que ver
+    // sus jornadas pendientes y rechazadas.
+    var query = _client
+        .from('eco_activities')
+        .select(select)
+        .eq('status', ReviewStatus.aprobado.wireValue);
     if (pastOnly != null) {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       query = pastOnly
@@ -149,6 +159,11 @@ class EcoService {
         .toList(growable: false);
   }
 
+  /// Lectura por id, **sin** filtro de estado: el organizador abre así su
+  /// propia jornada pendiente desde "Mis actividades", y una notificación de
+  /// rechazo apunta justamente a una que no está aprobada. Lo que no aparece
+  /// en ningún listado público es la jornada; llegar a ella hace falta tener
+  /// su id.
   Future<EcoActivityModel?> getActivityById(String id) async {
     try {
       return await _getActivityById(id, select: _selectWithOrganization);
@@ -328,7 +343,21 @@ class EcoService {
     }
   }
 
-  /// El cliente nunca envía `organizer_verified` (default `false`, igual que `BusinessModel.isVerified`); [organizationId] nulo publica a título personal, con valor publica en nombre de esa fundación (badge sale de `organizations.is_verified`).
+  /// Toda jornada se publica **en nombre de una fundación aprobada**; ya no
+  /// existe la publicación a título personal.
+  ///
+  /// La razón es de confianza y de control: una jornada convoca gente a un
+  /// lugar físico, así que detrás tiene que haber una entidad que alguien ya
+  /// revisó. Encadenar las dos revisiones (fundación primero, jornada después)
+  /// también cierra el caso en que el feed mostraba el nombre de una fundación
+  /// todavía pendiente a través del embed `organizations(...)`.
+  ///
+  /// Las jornadas personales que ya existen en la tabla (`organization_id`
+  /// nulo, creadas antes de esta regla) siguen visibles y editables — lo que
+  /// se cierra es crear nuevas.
+  ///
+  /// El cliente nunca envía `organizer_verified` (default `false`, igual que
+  /// `BusinessModel.isVerified`); el badge sale de `organizations.is_verified`.
   Future<void> createActivity({
     required String title,
     required String description,
@@ -340,7 +369,7 @@ class EcoService {
     required DateTime startTime,
     int? maxCapacity,
     List<String> requirements = const [],
-    String? organizationId,
+    required String organizationId,
   }) async {
     final user = AuthService().currentAuthUser;
     if (user == null) {
@@ -348,24 +377,28 @@ class EcoService {
         'Necesitas iniciar sesión para registrar una actividad.',
       );
     }
+    final safeImageUrl = _requireHttpImageUrl(imageUrl);
+    await _requireOwnedOrganization(organizationId, user.id);
     try {
       final profile = await AuthService().getCurrentProfile();
       await _client.from('eco_activities').insert({
-        'title': title,
-        'description': description,
-        'category': category,
-        'location': location,
+        'title': sanitizeText(title, maxLength: InputLimits.title),
+        'description': sanitizeMultilineText(description),
+        'category': sanitizeText(category, maxLength: InputLimits.shortLabel),
+        'location': sanitizeText(location, maxLength: InputLimits.shortLabel),
         'latitude': latitude,
         'longitude': longitude,
         // Se omite la clave si es null para que funcione sin la migración 014.
-        'image_url': ?imageUrl,
+        'image_url': ?safeImageUrl,
         'start_time': startTime.toUtc().toIso8601String(),
         'max_capacity': maxCapacity,
+        // El organizador sale de la sesión, nunca de un parámetro de la UI.
         'organizer_id': user.id,
-        'organizer_name': profile?.fullName,
-        'requirements': requirements,
-        // Se omite la clave si es null para que funcione sin la migración 010.
-        'organization_id': ?organizationId,
+        'organizer_name': profile == null
+            ? null
+            : sanitizeProperName(profile.fullName),
+        'requirements': sanitizeTextList(requirements),
+        'organization_id': organizationId,
       });
       revision.value++;
     } on PostgrestException catch (e) {
@@ -432,31 +465,112 @@ class EcoService {
   /// pertenencia se valida acá en Dart — mismo criterio que el resto del
   /// esquema. Sin este chequeo cualquier cliente podría editar la jornada de
   /// otra persona conociendo su id.
-  Future<void> _assertOwnership(String activityId) async {
+  ///
+  /// Solo devuelve el id de quien tiene la sesión abierta: la comprobación de
+  /// pertenencia en sí ya no es un `select` aparte, va como `.eq('organizer_id',
+  /// …)` dentro del propio `update`/`delete`. Un `select` + comparación en Dart
+  /// dejaba una ventana entre el chequeo y la escritura (y un viaje de red de
+  /// más) en la que la fila podía cambiar de dueño sin que la mutación se
+  /// enterara.
+  String _requireOrganizerId() {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
       throw const EcoServiceException(
         'Necesitas iniciar sesión para gestionar tus actividades.',
       );
     }
-    final row = await _client
-        .from('eco_activities')
-        .select('organizer_id')
-        .eq('id', activityId)
-        .maybeSingle();
-    if (row == null) {
-      throw const EcoServiceException('Esa actividad ya no existe.');
-    }
-    if (row['organizer_id'] != userId) {
+    return userId;
+  }
+
+  /// PostgREST responde 200 aunque el filtro no haya alcanzado ninguna fila,
+  /// así que sin `.select()` un intento de editar la jornada de otra persona
+  /// se vería como un guardado exitoso.
+  void _requireAffectedRow(List<dynamic> rows, String action) {
+    if (rows.isNotEmpty) return;
+    throw EcoServiceException(
+      'No se pudo $action la actividad: ya no existe o no la creaste tú.',
+    );
+  }
+
+  /// La portada solo puede ser una URL `http(s)` del bucket de Storage. Se
+  /// rechaza en vez de descartarla en silencio: perder la imagen sin avisar
+  /// se ve igual que un bug de subida.
+  String? _requireHttpImageUrl(String? imageUrl) {
+    if (imageUrl == null) return null;
+    final safe = sanitizeHttpUrl(imageUrl);
+    if (safe == null) {
       throw const EcoServiceException(
-        'Solo quien creó la actividad puede modificarla.',
+        'La imagen de portada no es válida. Vuelve a elegirla e intenta de '
+        'nuevo.',
       );
     }
+    return safe;
+  }
+
+  /// Dos condiciones sobre la fundación con la que se quiere publicar: que sea
+  /// de quien tiene la sesión abierta, y que ya esté aprobada.
+  ///
+  /// Publicar "en nombre de" una fundación ajena sería suplantarla, así que el
+  /// id que manda la UI se contrasta contra las fundaciones de la sesión.
+  /// Publicar desde una fundación sin revisar saltaría el control entero: la
+  /// jornada aparecería avalada por una entidad que nadie miró todavía.
+  ///
+  /// Es el único chequeo que no puede ir dentro de la propia sentencia: la
+  /// pertenencia está en `organizations` y la escritura ocurre en
+  /// `eco_activities`, y PostgREST no hace joins en un `insert`/`update`. Queda
+  /// como consulta filtrada por dueño (no como lectura + comparación en Dart) y
+  /// desaparece sola el día que se active RLS con una policy sobre la FK.
+  ///
+  /// La UI ya bloquea el formulario antes de llegar acá; esto es la red que
+  /// no depende de la pantalla.
+  Future<void> _requireOwnedOrganization(
+    String organizationId,
+    String userId,
+  ) async {
+    Map<String, dynamic>? row;
+    try {
+      row = await _client
+          .from('organizations')
+          .select('id, status')
+          .eq('id', organizationId)
+          .eq('owner_id', userId)
+          .maybeSingle();
+    } on PostgrestException catch (e) {
+      // 42P01 = migración 010 sin correr. Antes esto se dejaba pasar porque la
+      // fundación era opcional; ahora es obligatoria, así que seguir sería
+      // publicar sin el aval que la regla exige.
+      if (e.code == '42P01') {
+        throw const EcoServiceException(
+          'Falta la tabla de fundaciones. Corre '
+          'supabase/sql/010_organizations.sql en Supabase.',
+        );
+      }
+      throw EcoServiceException(
+        'No se pudo verificar la fundación: ${e.message}',
+      );
+    }
+    if (row == null) {
+      throw const EcoServiceException(
+        'Solo puedes publicar en nombre de una fundación que registraste.',
+      );
+    }
+    final status = ReviewStatus.fromWire(row['status']);
+    if (status.isAprobado) return;
+    throw EcoServiceException(
+      status.isRechazado
+          ? 'Tu fundación no pasó la revisión. Corrige los datos y vuelve a '
+                'enviarla para poder publicar jornadas.'
+          : 'Tu fundación todavía está en revisión. Vas a poder publicar '
+                'jornadas en cuanto la aprobemos.',
+    );
   }
 
   /// Contraparte de [createActivity] para editar. [imageUrl] con valor
   /// reemplaza la portada, `null` la deja como está y [removeImage] la borra —
   /// tres estados que un solo parámetro nullable no puede distinguir.
+  ///
+  /// [organizationId] nulo significa "no cambiar el vínculo actual", no
+  /// "quitarlo": desvincular ya no es una operación posible.
   Future<void> updateActivity({
     required String id,
     required String title,
@@ -471,35 +585,45 @@ class EcoService {
     int? maxCapacity,
     List<String> requirements = const [],
     String? organizationId,
-    bool clearOrganization = false,
   }) async {
+    final organizerId = _requireOrganizerId();
+    final safeImageUrl = _requireHttpImageUrl(imageUrl);
+    if (organizationId != null) {
+      await _requireOwnedOrganization(organizationId, organizerId);
+    }
     try {
-      await _assertOwnership(id);
       final patch = <String, dynamic>{
-        'title': title,
-        'description': description,
-        'category': category,
-        'location': location,
+        'title': sanitizeText(title, maxLength: InputLimits.title),
+        'description': sanitizeMultilineText(description),
+        'category': sanitizeText(category, maxLength: InputLimits.shortLabel),
+        'location': sanitizeText(location, maxLength: InputLimits.shortLabel),
         'latitude': latitude,
         'longitude': longitude,
         'start_time': startTime.toUtc().toIso8601String(),
         'max_capacity': maxCapacity,
-        'requirements': requirements,
+        'requirements': sanitizeTextList(requirements),
       };
       if (removeImage) {
         patch['image_url'] = null;
-      } else if (imageUrl != null) {
-        patch['image_url'] = imageUrl;
+      } else if (safeImageUrl != null) {
+        patch['image_url'] = safeImageUrl;
       }
-      // Igual que en createActivity: la clave se omite si no hay nada que
-      // cambiar, para no romper en proyectos sin la migración 010.
-      if (clearOrganization) {
-        patch['organization_id'] = null;
-      } else if (organizationId != null) {
+      // La clave se omite si no hay nada que cambiar. Ya no existe el caso
+      // "escribir null": desvincular una jornada de su fundación la dejaría a
+      // título personal, que es justo lo que la regla nueva impide. Una
+      // jornada personal heredada (creada antes de la regla) se puede seguir
+      // editando, pero solo para moverla hacia una fundación, nunca al revés.
+      if (organizationId != null) {
         patch['organization_id'] = organizationId;
       }
 
-      await _client.from('eco_activities').update(patch).eq('id', id);
+      final updated = await _client
+          .from('eco_activities')
+          .update(patch)
+          .eq('id', id)
+          .eq('organizer_id', organizerId)
+          .select('id');
+      _requireAffectedRow(updated as List<dynamic>, 'actualizar');
       revision.value++;
     } on PostgrestException catch (e) {
       if (e.code == 'PGRST204' && (removeImage || imageUrl != null)) {
@@ -521,11 +645,58 @@ class EcoService {
     }
   }
 
+  /// Devuelve a la cola de revisión una jornada que fue rechazada.
+  ///
+  /// No usa el RPC `review_eco_activity`: ése valida rol admin/auditor y
+  /// existe para aprobar o rechazar. Esto es el organizador pidiendo una
+  /// revisión nueva sobre su propia fila, así que es un `update` normal con
+  /// el filtro de dueño —y el de estado— en la misma sentencia: sin
+  /// `.eq('status', rechazado)` una jornada ya aprobada podría volver a
+  /// `pendiente` y desaparecer del feed.
+  Future<void> resubmitActivity(String id) async {
+    final organizerId = _requireOrganizerId();
+    try {
+      final updated = await _client
+          .from('eco_activities')
+          .update({
+            'status': ReviewStatus.pendiente.wireValue,
+            'rejection_reason': null,
+          })
+          .eq('id', id)
+          .eq('organizer_id', organizerId)
+          .eq('status', ReviewStatus.rechazado.wireValue)
+          .select('id');
+      if ((updated as List<dynamic>).isEmpty) {
+        throw const EcoServiceException(
+          'No se pudo reenviar la actividad: ya no existe, no la creaste tú '
+          'o no está rechazada.',
+        );
+      }
+      revision.value++;
+    } on PostgrestException catch (e) {
+      throw EcoServiceException(
+        'No se pudo reenviar la actividad: ${e.message}',
+      );
+    } on EcoServiceException {
+      rethrow;
+    } catch (_) {
+      throw const EcoServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
   /// `eco_participants` cae solo por el `on delete cascade` de 009.
   Future<void> deleteActivity(String id) async {
+    final organizerId = _requireOrganizerId();
     try {
-      await _assertOwnership(id);
-      await _client.from('eco_activities').delete().eq('id', id);
+      final deleted = await _client
+          .from('eco_activities')
+          .delete()
+          .eq('id', id)
+          .eq('organizer_id', organizerId)
+          .select('id');
+      _requireAffectedRow(deleted as List<dynamic>, 'eliminar');
       revision.value++;
     } on PostgrestException catch (e) {
       throw EcoServiceException(

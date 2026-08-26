@@ -3333,7 +3333,13 @@ class _FavoriteToggle extends StatelessWidget {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
               return;
             }
-            await FavoritesService().toggleFavorite(businessId);
+            if (!context.mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await FavoritesService().toggleFavorite(businessId);
+            } on FavoritesServiceException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+            }
           },
           child: Container(
             width: 30,

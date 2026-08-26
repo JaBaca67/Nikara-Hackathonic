@@ -9,7 +9,7 @@ import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
-import 'package:nikara_app/features/business/presentation/screens/edit_business_hub_screen.dart';
+import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
@@ -99,12 +99,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .where((b) => favoriteIds.contains(b.id))
           .toList(growable: false);
 
-      final currentUserId = _authService.currentAuthUser?.id;
-      final myBusinesses = currentUserId == null
-          ? const <BusinessModel>[]
-          : allBusinesses
-                .where((b) => b.ownerId == currentUserId)
-                .toList(growable: false);
+      // No se filtra `allBusinesses` por `ownerId`: esa lista ya viene
+      // recortada a los negocios aprobados, y el dueño tiene que ver también
+      // los suyos en revisión o rechazados.
+      final myBusinesses = await _businessStorageService.getMyBusinesses();
+      if (!mounted) return;
 
       // Falla suave a propósito: el perfil completo no debe quedar en estado
       // de error solo porque el feed ECO no respondió.
@@ -140,10 +139,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Abre el wizard directo en su primer paso.
+  ///
+  /// Antes pasaba por `EditBusinessHubScreen`, un menú intermedio que elegía
+  /// qué paso editar. Ese hub se retiró al absorber sus filas en el dashboard
+  /// "Mi negocio", que es donde ahora vive la gestión completa; desde el perfil
+  /// alcanza con entrar a editar.
   Future<void> _editBusiness(BusinessModel business) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => EditBusinessHubScreen(business: business),
+        builder: (_) => RegisterBusinessWizard(existingBusiness: business),
       ),
     );
     await _loadAll();
@@ -245,7 +250,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleFavorite(String id) async {
     // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
-    await _favoritesService.toggleFavorite(id);
+    try {
+      await _favoritesService.toggleFavorite(id);
+    } on FavoritesServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _pickAvatar() async {

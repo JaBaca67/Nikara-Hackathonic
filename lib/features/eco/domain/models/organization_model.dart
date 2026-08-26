@@ -1,3 +1,5 @@
+import 'package:nikara_app/core/models/review_status.dart';
+
 /// Fila de `public.organizations` (supabase/sql/010_organizations.sql); una persona (`owner_id`) puede tener varias.
 class OrganizationModel {
   const OrganizationModel({
@@ -9,6 +11,10 @@ class OrganizationModel {
     this.bannerUrl,
     required this.ownerId,
     this.isVerified = true,
+    this.reviewStatus = ReviewStatus.pendiente,
+    this.rejectionReason,
+    this.reviewedAt,
+    this.reviewedBy,
     required this.createdAt,
   });
 
@@ -28,6 +34,17 @@ class OrganizationModel {
 
   /// Siempre `true` hoy por el default de la tabla (sin flujo de auditoría aún); el cliente solo lo lee, nunca lo escribe.
   final bool isVerified;
+
+  /// Estado de revisión (`organizations.status`, migración 019). Paralelo a
+  /// [isVerified]: decide si la fundación se publica, no si lleva sello.
+  final ReviewStatus reviewStatus;
+
+  /// Motivo del rechazo; solo con valor cuando [reviewStatus] es
+  /// [ReviewStatus.rechazado].
+  final String? rejectionReason;
+
+  final DateTime? reviewedAt;
+  final String? reviewedBy;
 
   final DateTime createdAt;
 
@@ -58,6 +75,10 @@ class OrganizationModel {
       bannerUrl: row['banner_url'] as String?,
       ownerId: row['owner_id'] as String? ?? '',
       isVerified: row['is_verified'] as bool? ?? false,
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
       createdAt: DateTime.parse(row['created_at'] as String),
     );
   }

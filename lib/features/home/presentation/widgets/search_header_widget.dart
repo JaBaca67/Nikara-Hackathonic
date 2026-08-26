@@ -10,7 +10,7 @@ String _timeOfDayGreeting() {
   return 'Buenas noches';
 }
 
-/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0, ya que no hay feed real de notificaciones aún.
+/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0. El conteo lo alimenta `NotificationService.unreadCount()` desde Inicio — este widget no consulta nada por su cuenta.
 class SearchHeaderWidget extends StatelessWidget {
   const SearchHeaderWidget({
     super.key,

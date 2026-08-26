@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-class _NavItem {
-  const _NavItem(
+class NavItem {
+  const NavItem(
     this.icon,
     this.label, {
     this.activeColor = AppColors.primary500,
@@ -13,17 +14,46 @@ class _NavItem {
   final IconData icon;
   final String label;
 
-  /// Color de la píldora activa — dorado de marca en todas las tabs excepto ECO, que usa su propio olivo ([AppColors.oliveText]).
+  /// Color de la píldora activa — dorado de marca en todas las tabs excepto ECO
+  /// y las de rol, que usan el olivo ([AppColors.oliveText]).
   final Color activeColor;
 }
 
-const List<_NavItem> _kNavItems = [
-  _NavItem(Icons.home_rounded, 'Inicio'),
-  _NavItem(Icons.map_rounded, 'Mapa'),
-  _NavItem(Icons.eco_rounded, 'ECO', activeColor: AppColors.oliveText),
-  _NavItem(Icons.route_rounded, 'Rutas'),
-  _NavItem(Icons.person_rounded, 'Perfil'),
+/// Las cinco tabs que ve cualquier persona.
+const List<NavItem> kBaseNavItems = [
+  NavItem(Icons.home_rounded, 'Inicio'),
+  NavItem(Icons.map_rounded, 'Mapa'),
+  NavItem(Icons.eco_rounded, 'ECO', activeColor: AppColors.oliveText),
+  NavItem(Icons.route_rounded, 'Rutas'),
+  NavItem(Icons.person_rounded, 'Perfil'),
 ];
+
+/// La barra según el rol activo: una función pura de [role].
+///
+/// Un perfil tiene **un solo** [UserRole] (ver `user_model.dart`), así que
+/// "Panel" y "Negocio" nunca compiten por el sexto lugar y no hace falta lógica
+/// de prioridad. Un turista se queda en cinco.
+///
+/// La etiqueta del emprendedor dice "Negocio" y no "Mi negocio" —que es como se
+/// llama la pantalla— porque con seis slots cada uno mide ~57dp y dos palabras
+/// se cortarían.
+List<NavItem> navItemsForRole(UserRole role) {
+  return [
+    ...kBaseNavItems,
+    if (role == UserRole.admin || role == UserRole.auditor)
+      const NavItem(
+        Icons.shield_outlined,
+        'Panel',
+        activeColor: AppColors.oliveText,
+      ),
+    if (role == UserRole.emprendedor)
+      const NavItem(
+        Icons.storefront_rounded,
+        'Negocio',
+        activeColor: AppColors.oliveText,
+      ),
+  ];
+}
 
 const _kPillSize = Size(40, 32);
 const _kPillTopInset = 4.0;
@@ -34,10 +64,16 @@ class MainNavigationBar extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.items = kBaseNavItems,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+
+  /// Los tabs a dibujar. Los arma `MainLayout` con [navItemsForRole] y le pasa
+  /// la misma lista que usa para construir las pantallas, así el índice de la
+  /// barra y el del `IndexedStack` no pueden desalinearse.
+  final List<NavItem> items;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +96,7 @@ class MainNavigationBar extends StatelessWidget {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final slotWidth = constraints.maxWidth / _kNavItems.length;
+            final slotWidth = constraints.maxWidth / items.length;
             return Stack(
               children: [
                 AnimatedPositioned(
@@ -75,18 +111,18 @@ class MainNavigationBar extends StatelessWidget {
                     width: _kPillSize.width,
                     height: _kPillSize.height,
                     decoration: BoxDecoration(
-                      color: _kNavItems[currentIndex].activeColor,
+                      color: items[currentIndex].activeColor,
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
                 Row(
                   children: [
-                    for (var i = 0; i < _kNavItems.length; i++)
+                    for (var i = 0; i < items.length; i++)
                       SizedBox(
                         width: slotWidth,
                         child: _NavButton(
-                          item: _kNavItems[i],
+                          item: items[i],
                           selected: i == currentIndex,
                           onTap: () => onTap(i),
                         ),
@@ -109,7 +145,7 @@ class _NavButton extends StatelessWidget {
     required this.onTap,
   });
 
-  final _NavItem item;
+  final NavItem item;
   final bool selected;
   final VoidCallback onTap;
 
@@ -145,6 +181,9 @@ class _NavButton extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 item.label,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: AppTextStyles.navLabel.copyWith(
                   color: tint,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w500,

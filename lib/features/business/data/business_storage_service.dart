@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/input_sanitizers.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 
@@ -29,16 +32,29 @@ class BusinessStorageService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  /// Listado público: solo negocios aprobados.
+  ///
+  /// Es un filtro de **estado**, no de dueño — no choca con la regla de que
+  /// las consultas públicas nunca se filtran por `owner_id` (ver CLAUDE.md >
+  /// Supabase & Security Guidelines). Un turista sigue viendo negocios que no
+  /// son suyos; lo que no ve es lo que todavía nadie revisó.
   Future<List<BusinessModel>> getBusinesses() async {
     final rows = await _select();
-    final localExtras = await _readLocalExtras();
-    return rows
-        .map((row) {
-          final core = _fromRow(row);
-          final cached = localExtras[core.id];
-          return cached == null ? core : _mergeExtras(core, cached);
-        })
-        .toList(growable: false);
+    return _hydrate(rows);
+  }
+
+  /// Los negocios del usuario actual, **sin** filtrar por estado: el dueño
+  /// tiene que ver sus propios `pendiente` y `rechazado`, que son justo los
+  /// que no aparecen en [getBusinesses].
+  ///
+  /// Consulta "mis X": el `owner_id` sale siempre de la sesión activa, nunca
+  /// de un parámetro que venga de la UI. Sin sesión devuelve vacío en vez de
+  /// lanzar — quien llama es una pantalla de perfil que también se abre como
+  /// invitado.
+  Future<List<BusinessModel>> getMyBusinesses() async {
+    final ownerId = _client.auth.currentUser?.id;
+    if (ownerId == null || ownerId.isEmpty) return const [];
+    return _hydrate(await _select(ownerId: ownerId));
   }
 
   /// Usa el RPC `businesses_in_bounds` (índice GiST) para traer solo lo visible en el mapa, sin descargar toda la tabla en cada pan/zoom.
@@ -48,19 +64,48 @@ class BusinessStorageService {
     required double maxLng,
     required double maxLat,
   }) async {
-    final rows = await _selectInBounds(
-      minLng: minLng,
-      minLat: minLat,
-      maxLng: maxLng,
-      maxLat: maxLat,
+    return _hydrate(
+      await _selectInBounds(
+        minLng: minLng,
+        minLat: minLat,
+        maxLng: maxLng,
+        maxLat: maxLat,
+      ),
     );
+  }
+
+  /// Completa las filas crudas con las dos fuentes que no están en
+  /// `businesses`: el cache local de campos sin columna (precio, amenidades,
+  /// horarios) y las reseñas, que desde ahora viven en la tabla `reviews`.
+  ///
+  /// Las reseñas se piden en **una sola** consulta para todo el lote, no una
+  /// por negocio. Si esa consulta falla, los negocios se devuelven sin reseñas
+  /// en vez de tumbar el listado: un feed sin calificaciones sigue siendo útil,
+  /// un feed vacío no.
+  Future<List<BusinessModel>> _hydrate(List<Map<String, dynamic>> rows) async {
     final localExtras = await _readLocalExtras();
-    return rows
+    final cores = rows
         .map((row) {
           final core = _fromRow(row);
           final cached = localExtras[core.id];
           return cached == null ? core : _mergeExtras(core, cached);
         })
+        .toList(growable: false);
+
+    Map<String, List<ReviewModel>> reviews = const {};
+    try {
+      reviews = await ReviewService().getForBusinesses([
+        for (final business in cores) business.id,
+      ]);
+    } on ReviewServiceException catch (e) {
+      debugPrint(
+        '[BusinessStorageService] _hydrate: no se pudieron cargar las reseñas '
+        '— ${e.message}',
+      );
+      return cores;
+    }
+    return cores
+        .map((business) => business.copyWith(reviews: reviews[business.id]))
         .toList(growable: false);
   }
 
@@ -81,7 +126,10 @@ class BusinessStorageService {
   /// No se limita al viewport del mapa (a diferencia de [getBusinessesInBounds]) para que los chips de categoría no cambien al hacer pan.
   Future<List<String>> getAllCategories() async {
     try {
-      final rows = await _client.from('businesses').select('category');
+      final rows = await _client
+          .from('businesses')
+          .select('category')
+          .eq('status', ReviewStatus.aprobado.wireValue);
       final categories = (rows as List<dynamic>)
           .cast<Map<String, dynamic>>()
           .map((row) => row['category'] as String? ?? '')
@@ -101,10 +149,13 @@ class BusinessStorageService {
     }
   }
 
-  Future<void> addBusiness(BusinessModel business) async {
-    _requireOwnerId(business);
+  Future<void> addBusiness(BusinessModel rawBusiness) async {
+    final ownerId = _requireCurrentUserId();
+    final business = _sanitized(rawBusiness);
     _requireLocation(business);
-    final row = _toRow(business, includeId: true);
+    // El dueño se estampa desde la sesión, nunca desde el modelo que llegó de
+    // la UI: es la única fuente que una pantalla no puede falsificar.
+    final row = {'id': business.id, 'owner_id': ownerId, ..._toRow(business)};
     debugPrint(
       '[BusinessStorageService] addBusiness("${business.name}") '
       'lat=${business.latitude} lng=${business.longitude} '
@@ -137,17 +188,20 @@ class BusinessStorageService {
     revision.value++;
   }
 
-  Future<void> updateBusiness(BusinessModel business) async {
-    _requireOwnerId(business);
+  Future<void> updateBusiness(BusinessModel rawBusiness) async {
+    final ownerId = _requireCurrentUserId();
+    final business = _sanitized(rawBusiness);
     _requireLocation(business);
-    final row = _toRow(business, includeId: false);
+    // `owner_id` no viaja en el update: el dueño de un negocio no cambia, y
+    // enviarlo abriría la puerta a "regalarle" una fila a otra cuenta.
+    final row = _toRow(business);
     debugPrint(
       '[BusinessStorageService] updateBusiness("${business.name}", '
       'id=${business.id}) lat=${business.latitude} lng=${business.longitude} '
       'location="${row['location']}"',
     );
     try {
-      await _updateRow(business.id, row);
+      await _updateRow(business.id, ownerId, row);
       debugPrint(
         '[BusinessStorageService] updateBusiness("${business.name}") -> OK',
       );
@@ -160,6 +214,8 @@ class BusinessStorageService {
       throw BusinessServiceException(
         'No se pudo actualizar el negocio: ${e.message}',
       );
+    } on BusinessServiceException {
+      rethrow;
     } catch (e) {
       debugPrint(
         '[BusinessStorageService] updateBusiness("${business.name}") -> '
@@ -173,13 +229,73 @@ class BusinessStorageService {
     revision.value++;
   }
 
-  Future<void> deleteBusiness(String id) async {
+  /// Devuelve a la cola de revisión un negocio que fue rechazado.
+  ///
+  /// No pasa por el RPC `review_business`: ése valida rol admin/auditor y
+  /// existe para **aprobar o rechazar**. Esto es el dueño tocando su propia
+  /// fila para volver a pedir revisión, así que es un `update` normal con el
+  /// filtro de dueño en la misma sentencia, igual que [updateBusiness].
+  ///
+  /// El `.eq('status', rechazado)` también va adentro del `update` a
+  /// propósito: sin él, un negocio ya aprobado podría volver a `pendiente` por
+  /// un doble toque y desaparecería del feed público hasta que alguien lo
+  /// revisara otra vez.
+  Future<void> resubmitBusiness(String id) async {
+    final ownerId = _requireCurrentUserId();
     try {
-      await _client.from('businesses').delete().eq('id', id);
+      final updated = await _client
+          .from('businesses')
+          .update({
+            'status': ReviewStatus.pendiente.wireValue,
+            'rejection_reason': null,
+          })
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .eq('status', ReviewStatus.rechazado.wireValue)
+          .select('id');
+      if ((updated as List<dynamic>).isEmpty) {
+        throw const BusinessServiceException(
+          'No se pudo reenviar el negocio: ya no existe, no es tuyo o no '
+          'está rechazado.',
+        );
+      }
+    } on PostgrestException catch (e) {
+      throw BusinessServiceException(
+        'No se pudo reenviar el negocio: ${e.message}',
+      );
+    } on BusinessServiceException {
+      rethrow;
+    } catch (_) {
+      throw const BusinessServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+    revision.value++;
+  }
+
+  Future<void> deleteBusiness(String id) async {
+    final ownerId = _requireCurrentUserId();
+    try {
+      // El filtro de dueño va en la misma sentencia del delete, no en un
+      // `select` previo: entre leer y borrar hay una ventana en la que la
+      // fila puede cambiar de manos, y el borrado no la vería.
+      final deleted = await _client
+          .from('businesses')
+          .delete()
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
+      if ((deleted as List<dynamic>).isEmpty) {
+        throw const BusinessServiceException(
+          'No se pudo eliminar el negocio: ya no existe o no es tuyo.',
+        );
+      }
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
         'No se pudo eliminar el negocio: ${e.message}',
       );
+    } on BusinessServiceException {
+      rethrow;
     } catch (_) {
       throw const BusinessServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
@@ -189,22 +305,77 @@ class BusinessStorageService {
     revision.value++;
   }
 
-  /// Las reseñas no tienen tabla en Supabase todavía; solo se guardan en el cache local de extras.
+  /// Delega en [ReviewService]: las reseñas viven en la tabla `reviews` desde
+  /// que se conectó ese servicio, no en el cache local del dispositivo.
+  ///
+  /// Sigue viviendo acá para no cambiar a quien ya la llamaba, pero no escribe
+  /// nada de `businesses`. `mediaPaths` no viaja — ver la nota de
+  /// [ReviewService].
   Future<void> addReview(BusinessModel business, ReviewModel review) async {
-    await _writeLocalExtra(
-      business.copyWith(reviews: [...business.reviews, review]),
+    await ReviewService().addReview(
+      businessId: business.id,
+      rating: review.rating,
+      comment: review.comment,
     );
     revision.value++;
   }
 
-  /// `owner_id` es uuid en Postgres; un string vacío falla con un error críptico en la base, así que se valida antes de enviar la petición.
-  void _requireOwnerId(BusinessModel business) {
-    if (business.ownerId.trim().isEmpty) {
+  /// Ninguna mutación sale sin sesión: `owner_id` es uuid NOT NULL en Postgres
+  /// y un string vacío falla con un error críptico en la base. Además es el
+  /// valor con el que se filtra la pertenencia, así que sin él no hay forma de
+  /// saber qué filas puede tocar quien está usando la app.
+  String _requireCurrentUserId() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
       throw const BusinessServiceException(
         'No se pudo identificar al propietario del negocio. Inicia sesión '
         'de nuevo e intenta otra vez.',
       );
     }
+    return userId;
+  }
+
+  /// Normaliza todo el texto del negocio en un solo lugar, antes de que salga
+  /// hacia Supabase **y** antes de guardarlo en el cache local de extras: si
+  /// solo se saneara la fila, el cache devolvería la versión sucia al leer
+  /// (ver [_mergeExtras]) y el dato quedaría distinto según de dónde se lea.
+  BusinessModel _sanitized(BusinessModel b) {
+    return b.copyWith(
+      name: sanitizeText(b.name, maxLength: InputLimits.name),
+      category: sanitizeText(b.category, maxLength: InputLimits.shortLabel),
+      description: sanitizeMultilineText(b.description),
+      city: sanitizeText(b.city, maxLength: InputLimits.shortLabel),
+      locationText: sanitizeText(
+        b.locationText,
+        maxLength: InputLimits.address,
+      ),
+      contactPhone: sanitizePhone(b.contactPhone),
+      instagramLink: sanitizeInstagramHandle(b.instagramLink),
+      facebookLink: sanitizeFacebookHandle(b.facebookLink),
+      schedules: sanitizeText(b.schedules, maxLength: InputLimits.mediumText),
+      accessDetails: sanitizeMultilineText(b.accessDetails),
+      otherNotes: sanitizeMultilineText(b.otherNotes),
+      amenities: sanitizeTextList(b.amenities),
+      activities: sanitizeTextList(b.activities),
+      ecoPractices: sanitizeTextList(b.ecoPractices),
+      hostName: sanitizeProperName(b.hostName),
+      localImagePaths: _sanitizePhotos(b.localImagePaths),
+    );
+  }
+
+  /// Las fotos son rutas locales *o* URLs de Storage, así que solo se recortan
+  /// y se deduplican: colapsar espacios como en el texto libre rompería una
+  /// ruta de archivo que los tenga.
+  static List<String> _sanitizePhotos(List<String> photos) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final photo in photos) {
+      final value = photo.trim();
+      if (value.isEmpty || !seen.add(value)) continue;
+      result.add(value);
+      if (result.length >= 20) break;
+    }
+    return List<String>.unmodifiable(result);
   }
 
   /// `location` es NOT NULL sin default; se valida aquí también (no solo en el wizard) para no depender únicamente de la UI.
@@ -216,12 +387,15 @@ class BusinessStorageService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _select() async {
+  /// Con [ownerId] es la lectura "mis negocios" (todos los estados); sin él
+  /// es la lectura pública y solo devuelve aprobados.
+  Future<List<Map<String, dynamic>>> _select({String? ownerId}) async {
     try {
-      final rows = await _client
-          .from('businesses')
-          .select()
-          .order('created_at');
+      var query = _client.from('businesses').select();
+      query = ownerId == null
+          ? query.eq('status', ReviewStatus.aprobado.wireValue)
+          : query.eq('owner_id', ownerId);
+      final rows = await query.order('created_at');
       return (rows as List<dynamic>).cast<Map<String, dynamic>>();
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
@@ -241,15 +415,20 @@ class BusinessStorageService {
     required double maxLat,
   }) async {
     try {
-      final rows = await _client.rpc(
-        'businesses_in_bounds',
-        params: {
-          'min_lng': minLng,
-          'min_lat': minLat,
-          'max_lng': maxLng,
-          'max_lat': maxLat,
-        },
-      );
+      // `businesses_in_bounds` devuelve `setof public.businesses`, así que
+      // PostgREST acepta filtros encadenados sobre su resultado igual que
+      // sobre una tabla — el estado se filtra sin tocar la función SQL.
+      final rows = await _client
+          .rpc(
+            'businesses_in_bounds',
+            params: {
+              'min_lng': minLng,
+              'min_lat': minLat,
+              'max_lng': maxLng,
+              'max_lat': maxLat,
+            },
+          )
+          .eq('status', ReviewStatus.aprobado.wireValue);
       return (rows as List<dynamic>).cast<Map<String, dynamic>>();
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
@@ -281,15 +460,37 @@ class BusinessStorageService {
     }
   }
 
-  Future<void> _updateRow(String id, Map<String, dynamic> row) async {
+  /// El `.eq('owner_id', ...)` va en la misma sentencia que el `update`: es lo
+  /// que impide editar el negocio de otra persona conociendo su id, y a
+  /// diferencia de un `select` previo no deja ventana entre el chequeo y la
+  /// escritura. `.select('id')` está para distinguir "no era tuyo" de "salió
+  /// bien": sin él, PostgREST responde 200 aunque no haya tocado ninguna fila.
+  Future<void> _updateRow(
+    String id,
+    String ownerId,
+    Map<String, dynamic> row,
+  ) async {
+    List<dynamic> updated;
     try {
-      await _client.from('businesses').update(row).eq('id', id);
+      updated = await _client
+          .from('businesses')
+          .update(row)
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
     } on PostgrestException catch (e) {
       if (!_isMissingPost018Column(e)) rethrow;
-      await _client
+      updated = await _client
           .from('businesses')
           .update(_withoutPost018(row))
-          .eq('id', id);
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
+    }
+    if (updated.isEmpty) {
+      throw const BusinessServiceException(
+        'No se pudo actualizar el negocio: ya no existe o no es tuyo.',
+      );
     }
   }
 
@@ -316,14 +517,17 @@ class BusinessStorageService {
       schedules: cached.schedules.isEmpty ? null : cached.schedules,
       accessDetails: cached.accessDetails,
       otherNotes: cached.otherNotes,
-      reviews: cached.reviews,
+      // `reviews` ya no sale del cache: es dato real de la tabla `reviews` y lo
+      // completa [_hydrate]. Tomarlo de acá devolvería la copia local vieja y
+      // pisaría lo que escribieron otras personas.
     );
   }
 
-  Map<String, dynamic> _toRow(BusinessModel b, {required bool includeId}) {
+  /// Solo las columnas de contenido: `id` y `owner_id` los agrega quien
+  /// inserta, para que un update no pueda reescribirlos por accidente. El
+  /// texto ya viene normalizado por [_sanitized].
+  Map<String, dynamic> _toRow(BusinessModel b) {
     return {
-      if (includeId) 'id': b.id,
-      'owner_id': b.ownerId,
       'name': b.name,
       'category': b.category,
       'description': b.description,
@@ -371,6 +575,10 @@ class BusinessStorageService {
       localImagePaths:
           (row['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
       isVerified: row['is_verified'] as bool? ?? false,
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
       // Sin columna aún; son defaults reales que el merge de extras locales sobrescribe si hay cache.
       allowsReservations: false,
       hostName: '',

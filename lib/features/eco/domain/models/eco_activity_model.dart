@@ -1,3 +1,5 @@
+import 'package:nikara_app/core/models/review_status.dart';
+
 /// Estados 1/2/3 de "fases-pantalla-eco"; derivado siempre desde [EcoActivityModel.status], nunca almacenado.
 enum EcoActivityStatus {
   /// Estado 1 — próxima, sin unirse. "Unirme" (dorado).
@@ -83,6 +85,10 @@ class EcoActivityModel {
     this.participants = const [],
     this.participantCount = 0,
     this.isJoinedByCurrentUser = false,
+    this.reviewStatus = ReviewStatus.pendiente,
+    this.rejectionReason,
+    this.reviewedAt,
+    this.reviewedBy,
   });
 
   final String id;
@@ -130,6 +136,21 @@ class EcoActivityModel {
 
   final int participantCount;
   final bool isJoinedByCurrentUser;
+
+  /// Estado de revisión (`eco_activities.status`, migración 019).
+  ///
+  /// Se llama `reviewStatus` y no `status` porque [status] ya existe con otro
+  /// significado en este modelo: la fase de participación que ve el turista
+  /// (disponible/unido/finalizada). Son dos ejes independientes — una jornada
+  /// puede estar `pendiente` de revisión y a la vez `available` en el tiempo.
+  final ReviewStatus reviewStatus;
+
+  /// Motivo del rechazo; solo con valor cuando [reviewStatus] es
+  /// [ReviewStatus.rechazado].
+  final String? rejectionReason;
+
+  final DateTime? reviewedAt;
+  final String? reviewedBy;
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
@@ -219,6 +240,10 @@ class EcoActivityModel {
       participants: participants,
       participantCount: participantCount,
       isJoinedByCurrentUser: isJoined,
+      reviewStatus: reviewStatus,
+      rejectionReason: rejectionReason,
+      reviewedAt: reviewedAt,
+      reviewedBy: reviewedBy,
     );
   }
 
@@ -263,6 +288,10 @@ class EcoActivityModel {
       isJoinedByCurrentUser:
           currentUserId != null &&
           participants.any((p) => p.userId == currentUserId),
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
     );
   }
 }

@@ -1942,9 +1942,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             child: Text(
                               draft.isVerified
                                   ? 'Tu negocio ya muestra el sello de verificado en su perfil.'
-                                  : 'Tu negocio se publica de inmediato y queda visible para '
-                                        'todos; el sello de verificado se agrega después de una '
-                                        'revisión manual del equipo de Níkara.',
+                                  : 'El equipo de Níkara revisa tu negocio antes de publicarlo, '
+                                        'en un máximo de 24 horas. Te avisamos cuando quede '
+                                        'visible para todos.',
                               style: AppTextStyles.wizardCaption.copyWith(
                                 color: AppColors.detailMutedRow,
                               ),
@@ -1962,7 +1962,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardFooter(
           primaryLabel: _isSaving
               ? 'Guardando...'
-              : (_isEditing ? 'Guardar cambios' : 'Publicar'),
+              : (_isEditing ? 'Guardar cambios' : 'Enviar solicitud'),
           primaryIcon: _isEditing ? Icons.save_outlined : Icons.send,
           onPrimary: _isSaving ? null : _finish,
           secondaryLabel: 'Vista previa',
@@ -2038,7 +2038,7 @@ class _WizardStepper extends StatelessWidget {
 
   final int step;
 
-  static const _labels = ['Datos', 'Ubicación', 'Galería', 'Publicar'];
+  static const _labels = ['Datos', 'Ubicación', 'Galería', 'Enviar'];
 
   @override
   Widget build(BuildContext context) {

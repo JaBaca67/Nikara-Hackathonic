@@ -13,6 +13,8 @@ import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
+import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -57,6 +59,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userName;
   Position? _userPosition;
 
+  /// No leídas del usuario actual; 0 para invitados (no tienen bandeja).
+  int _unreadNotifications = 0;
+
   Timer? _photoTimer;
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
@@ -77,14 +82,20 @@ class _HomeScreenState extends State<HomeScreen> {
     // MainLayout, así que sin este listener un negocio editado no se
     // refleja aquí hasta reiniciar la app.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
+    // Mismo motivo que el listener de negocios: Home no se reconstruye al
+    // volver del detalle de una jornada o del panel de admin, así que el
+    // badge quedaría desactualizado tras cualquier escritura en la tabla.
+    NotificationService.revision.addListener(_onNotificationsChanged);
     _loadBusinesses();
     _loadUserName();
     _loadPosition();
+    _loadUnreadNotifications();
   }
 
   @override
   void dispose() {
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
+    NotificationService.revision.removeListener(_onNotificationsChanged);
     _photoTimer?.cancel();
     _heroPageController.dispose();
     super.dispose();
@@ -93,6 +104,42 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onBusinessesChanged() {
     if (!mounted) return;
     _loadBusinesses();
+  }
+
+  void _onNotificationsChanged() {
+    if (!mounted) return;
+    _loadUnreadNotifications();
+  }
+
+  /// El badge es informativo: si la consulta falla, Inicio sigue usable con el
+  /// contador en 0. El error no se traga en silencio (queda en el log de
+  /// depuración) pero tampoco interrumpe la pantalla con un SnackBar, que
+  /// sería ruido para algo que el usuario ni pidió.
+  Future<void> _loadUnreadNotifications() async {
+    if (GuestSessionService().isGuest || !AuthService().isLoggedIn) {
+      if (mounted && _unreadNotifications != 0) {
+        setState(() => _unreadNotifications = 0);
+      }
+      return;
+    }
+    try {
+      final count = await NotificationService().unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadNotifications = count);
+    } on NotificationServiceException catch (e) {
+      debugPrint('No se pudo leer el contador de notificaciones: ${e.message}');
+      if (!mounted) return;
+      setState(() => _unreadNotifications = 0);
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+    // La pantalla marca como leídas las que se tocaron; al volver el badge
+    // tiene que reflejarlo aunque el usuario no haya escrito nada más.
+    await _loadUnreadNotifications();
   }
 
   Future<void> _loadUserName() async {
@@ -228,7 +275,8 @@ class _HomeScreenState extends State<HomeScreen> {
               userName: _userName,
               isGuest:
                   GuestSessionService().isGuest || !AuthService().isLoggedIn,
-              notificationCount: 0,
+              notificationCount: _unreadNotifications,
+              onNotificationTap: _openNotifications,
               onFilterTap: _openFilterSheet,
             ),
             Expanded(
@@ -1053,7 +1101,13 @@ class _FavoriteButton extends StatelessWidget {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
               return;
             }
-            await FavoritesService().toggleFavorite(businessId);
+            if (!context.mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await FavoritesService().toggleFavorite(businessId);
+            } on FavoritesServiceException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+            }
           },
           child: Container(
             width: size,

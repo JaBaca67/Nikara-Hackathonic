@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
@@ -220,6 +221,49 @@ class OrganizationService {
       }
       throw OrganizationServiceException(
         'No se pudieron guardar los cambios: ${e.message}',
+      );
+    } on OrganizationServiceException {
+      rethrow;
+    } catch (_) {
+      throw const OrganizationServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
+  /// Devuelve a la cola de revisión una fundación que fue rechazada.
+  ///
+  /// Contraparte de `EcoService.resubmitActivity` para `organizations`: el
+  /// dueño toca su propia fila, así que va por `update` con el filtro de
+  /// dueño y el de estado en la misma sentencia, no por el RPC de admin.
+  Future<void> resubmitOrganization(String id) async {
+    final userId = AuthService().currentAuthUser?.id;
+    if (userId == null) {
+      throw const OrganizationServiceException(
+        'Necesitas iniciar sesión para gestionar tus fundaciones.',
+      );
+    }
+    try {
+      final updated = await _client
+          .from('organizations')
+          .update({
+            'status': ReviewStatus.pendiente.wireValue,
+            'rejection_reason': null,
+          })
+          .eq('id', id)
+          .eq('owner_id', userId)
+          .eq('status', ReviewStatus.rechazado.wireValue)
+          .select('id');
+      if ((updated as List<dynamic>).isEmpty) {
+        throw const OrganizationServiceException(
+          'No se pudo reenviar la fundación: ya no existe, no es tuya o no '
+          'está rechazada.',
+        );
+      }
+      revision.value++;
+    } on PostgrestException catch (e) {
+      throw OrganizationServiceException(
+        'No se pudo reenviar la fundación: ${e.message}',
       );
     } on OrganizationServiceException {
       rethrow;

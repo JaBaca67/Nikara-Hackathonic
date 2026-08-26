@@ -8,6 +8,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
@@ -134,9 +135,19 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   Future<void> _toggleFavorite() async {
     if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
     if (!mounted) return;
-    final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
-    if (!mounted) return;
-    setState(() => _isFavorite = nowFavorite);
+    // Desde que los favoritos viven en `user_favorites`, guardar puede fallar
+    // por red. El corazón no se mueve si eso pasa: pintarlo lleno haría creer
+    // que el negocio quedó guardado cuando no se escribió ninguna fila.
+    try {
+      final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
+      if (!mounted) return;
+      setState(() => _isFavorite = nowFavorite);
+    } on FavoritesServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   void _showComingSoon() {
@@ -176,7 +187,18 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       mediaPaths: draft.mediaPaths,
     );
 
-    await _businessStorageService.addReview(_business, review);
+    // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
+    // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
+    // mostrarla igual haría creer que quedó publicada para todos.
+    try {
+      await _businessStorageService.addReview(_business, review);
+    } on ReviewServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _businessState = _businessState.copyWith(

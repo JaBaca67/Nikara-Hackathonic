@@ -84,7 +84,10 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         bannerUrl: banner.url,
       );
       if (!mounted) return;
-      _snack('¡${organization.name} quedó registrada!');
+      _snack(
+        '¡Solicitud enviada! Revisamos ${organization.name} en un máximo de '
+        '24 horas.',
+      );
       _nameController.clear();
       _handleController.clear();
       _descriptionController.clear();
@@ -176,8 +179,11 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Publica jornadas ambientales en nombre de tu organización, '
-              'con su logo y su nombre.',
+              'Toda jornada ambiental se publica a nombre de una fundación, '
+              'nunca a título personal: es lo que le da respaldo a una '
+              'convocatoria. Registra la tuya y, en cuanto la revisemos '
+              '(máximo 24 horas), vas a poder publicar jornadas con su logo '
+              'y su nombre.',
               style: AppTextStyles.settingsSubtitle,
             ),
             const SizedBox(height: 18),
@@ -232,7 +238,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             ),
             const SizedBox(height: 28),
             EcoPrimaryButton(
-              label: 'Registrar fundación',
+              label: 'Enviar solicitud',
               isBusy: _isSaving,
               onPressed: _save,
             ),

@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
@@ -72,10 +72,23 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
 
   bool get _isEditing => widget.existingActivity != null;
 
-  /// [_selectedOrganization] null = "Mi perfil personal" (default siempre); publicar como fundación es decisión explícita.
+  /// Todas las fundaciones del usuario, en cualquier estado. Se guardan
+  /// completas —no solo las aprobadas— porque el estado de bloqueo necesita
+  /// distinguir "no tenés ninguna" de "la tuya está en revisión" o "te la
+  /// rechazaron", que son tres mensajes distintos.
   List<OrganizationModel> _organizations = const [];
+
+  /// Con las que sí se puede publicar. [_selectedOrganization] nunca es null
+  /// una vez cargada la lista: publicar a título personal dejó de existir.
+  List<OrganizationModel> get _publishableOrganizations => _organizations
+      .where((o) => o.reviewStatus.isAprobado)
+      .toList(growable: false);
+
   OrganizationModel? _selectedOrganization;
-  String _personalName = 'Mi perfil personal';
+
+  /// Hasta que la primera carga responde no se sabe si hay fundación
+  /// publicable, y mostrar el bloqueo mientras tanto sería un falso negativo.
+  bool _loadingOrganizations = true;
 
   @override
   void initState() {
@@ -107,30 +120,40 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
   }
 
   Future<void> _loadPublishAsOptions() async {
+    List<OrganizationModel> organizations = const [];
     try {
-      final organizations = await OrganizationService().getMyOrganizations();
-      final profile = await AuthService().getCurrentProfile();
-      if (!mounted) return;
-      setState(() {
-        _organizations = organizations;
-        final name = profile?.fullName.trim() ?? '';
-        if (name.isNotEmpty) _personalName = name;
-        // Editando: se marca la fundación con la que ya está publicada. Si esa
-        // fundación ya no es suya, queda en "a título personal" y guardar la
-        // desvincula, que es el único resultado honesto posible.
-        final existingOrganizationId = widget.existingActivity?.organizationId;
-        if (existingOrganizationId != null) {
-          for (final organization in organizations) {
-            if (organization.id == existingOrganizationId) {
-              _selectedOrganization = organization;
-              break;
-            }
-          }
-        }
-      });
+      organizations = await OrganizationService().getMyOrganizations();
     } on OrganizationServiceException {
-      // Sin fundaciones el formulario sigue funcionando, publicando a título personal.
+      // Se cae al estado de bloqueo, que es el resultado correcto: sin poder
+      // confirmar que hay una fundación aprobada no se puede publicar.
     }
+    if (!mounted) return;
+    setState(() {
+      _organizations = organizations;
+      _loadingOrganizations = false;
+      final publishable = _publishableOrganizations;
+      // Editando: se marca la fundación con la que ya está publicada.
+      final existingOrganizationId = widget.existingActivity?.organizationId;
+      for (final organization in publishable) {
+        if (organization.id == existingOrganizationId) {
+          _selectedOrganization = organization;
+          return;
+        }
+      }
+      // Creando (o editando una jornada personal heredada): se preselecciona
+      // la primera publicable en vez de dejar el campo vacío — con una sola
+      // fundación, que es el caso normal, no hay nada que elegir.
+      if (publishable.isNotEmpty) _selectedOrganization = publishable.first;
+    });
+  }
+
+  Future<void> _openCreateOrganization() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const CreateOrganizationScreen()),
+    );
+    if (!mounted) return;
+    setState(() => _loadingOrganizations = true);
+    await _loadPublishAsOptions();
   }
 
   @override
@@ -304,6 +327,15 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
       return;
     }
 
+    // Solo al crear: editando una jornada personal heredada (de antes de que
+    // la fundación fuera obligatoria) no se puede exigir algo que su dueño
+    // quizá no tenga, o quedaría imposible de corregir.
+    final organization = _selectedOrganization;
+    if (organization == null && !_isEditing) {
+      _snack('Elige la fundación que organiza la jornada.');
+      return;
+    }
+
     setState(() => _isSaving = true);
     try {
       // La imagen se sube antes del insert/update: si Storage falla, no queda
@@ -327,7 +359,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           startTime: startTime,
           maxCapacity: int.tryParse(_capacityController.text.trim()),
           requirements: _requirements,
-          organizationId: _selectedOrganization?.id,
+          organizationId: organization!.id,
         );
       } else {
         await EcoService().updateActivity(
@@ -343,23 +375,14 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           startTime: startTime,
           maxCapacity: int.tryParse(_capacityController.text.trim()),
           requirements: _requirements,
-          organizationId: _selectedOrganization?.id,
-          // Quitó la fundación (o ya no la administra): hay que escribir null
-          // explícitamente, si no el update dejaría el vínculo anterior.
-          clearOrganization:
-              _selectedOrganization == null && existing.isFromOrganization,
+          organizationId: organization?.id,
         );
       }
       if (!mounted) return;
-      final organization = _selectedOrganization;
       if (existing != null) {
         _snack('Cambios guardados.');
       } else {
-        _snack(
-          organization == null
-              ? '¡Actividad registrada!'
-              : '¡Actividad publicada como ${organization.name}!',
-        );
+        _snack('¡Solicitud enviada como ${organization!.name}!');
       }
       Navigator.of(context).pop(true);
     } on EcoServiceException catch (e) {
@@ -369,6 +392,13 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
+
+  /// Registrar una jornada exige una fundación aprobada; editar no, para no
+  /// dejar sin salida a una jornada personal heredada.
+  bool get _isBlockedByOrganization =>
+      !_isEditing &&
+      !_loadingOrganizations &&
+      _publishableOrganizations.isEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -388,23 +418,43 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                     : 'Organiza una jornada ambiental',
                 onBack: () => Navigator.of(context).maybePop(),
               ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildCoverSection(),
-                      _buildDetailsSection(),
-                      _buildLocationSection(),
-                      _buildScheduleSection(),
-                      _buildRequirementsSection(),
-                      const SizedBox(height: 8),
-                    ],
+              // Mientras la primera carga responde no se sabe si hay fundación
+              // publicable: mostrar el formulario y reemplazarlo después por
+              // el bloqueo se vería como un parpadeo de "sí podés / no podés".
+              if (!_isEditing && _loadingOrganizations)
+                const Expanded(
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.oliveText,
+                    ),
+                  ),
+                )
+              else if (_isBlockedByOrganization)
+                Expanded(
+                  child: _OrganizationGate(
+                    organizations: _organizations,
+                    onCreateOrganization: _openCreateOrganization,
+                  ),
+                )
+              else ...[
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildCoverSection(),
+                        _buildDetailsSection(),
+                        _buildLocationSection(),
+                        _buildScheduleSection(),
+                        _buildRequirementsSection(),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              _buildFooter(),
+                _buildFooter(),
+              ],
             ],
           ),
         ),
@@ -469,17 +519,14 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         ),
         EcoFormCard(
           children: [
-            if (_organizations.isNotEmpty) ...[
-              const EcoFieldLabel('Publicar como'),
-              _PublishAsPicker(
-                organizations: _organizations,
-                personalName: _personalName,
-                selected: _selectedOrganization,
-                onChanged: (organization) =>
-                    setState(() => _selectedOrganization = organization),
-              ),
-              const SizedBox(height: 18),
-            ],
+            const EcoFieldLabel('Publicar como'),
+            _PublishAsPicker(
+              organizations: _publishableOrganizations,
+              selected: _selectedOrganization,
+              onChanged: (organization) =>
+                  setState(() => _selectedOrganization = organization),
+            ),
+            const SizedBox(height: 18),
             const EcoFieldLabel('Título'),
             EcoTextField(
               controller: _titleController,
@@ -813,7 +860,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         ],
       ),
       child: EcoPrimaryButton(
-        label: _isEditing ? 'Guardar cambios' : 'Publicar actividad',
+        label: _isEditing ? 'Guardar cambios' : 'Enviar solicitud',
         isBusy: _isSaving,
         onPressed: _save,
       ),
@@ -1013,33 +1060,28 @@ class _CategoryPicker extends StatelessWidget {
 }
 
 /// Pastillas en vez de `SegmentedButton`/`DropdownButton` porque cada opción lleva avatar y nombre completo, y hereda el estilo de los chips de categoría.
+/// Solo lista fundaciones: publicar a título personal dejó de ser una opción
+/// (ver `EcoService.createActivity`). Con una sola fundación el picker igual
+/// se muestra —seleccionada y sin alternativa— para que quede a la vista en
+/// nombre de quién se envía la solicitud.
 class _PublishAsPicker extends StatelessWidget {
   const _PublishAsPicker({
     required this.organizations,
-    required this.personalName,
     required this.selected,
     required this.onChanged,
   });
 
   final List<OrganizationModel> organizations;
-  final String personalName;
   final OrganizationModel? selected;
-  final ValueChanged<OrganizationModel?> onChanged;
+  final ValueChanged<OrganizationModel> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _PublishAsOption(
-          label: personalName,
-          caption: 'A título personal',
-          selected: selected == null,
-          onTap: () => onChanged(null),
-          avatar: const _PublishAsAvatar(icon: Icons.person_rounded),
-        ),
-        for (final organization in organizations) ...[
-          const SizedBox(height: 8),
+        for (final (index, organization) in organizations.indexed) ...[
+          if (index > 0) const SizedBox(height: 8),
           _PublishAsOption(
             label: organization.name,
             caption: organization.handleTag,
@@ -1168,6 +1210,109 @@ class _PublishAsAvatar extends StatelessWidget {
                 child: Icon(icon, size: 20, color: AppColors.oliveText),
               )
             : LocalImage(path: path, fallbackIcon: icon),
+      ),
+    );
+  }
+}
+
+/// Lo que ve alguien que intenta registrar una jornada sin una fundación
+/// aprobada detrás.
+///
+/// Son tres situaciones distintas y cada una necesita decir algo distinto: no
+/// tiene ninguna fundación, tiene una esperando revisión, o se la rechazaron.
+/// Colapsarlas en un solo "no podés publicar" dejaría a la persona sin saber
+/// qué hacer a continuación.
+class _OrganizationGate extends StatelessWidget {
+  const _OrganizationGate({
+    required this.organizations,
+    required this.onCreateOrganization,
+  });
+
+  final List<OrganizationModel> organizations;
+  final VoidCallback onCreateOrganization;
+
+  /// Si hay varias, manda la que está más cerca de habilitar la publicación:
+  /// una pendiente es una espera, una rechazada es una acción por hacer.
+  OrganizationModel? get _relevant {
+    for (final organization in organizations) {
+      if (organization.reviewStatus.isPendiente) return organization;
+    }
+    return organizations.isEmpty ? null : organizations.first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final organization = _relevant;
+    final isPending = organization?.reviewStatus.isPendiente ?? false;
+    final reason = organization?.rejectionReason?.trim();
+
+    final (icon, title, body) = switch (organization) {
+      null => (
+        Icons.eco_rounded,
+        'Primero registra tu fundación',
+        'Las jornadas ambientales se publican siempre a nombre de una '
+            'fundación revisada por Níkara. Registra la tuya y, en cuanto la '
+            'aprobemos, vas a poder convocar voluntarios.',
+      ),
+      _ when isPending => (
+        Icons.hourglass_top_rounded,
+        'Tu fundación está en revisión',
+        '"${organization.name}" ya está en la cola. La revisamos en un '
+            'máximo de 24 horas y te avisamos; después vas a poder publicar '
+            'jornadas a su nombre.',
+      ),
+      _ => (
+        Icons.gpp_maybe_rounded,
+        'Tu fundación necesita ajustes',
+        '"${organization.name}" no pasó la revisión, así que todavía no '
+            'puede convocar jornadas.',
+      ),
+    };
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+      child: EcoFormCard(
+        children: [
+          Icon(icon, size: 40, color: AppColors.oliveText),
+          const SizedBox(height: AppSpacing.lg),
+          Text(title, style: AppTextStyles.wizardStepHeading),
+          const SizedBox(height: AppSpacing.sm),
+          Text(body, style: AppTextStyles.wizardStepSubtitle),
+          if (reason != null && reason.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MOTIVO',
+                    style: AppTextStyles.wizardFieldLabel.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(reason, style: AppTextStyles.wizardStepSubtitle),
+                ],
+              ),
+            ),
+          ],
+          if (!isPending) ...[
+            const SizedBox(height: AppSpacing.xl),
+            EcoPrimaryButton(
+              label: organization == null
+                  ? 'Registrar mi fundación'
+                  : 'Registrar otra fundación',
+              isBusy: false,
+              onPressed: onCreateOrganization,
+            ),
+          ],
+        ],
       ),
     );
   }

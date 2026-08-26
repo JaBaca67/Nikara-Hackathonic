@@ -1,3 +1,4 @@
+import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 
 /// Negocio turístico registrado vía el wizard "Registra tu negocio".
@@ -33,6 +34,10 @@ class BusinessModel {
     this.localImagePaths = const [],
     this.reviews = const [],
     this.isVerified = false,
+    this.reviewStatus = ReviewStatus.pendiente,
+    this.rejectionReason,
+    this.reviewedAt,
+    this.reviewedBy,
   });
 
   final String id;
@@ -81,6 +86,26 @@ class BusinessModel {
   /// Solo lectura desde el cliente: nadie en la app escribe `true` aquí (es acción de rol auditor, directo en Supabase).
   final bool isVerified;
 
+  /// Estado de revisión (`businesses.status`). Concepto **paralelo** a
+  /// [isVerified], no su reemplazo: `status` decide si el negocio se publica,
+  /// [isVerified] sigue siendo el sello de "verificado" que se muestra encima
+  /// de un negocio ya publicado.
+  ///
+  /// Default [ReviewStatus.pendiente] para que un modelo construido en el
+  /// wizard (antes de que la base le ponga su default) no se dibuje como si
+  /// ya estuviera aprobado.
+  final ReviewStatus reviewStatus;
+
+  /// Motivo que escribió quien rechazó; solo tiene valor cuando
+  /// [reviewStatus] es [ReviewStatus.rechazado].
+  final String? rejectionReason;
+
+  final DateTime? reviewedAt;
+
+  /// `profiles.id` del admin/auditor que revisó — trazabilidad, no se muestra
+  /// al dueño.
+  final String? reviewedBy;
+
   double get averageRating {
     if (reviews.isEmpty) return 0;
     final total = reviews.fold<double>(0, (sum, r) => sum + r.rating);
@@ -117,6 +142,10 @@ class BusinessModel {
     List<String>? localImagePaths,
     List<ReviewModel>? reviews,
     bool? isVerified,
+    ReviewStatus? reviewStatus,
+    String? rejectionReason,
+    DateTime? reviewedAt,
+    String? reviewedBy,
   }) {
     return BusinessModel(
       id: id,
@@ -146,6 +175,10 @@ class BusinessModel {
       localImagePaths: localImagePaths ?? this.localImagePaths,
       reviews: reviews ?? this.reviews,
       isVerified: isVerified ?? this.isVerified,
+      reviewStatus: reviewStatus ?? this.reviewStatus,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      reviewedAt: reviewedAt ?? this.reviewedAt,
+      reviewedBy: reviewedBy ?? this.reviewedBy,
     );
   }
 
@@ -177,6 +210,10 @@ class BusinessModel {
     'localImagePaths': localImagePaths,
     'reviews': reviews.map((r) => r.toJson()).toList(),
     'isVerified': isVerified,
+    'reviewStatus': reviewStatus.wireValue,
+    'rejectionReason': rejectionReason,
+    'reviewedAt': reviewedAt?.toIso8601String(),
+    'reviewedBy': reviewedBy,
   };
 
   factory BusinessModel.fromJson(Map<String, dynamic> json) {
@@ -218,6 +255,10 @@ class BusinessModel {
               .toList() ??
           const [],
       isVerified: json['isVerified'] as bool? ?? false,
+      reviewStatus: ReviewStatus.fromWire(json['reviewStatus']),
+      rejectionReason: json['rejectionReason'] as String?,
+      reviewedAt: DateTime.tryParse(json['reviewedAt'] as String? ?? ''),
+      reviewedBy: json['reviewedBy'] as String?,
     );
   }
 }

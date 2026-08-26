@@ -71,3 +71,131 @@ class UserModel {
     );
   }
 }
+
+/// Capacidades atómicas que la app sabe conceder o negar.
+///
+/// Existe como enum y no como un `bool` por pantalla para que la tabla
+/// rol -> permisos de [UserRolePermissions] sea una sola declaración legible:
+/// al agregar un rol o mover una capacidad de un rol a otro se edita un único
+/// lugar, en vez de perseguir condicionales sueltas por la UI.
+enum Permission {
+  // --- Consumo de contenido (base de todos los roles) ---
+  /// Explorar negocios, jornadas ECO, rutas públicas y mapa.
+  browseContent,
+
+  /// Guardar y quitar favoritos.
+  saveFavorites,
+
+  /// Inscribirse y darse de baja de una jornada ECO.
+  joinEcoActivity,
+
+  // --- Contenido propio (emprendedor) ---
+  /// Crear, editar y eliminar los negocios **propios**.
+  manageOwnBusinesses,
+
+  /// Crear, editar y eliminar las rutas **propias**.
+  manageOwnRoutes,
+
+  /// Crear, editar y eliminar las jornadas/organizaciones ECO **propias**.
+  manageOwnEcoActivities,
+
+  // --- Moderación (auditor) ---
+  /// Abrir el panel y ver la cola de registros pendientes de revisión.
+  reviewSubmissions,
+
+  /// Escribir `businesses.is_verified` (verificar / quitar verificación).
+  verifyBusiness,
+
+  /// Escribir `organizations.is_verified`.
+  verifyOrganization,
+
+  // --- Administración (admin) ---
+  /// Ver el panel de métricas globales de la plataforma.
+  viewGlobalMetrics,
+
+  /// Ver el listado de perfiles y su rol.
+  manageUsers,
+}
+
+/// Permisos diferenciados por rol — la única fuente de verdad de "quién puede
+/// qué" en la app.
+///
+/// Vive como extensión pura sobre el enum (sin I/O, sin Supabase) a propósito:
+/// la tabla se puede leer y testear de un vistazo, y queda pegada al enum que
+/// describe, así ninguno de los dos puede derivar del otro. La parte que sí
+/// necesita sesión y caché — "qué rol tiene el usuario de ahora mismo" — vive
+/// aparte en `PermissionService`.
+///
+/// Diferencia deliberada auditor <-> admin: el auditor **revisa** contenido
+/// ajeno (verifica/desverifica) pero no lo edita ni ve datos de usuarios; el
+/// admin suma métricas globales y el listado de perfiles.
+extension UserRolePermissions on UserRole {
+  static const _turista = <Permission>{
+    Permission.browseContent,
+    Permission.saveFavorites,
+    Permission.joinEcoActivity,
+  };
+
+  static const _emprendedor = <Permission>{
+    ..._turista,
+    Permission.manageOwnBusinesses,
+    Permission.manageOwnRoutes,
+    Permission.manageOwnEcoActivities,
+  };
+
+  /// El auditor parte del turista, no del emprendedor: revisar contenido ajeno
+  /// no le da derecho a publicar el propio desde este rol.
+  static const _auditor = <Permission>{
+    ..._turista,
+    Permission.reviewSubmissions,
+    Permission.verifyBusiness,
+    Permission.verifyOrganization,
+  };
+
+  /// Se enumera completo en vez de esparcir `_emprendedor` + `_auditor`: los
+  /// dos comparten la base de turista y un set constante no admite elementos
+  /// repetidos.
+  static const _admin = <Permission>{
+    Permission.browseContent,
+    Permission.saveFavorites,
+    Permission.joinEcoActivity,
+    Permission.manageOwnBusinesses,
+    Permission.manageOwnRoutes,
+    Permission.manageOwnEcoActivities,
+    Permission.reviewSubmissions,
+    Permission.verifyBusiness,
+    Permission.verifyOrganization,
+    Permission.viewGlobalMetrics,
+    Permission.manageUsers,
+  };
+
+  Set<Permission> get permissions => switch (this) {
+    UserRole.turista => _turista,
+    UserRole.emprendedor => _emprendedor,
+    UserRole.auditor => _auditor,
+    UserRole.admin => _admin,
+  };
+
+  bool can(Permission permission) => permissions.contains(permission);
+
+  /// Puerta única de entrada al panel: si esto es falso, la fila de Ajustes ni
+  /// siquiera se dibuja (un turista no debe enterarse de que el panel existe).
+  bool get canAccessAdminPanel => can(Permission.reviewSubmissions);
+
+  /// Etiqueta visible del rol, en español.
+  String get label => switch (this) {
+    UserRole.turista => 'Turista',
+    UserRole.emprendedor => 'Emprendedor',
+    UserRole.admin => 'Equipo Níkara',
+    UserRole.auditor => 'Auditor',
+  };
+
+  /// Descripción corta de qué habilita el rol; se muestra en el listado de
+  /// usuarios del panel.
+  String get permissionsSummary => switch (this) {
+    UserRole.turista => 'Explora, guarda favoritos y se une a jornadas ECO',
+    UserRole.emprendedor => 'Publica y gestiona sus negocios, rutas y jornadas',
+    UserRole.auditor => 'Verifica negocios y organizaciones de la plataforma',
+    UserRole.admin => 'Verificación, métricas globales y gestión de usuarios',
+  };
+}
