@@ -790,6 +790,9 @@ class _DestacadoCard extends StatelessWidget {
           child: Ink(
             width: width,
             decoration: BoxDecoration(
+              // Sin este relleno el `boxShadow` dorado de abajo se pinta sobre
+              // el Material en vez de detrás y tiñe la tarjeta de crema.
+              color: AppColors.surface100,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
@@ -960,6 +963,9 @@ class _NearbyRow extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
+              // Mismo motivo que en la tarjeta de "Destacados": el relleno
+              // manda la sombra dorada detrás de la tarjeta, no encima.
+              color: AppColors.surface100,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [

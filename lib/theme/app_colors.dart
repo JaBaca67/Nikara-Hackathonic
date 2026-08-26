@@ -28,10 +28,12 @@ abstract class AppColors {
   static const oliveFill = ecoGreen500;
 
   /// Oliva oscuro para texto/íconos interactivos con significado ECO.
-  /// Contraste 4.68 contra [background] y 4.82 contra [surface] — cumple
+  /// Contraste 4.76 contra [background] y 5.17 contra [surface] — cumple
   /// WCAG AA. Reemplaza a `accent300` (3.21, incumplía) y a `ecoActive`
-  /// (3.77, también incumplía).
-  static const oliveText = Color(0xFF707536);
+  /// (3.77, también incumplía). Se oscureció de `#707536` a este valor
+  /// cuando [background] pasó a beige: sobre el fondo nuevo el tono anterior
+  /// medía 4.43 y dejaba de cumplir AA.
+  static const oliveText = Color(0xFF6B7033);
 
   // Nota: la especificación original declaraba una tercera familia de marca
   // (Orange `orangeFill`/`orangeText`). Se eliminó en la auditoría del
@@ -42,8 +44,13 @@ abstract class AppColors {
 
   // --- Tokens semánticos: neutros, superficies y estado ---
 
-  /// Fondo de pantalla.
-  static const background = backgroundCream;
+  /// Fondo de pantalla: beige tostado, **deliberadamente más oscuro que
+  /// [surface]**. Con el cream anterior (`#FFF9F0`) la diferencia de
+  /// luminancia contra una tarjeta blanca era 0.029 — imperceptible, así que
+  /// las tarjetas no se leían como objetos apoyados sobre el fondo sino como
+  /// parte de él. Este valor la lleva a 0.083 (2.8x) y es el mismo beige que
+  /// usa el prototipo de Claude Design, muestreado del export.
+  static const background = Color(0xFFF7F3EC);
 
   /// Fondo de tarjetas, inputs y hojas inferiores.
   static const surface = surface100;
@@ -104,7 +111,9 @@ abstract class AppColors {
   /// "Tinta" principal de texto/íconos — negro suavizado, no `#000000` puro.
   static const neutral1100 = Color(0xFF121212);
 
-  /// Fondo crema de tarjetas y app (no es variable ligada en Figma).
+  /// Cream original de Figma (no es variable ligada). **Sin usos** desde que
+  /// [background] pasó a `#F7F3EC`: era tan claro que las tarjetas [surface]
+  /// no se despegaban del fondo. Se conserva como referencia histórica.
   static const backgroundCream = Color(0xFFFFF9F0);
 
   // --- Pantalla Inicio (Figma nodo 124:37) ---
@@ -439,8 +448,8 @@ abstract class AppColors {
   /// Sombra sutil de tarjeta de perfil — negro @ 5%.
   static const profileCardShadow = Color(0x0D000000);
 
-  /// Overlay de carga sobre el mapa — backgroundCream @ 35%.
-  static const mapLoadingOverlay = Color(0x59FFF9F0);
+  /// Overlay de carga sobre el mapa — [background] @ 35%.
+  static const mapLoadingOverlay = Color(0x59F7F3EC);
 
   /// Fondo del botón circular "eliminar" sobre una miniatura de foto —
   /// textInk @ 55%. Compartido por el wizard de negocio, el detalle de

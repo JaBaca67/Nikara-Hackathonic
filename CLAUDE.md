@@ -65,7 +65,7 @@ Cada uno tiene como máximo 2 variantes — `Fill` (relleno de badges/pills/card
 |---|---|---|---|
 | `goldFill` | `#FDBE02` | — (no se usa como texto) | Rellenos, CTAs primarios, acentos decorativos, badges. |
 | `oliveFill` | `#C2CA5B` | — | Rellenos del badge/tag ECO, acentos decorativos claros. |
-| `oliveText` | `#707536` | 4.68 / 4.82 | Links, texto interactivo, íconos con significado ECO. Reemplaza al antiguo `accent300` (`#8B922A`, que medía solo 3.21 — **incumplía AA para texto normal**; esto no es solo limpieza, corrige un bug de accesibilidad real). |
+| `oliveText` | `#6B7033` | 4.76 / 5.17 | Links, texto interactivo, íconos con significado ECO. Reemplaza al antiguo `accent300` (`#8B922A`, que medía solo 3.21 — **incumplía AA para texto normal**; esto no es solo limpieza, corrige un bug de accesibilidad real). |
 | `orangeFill` | `#FF8243` | — | Gradientes, fondos de tarjeta destacada, acentos decorativos. |
 | `orangeText` | `#C44B0E` | 4.60 / 4.74 | Texto/íconos que necesitan el acento naranja (precios destacados, highlights puntuales). |
 
@@ -73,7 +73,7 @@ Cada uno tiene como máximo 2 variantes — `Fill` (relleno de badges/pills/card
 
 ### Tokens semánticos (neutros + estado)
 
-- `background` = `backgroundCream` (`#FFF9F0`), `surface` = `surface100` (`#FDFDFD`) — fondo de pantalla vs. fondo de tarjetas/inputs.
+- `background` = `#F7F3EC` (beige tostado), `surface` = `surface100` (`#FDFDFD`) — fondo de pantalla vs. fondo de tarjetas/inputs. **La distancia entre estos dos tokens es funcional, no decorativa**: hasta el 2026-08-25 `background` era el cream de Figma `#FFF9F0`, cuya diferencia de luminancia contra `surface` era 0.029 — imperceptible, así que ninguna tarjeta se leía como apoyada sobre el fondo. El valor actual la lleva a 0.083 y sale del prototipo de Claude Design, no de Figma. Al proponer un fondo nuevo, verificá que esa separación se mantenga.
 - `textPrimary` = `neutral1100` (`#121212`), `textSecondary` = un neutro cálido consolidado (el refactor debe unificar los ~8 grises casi duplicados hoy dispersos — `neutral600/700/800`, `settingsTextMuted`, `authBodyMuted`, etc. — en un único token; no crear una variante nueva por pantalla).
 - `textInverted` = `surface100`/blanco, para texto sobre fondos oscuros o sobre un `Fill` de marca saturado.
 - `border` = `cardBorder` (negro @ ~12%), ya existente — no se toca.
@@ -97,7 +97,9 @@ Cada getter define únicamente `fontSize`, `fontWeight` y `height` (line-height)
 
 ### Flujo Claude Design
 
-El usuario prototipa en su dashboard de Claude Design de forma independiente y guarda capturas en `01_Nikara/Fuentes_Raw/raw/claude_design/`. Cuando referencie una imagen con `@nombre_imagen.png`:
+El usuario prototipa en su dashboard de Claude Design de forma independiente y guarda cada export como una nota en `01_Nikara/Fuentes_Raw/Claude_Design/` de la bóveda (el `.png` en su subcarpeta `_img/`), con `pantalla`, `tier` y `estado` en el frontmatter. Su contraparte es `01_Nikara/Fuentes_Raw/Capturas_App/`, donde guarda capturas de la app **real corriendo** — no se confunden: Claude_Design es cómo debería verse, Capturas_App es cómo se ve hoy. La skill `nikara-capturas-visuales` abre y cruza ambas por el campo `pantalla`, así que no hace falta pegar imágenes en la terminal: alcanza con pedir "mirá el diseño de Perfil" o "compará el diseño contra lo implementado de Inicio".
+
+Cuando referencie una imagen con `@nombre_imagen.png` o pida mirar una pantalla:
 
 1. Analiza visualmente disposición de componentes, jerarquía, espaciados y formas — el usuario no la va a describir en texto.
 2. Traduce esa disposición a widgets de Flutter usando exclusivamente los tokens de este sistema de diseño (primitivos Fill/Text, semánticos, `AppTextStyles`) — nunca un hex nuevo leído "a ojo" de la captura, aunque la imagen muestre un tono que no está en la paleta. Si el prototipo pide un color fuera de los primitivos, se marca como pregunta abierta antes de codificar, no se inventa un token para resolverlo.
@@ -133,7 +135,8 @@ se derivó de la frecuencia real de uso en el código), y violaciones de tier
 
 - **La familia verde se consolidó de 5 colores a 2.** `accent300` (3.21,
   incumplía AA) y `ecoActive` (3.77, también incumplía — 58 usos en 20
-  archivos, no estaba documentado) colapsaron en `oliveText` `#707536`.
+  archivos, no estaba documentado) colapsaron en `oliveText` (entonces
+  `#707536`, hoy `#6B7033` tras el cambio de fondo del 2026-08-25).
   `ecoForest` `#3A7D3A` se renombró a `success`: no era un verde ECO, se
   usaba en "contraseña fuerte", gamificación y pantalla de éxito — es un
   token de estado, igual que `error` y `destructive`. Las tres constantes
@@ -208,15 +211,36 @@ comentario.)*
 
 ## Protocolo de validación visual
 
-Herramienta: `claude-in-chrome` (ya disponible en este entorno). **No se agrega Playwright ni ningún otro MCP nuevo para esto.**
+Método por defecto: **capturar del dispositivo Android real por `adb`**, no emular en un navegador. El teléfono de José (Samsung A56, `R5GYB58K0QH`) queda conectado y da el viewport móvil de verdad. `claude-in-chrome` pasa a ser respaldo para cuando no haya teléfono conectado — sirve para ver la app, pero **no logra fijar un viewport móvil**: `resize_window` reporta éxito y el viewport se queda en ~1456px, así que valida a un ancho que no existe en producción.
+
+Por qué el dispositivo real gana en las tres dimensiones que importan:
+
+- **Fidelidad**: 1080px físicos / densidad 450dpi = **384dp** de ancho lógico, justo en el rango 375–390 que hay que validar. Además usa las fuentes, el renderer (Impeller) y el recorte de notch reales.
+- **Costo**: una captura a 384dp cuesta ~425 tokens contra ~1589 de un screenshot de Chrome. Un recorte de una sección, ~155. Un muestreo de píxeles, ~0.
+- **Velocidad**: no hay que compilar para web ni esperar el arranque del navegador.
+
+La herramienta es `scripts/shot.py` de la skill `nikara-capturas-visuales` (vive en `~/.claude/skills/`, no en este repo). Trabaja **siempre en coordenadas de la imagen que devuelve**, y traduce sola a píxeles físicos — se puede mirar una captura, elegir un punto sobre ella y tocarlo sin hacer ninguna cuenta.
+
+```bash
+S=~/.claude/skills/nikara-capturas-visuales/scripts/shot.py
+python $S                                  # captura a 384dp -> PNG en el scratchpad
+python $S --crop 0,300,384,700             # solo una sección (mucho más barato)
+python $S --sample "60,570;250,575"        # imprime el hex de esos puntos, sin imagen
+python $S --tap 200,400                    # toca ese punto y captura el resultado
+python $S --swipe 200,700,200,300          # scroll hacia abajo
+python $S --back
+```
 
 Al terminar de codificar o refactorizar cualquier pantalla, antes de darla por terminada:
 
-1. Levantar `flutter run -d chrome`.
-2. Configurar el navegador en emulación de dispositivo móvil con un ancho fijo entre 375px y 390px (equivalente a iPhone/Pixel) — Níkara es una app móvil nativa, validar en viewport de escritorio no dice nada útil sobre overflows reales.
-3. Capturar la pantalla emulada y compararla contra la captura de Claude Design de origen (si existe) o contra el nodo de Figma correspondiente.
+1. Levantar la app en el dispositivo: `flutter run -d R5GYB58K0QH --dart-define-from-file=dart_defines.json`.
+2. Navegar a la pantalla (con `--tap`/`--swipe`, o pidiéndole a José que la abra) y capturar.
+3. Compararla contra el export de Claude Design de esa misma `pantalla` (ver "Flujo Claude Design") o contra el nodo de Figma.
 4. Revisar explícitamente: `RenderFlex overflow`, texto cortado, botones/CTAs mal alineados o fuera del viewport.
-5. Si algo no coincide, corregir antes de reportar la tarea como completa — no describir la discrepancia como "pendiente" y seguir adelante.
+5. **Verificar los colores con `--sample`, no a ojo.** Una captura comprimida y un color casi correcto se ven iguales; el muestreo no. Así se encontró que las tarjetas de Inicio renderizaban `#FCF5E3` en vez del `#FDFDFD` que declaraba el código — un `BoxShadow` dorado dentro de un `Ink` sin `color` se pintaba encima del relleno en lugar de detrás. Ese bug era invisible a simple vista y explicaba por completo la queja de "las tarjetas no se ven como en el prototipo".
+6. Si algo no coincide, corregir antes de reportar la tarea como completa — no describir la discrepancia como "pendiente" y seguir adelante.
+
+Los gestos (`--tap`, `--swipe`, `--back`) están autorizados dentro de la app de Níkara. No se usan para salir de la app, tocar notificaciones, ni operar otras aplicaciones del teléfono.
 
 ## Supabase & Security Guidelines
 
@@ -262,11 +286,11 @@ La bóveda **sí** es un repositorio git (`github.com/JaBaca67/JARVIS_JOSE`, pri
 
 La bóveda está organizada **por dominio de vida**, no solo por Níkara: `00_Sistema` (control), `01_Nikara`, `02_UAM` (universidad), `03_Personal`, `04_Recursos`, `05_Diario`, `06_Inbox` (captura única), `Templates`.
 
-**División de fuentes de verdad**: la bóveda de Obsidian es la fuente de verdad *lógica* del Command Center (qué existe, cómo se relaciona, qué skills/convenciones aplican — el "por qué" y el "qué"); Claude Design y las capturas en `01_Nikara/Fuentes_Raw/raw/claude_design/` son la fuente de verdad *estética móvil* (cómo se ve una pantalla — el "cómo"). No se mezclan: una decisión visual se resuelve mirando Claude Design/Figma, nunca inventándola a partir de una nota de la bóveda; una pregunta de arquitectura o de qué skill/convención aplica se resuelve mirando la bóveda, nunca Claude Design.
+**División de fuentes de verdad**: la bóveda de Obsidian es la fuente de verdad *lógica* del Command Center (qué existe, cómo se relaciona, qué skills/convenciones aplican — el "por qué" y el "qué"); Claude Design y las capturas en `01_Nikara/Fuentes_Raw/` (`Claude_Design/` + `Capturas_App/`) son la fuente de verdad *estética móvil* (cómo se ve una pantalla — el "cómo"). No se mezclan: una decisión visual se resuelve mirando Claude Design/Figma, nunca inventándola a partir de una nota de la bóveda; una pregunta de arquitectura o de qué skill/convención aplica se resuelve mirando la bóveda, nunca Claude Design.
 
 - **Antes de actuar**, lee `G:\My Drive\JARVIS_JOSE\00_Sistema\vault_index.md` — es el mapa de navegación de la bóveda y ahorra tener que recorrer todas las carpetas.
 - **Después de hacer cambios relevantes**, registra una línea en `G:\My Drive\JARVIS_JOSE\00_Sistema\log.md` (formato `YYYY-MM-DD — acción — detalle`).
 - El mapa conceptual del código (vistas de Flutter, servicios/conceptos técnicos, tablas de Supabase) vive como notas individuales en `00_Sistema/01_Graph_Imports/`, cada una enlazada de vuelta al archivo fuente real con `[[lib/...]]` / `[[supabase/sql/...]]`. Al agregar una vista, servicio o tabla nueva, considera agregar su nota correspondiente ahí.
 - El registro de skills activas/planeadas (nativas de Obsidian y propias de Níkara) vive en `00_Sistema/Skills/`, una nota por skill con frontmatter `type: jarvis_skill` — antes de asumir que una skill "existe" o está activa, revisa su `status` ahí en vez de asumirlo por el nombre.
 - Al crear notas de negocios locales o jornadas ECO en la bóveda, usa las plantillas en `Templates/` (`Template_Negocio_Local.md`, `Template_Jornada_Eco.md`, `Template_Proyecto_Flutter.md`).
-- Respeta la identidad visual de Níkara en cualquier nota o diagrama que generes: Gold `#FDBE02` (solo relleno), Olive `#C2CA5B` relleno / `#707536` texto, Orange `#FF8243` relleno / `#C44B0E` texto, Cream `#FFF9F0`; tipografías **League Spartan** (títulos) y **Nunito** (cuerpo) — ver "Sistema de diseño" arriba y `lib/theme/app_colors.dart`.
+- Respeta la identidad visual de Níkara en cualquier nota o diagrama que generes: Gold `#FDBE02` (solo relleno), Olive `#C2CA5B` relleno / `#6B7033` texto, fondo Beige `#F7F3EC` y superficie `#FDFDFD`; tipografías **League Spartan** (títulos) y **Nunito** (cuerpo) — ver "Sistema de diseño" arriba y `lib/theme/app_colors.dart`.

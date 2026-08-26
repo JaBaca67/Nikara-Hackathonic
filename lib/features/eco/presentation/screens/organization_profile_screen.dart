@@ -160,7 +160,10 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 PublicProfileStats(
                   items: [
                     (value: '${_activities.length}', label: 'Jornadas'),
-                    (value: '$_volunteers', label: 'Voluntarios'),
+                    (
+                      value: '$_volunteers',
+                      label: _volunteers == 1 ? 'Voluntario' : 'Voluntarios',
+                    ),
                     (value: '$_upcoming', label: 'Próximas'),
                   ],
                 ),

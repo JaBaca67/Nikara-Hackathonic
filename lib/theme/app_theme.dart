@@ -813,7 +813,11 @@ abstract class AppTheme {
         seedColor: AppColors.primary500,
         primary: AppColors.primary500,
         secondary: AppColors.oliveText,
-        surface: AppColors.background,
+        // `surface` es lo que se apoya ENCIMA del fondo (Card, Dialog,
+        // BottomSheet, cualquier Material sin color propio), no el fondo de
+        // pantalla. Apuntaba a `background` y eso pintaba de beige toda
+        // superficie que no fijara su color a mano.
+        surface: AppColors.surface100,
       ),
       // Se llena cada slot (no solo los 3 que la app usa vía
       // Theme.of(context).textTheme) para que cualquier widget que caiga en

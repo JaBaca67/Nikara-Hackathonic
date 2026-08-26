@@ -546,8 +546,12 @@ class _FeaturedCard extends StatelessWidget {
                                 ? null
                                 : onJoin,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.oliveText,
-                              foregroundColor: AppColors.textInverted,
+                              // Mismo par que el CTA del detalle: el estado
+                              // "disponible" del modelo especifica "Unirme"
+                              // en dorado, y sobre un Fill de marca va tinta
+                              // oscura, nunca blanco.
+                              backgroundColor: AppColors.primary500,
+                              foregroundColor: AppColors.settingsTextDark,
                               disabledBackgroundColor:
                                   AppColors.settingsBackground,
                               elevation: 0,
