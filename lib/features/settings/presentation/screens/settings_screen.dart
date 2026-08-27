@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
@@ -26,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _name = '';
   String _email = '';
   String _phone = '';
+  UserRole _role = UserRole.turista;
 
   /// Cuentas guardadas además de la activa; alimenta el subtítulo de la fila
   /// "Cambiar de cuenta".
@@ -51,7 +54,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _name = profile.fullName;
       _email = profile.email;
       _phone = profile.phone;
+      _role = profile.role;
     });
+  }
+
+  void _openAdminPanel() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AdminShellScreen()));
   }
 
   Future<void> _loadSavedAccounts() async {
@@ -240,6 +250,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
+            if (_role.canAccessAdminPanel)
+              _SettingsSection(
+                label: 'Equipo Níkara',
+                children: [
+                  _SettingsRow(
+                    icon: Icons.shield_outlined,
+                    iconTint: AppColors.oliveText,
+                    title: 'Panel de administración',
+                    caption: _role.permissionsSummary,
+                    onTap: _openAdminPanel,
+                  ),
+                ],
+              ),
             _SettingsSection(
               label: 'Notificaciones',
               children: [

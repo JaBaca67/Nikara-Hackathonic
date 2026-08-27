@@ -4,10 +4,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
@@ -58,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<BusinessModel>? _businesses;
   String? _loadError;
   String? _userName;
+  UserRole _role = UserRole.turista;
   Position? _userPosition;
 
   /// No leídas del usuario actual; 0 para invitados (no tienen bandeja).
@@ -147,7 +150,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (GuestSessionService().isGuest || !AuthService().isLoggedIn) return;
     final profile = await AuthService().getCurrentProfile();
     if (!mounted || profile == null) return;
-    setState(() => _userName = profile.firstName);
+    setState(() {
+      _userName = profile.firstName;
+      _role = profile.role;
+    });
+  }
+
+  void _openAdminPanel() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AdminShellScreen()));
   }
 
   Future<void> _loadPosition() async {
@@ -318,6 +330,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_role.canAccessAdminPanel)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
+            ),
           if (heroBusinesses.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -356,6 +373,68 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: _openBusinessDetail,
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de acceso al panel de revisión, visible solo para admin/auditor.
+/// Reusa el acento Olive del propio encabezado de [AdminShellScreen] para que
+/// se lea como la misma identidad, no como un tercer acento de marca nuevo.
+class _AdminAccessBanner extends StatelessWidget {
+  const _AdminAccessBanner({required this.role, required this.onTap});
+
+  final UserRole role;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.oliveFill,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.shield_outlined,
+                size: 22,
+                color: AppColors.textPrimary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Panel de ${role.label}',
+                      style: AppTextStyles.homeCardTitle.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Revisar negocios y actividades pendientes',
+                      style: AppTextStyles.homeCardLocation.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: AppColors.textPrimary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
