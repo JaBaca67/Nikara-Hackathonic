@@ -18,6 +18,8 @@ import 'package:nikara_app/features/eco/presentation/screens/organization_profil
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
+import 'package:nikara_app/core/models/profile_face.dart';
+import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
@@ -54,8 +56,6 @@ final _stressBusiness = BusinessModel(
   longitude: -86.2514,
   contactPhone: '+505 8888 8888',
   instagramLink: 'complejoecoturisticoybalneariofamiliarlagunaescondida',
-  allowsReservations: true,
-  price: 123456.99,
   amenities: const [
     'Wifi',
     'Estacionamiento',
@@ -508,6 +508,36 @@ void main() {
   ) async {
     await expectNoOverflow(tester, const ProfileScreen(), 'ProfileScreen');
   });
+
+  testWidgets(
+    'FaceProfileScreen de negocio con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        FaceProfileScreen(
+          face: ProfileFace.fromBusiness(_stressBusiness),
+          onFaceTap: () {},
+          onSettingsTap: () {},
+        ),
+        'FaceProfileScreen (negocio)',
+      );
+    },
+  );
+
+  testWidgets(
+    'FaceProfileScreen de fundación con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        FaceProfileScreen(
+          face: ProfileFace.fromOrganization(_stressOrganization),
+          onFaceTap: () {},
+          onSettingsTap: () {},
+        ),
+        'FaceProfileScreen (fundación)',
+      );
+    },
+  );
 
   testWidgets('SettingsScreen no desborda en pantallas pequeñas', (
     tester,

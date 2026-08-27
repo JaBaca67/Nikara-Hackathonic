@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
@@ -390,11 +392,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   // --- Paso 1 (4a): Datos generales y contacto ---
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _accessDetailsController = TextEditingController();
+  final _otherNotesController = TextEditingController();
   String _category = _kCategoryPresets.first;
   String _countryCode = _kCountryCodes.first;
   final _phoneController = TextEditingController();
   final _instagramController = TextEditingController();
   final _facebookController = TextEditingController();
+  final _tiktokController = TextEditingController();
   late List<_ScheduleEntry> _schedule = _ScheduleEntry.parse('');
 
   // --- Paso 2 (4b): Ubicación y pin en el mapa ---
@@ -409,6 +414,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   // --- Paso 3 (4c): Galería y atributos ECO ---
   final List<XFile> _images = [];
   final List<String> _existingImagePaths = [];
+  // PROVISIONAL: logo propio de la cara de negocio (Fase B, ver bóveda
+  // "Identidad del negocio - logo propio y anfitrion opcional"). `_logoImage`
+  // es el recién elegido en este wizard (sin subir todavía, igual que
+  // `_images`); `_existingLogoUrl` es lo que ya estaba guardado.
+  XFile? _logoImage;
+  String? _existingLogoUrl;
+  bool _showHost = true;
   bool _ecoSealRequested = false;
   final Set<String> _ecoPractices = {};
   final Set<String> _selectedActivities = {};
@@ -432,6 +444,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     }
     _nameController.text = business.name;
     _descriptionController.text = business.description;
+    _accessDetailsController.text = business.accessDetails;
+    _otherNotesController.text = business.otherNotes;
     _category = business.category.isEmpty
         ? _kCategoryPresets.first
         : business.category;
@@ -445,6 +459,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.text = phoneParts.$2;
     _instagramController.text = business.instagramLink;
     _facebookController.text = business.facebookLink;
+    _tiktokController.text = business.tiktokLink;
     _schedule = _ScheduleEntry.parse(business.schedules);
     if (business.latitude != null && business.longitude != null) {
       final existingLocation = LatLng(business.latitude!, business.longitude!);
@@ -452,6 +467,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       _confirmedLocation = existingLocation;
     }
     _existingImagePaths.addAll(business.localImagePaths);
+    _existingLogoUrl = business.logoUrl;
+    _showHost = business.showHost;
     _ecoSealRequested = business.ecoSealRequested;
     _ecoPractices.addAll(business.ecoPractices);
     _selectedActivities.addAll(business.activities);
@@ -474,9 +491,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _pageController.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
+    _accessDetailsController.dispose();
+    _otherNotesController.dispose();
     _phoneController.dispose();
     _instagramController.dispose();
     _facebookController.dispose();
+    _tiktokController.dispose();
     _addressController.dispose();
     _customActivityController.dispose();
     _mapController?.dispose();
@@ -606,6 +626,23 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     setState(() => _images.addAll(picked));
   }
 
+  Future<void> _pickLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _logoImage = picked;
+      _existingLogoUrl = null;
+    });
+  }
+
+  void _removeLogo() {
+    setState(() {
+      _logoImage = null;
+      _existingLogoUrl = null;
+    });
+  }
+
   /// El índice 0 siempre es la portada.
   void _removeImageAt(int index) {
     setState(() {
@@ -653,14 +690,17 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
       instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
       facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
-      tiktokLink: existing?.tiktokLink ?? '',
-      allowsReservations: false,
+      tiktokLink: _tiktokController.text.trim().replaceFirst('@', ''),
       amenities: _selectedAmenities.toList(),
       activities: _selectedActivities.toList(),
       ecoSealRequested: _ecoSealRequested,
       ecoPractices: _ecoPractices.toList(),
       hostName: existing?.hostName ?? '',
+      logoUrl: _logoImage?.path ?? _existingLogoUrl,
+      showHost: _showHost,
       schedules: _ScheduleEntry.format(_schedule),
+      accessDetails: _accessDetailsController.text.trim(),
+      otherNotes: _otherNotesController.text.trim(),
       localImagePaths: _allPhotoPaths,
       reviews: existing?.reviews ?? const [],
       isVerified: existing?.isVerified ?? false,
@@ -707,44 +747,57 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       return;
     }
 
-    final business = BusinessModel(
-      id: existing?.id ?? const Uuid().v4(),
-      name: _nameController.text.trim(),
-      category: _category,
-      description: _descriptionController.text.trim(),
-      city: _city,
-      locationText: _addressController.text.trim(),
-      latitude: location.latitude,
-      longitude: location.longitude,
-      contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
-      instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
-      facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
-      tiktokLink: existing?.tiktokLink ?? '',
-      socialMediaLink: existing?.socialMediaLink ?? '',
-      allowsReservations: existing?.allowsReservations ?? false,
-      price: existing?.price,
-      amenities: _selectedAmenities.toList(),
-      activities: _selectedActivities.toList(),
-      ecoSealRequested: _ecoSealRequested,
-      ecoPractices: _ecoPractices.toList(),
-      hostName: hostName,
-      ownerId: ownerId,
-      schedules: _ScheduleEntry.format(_schedule),
-      accessDetails: existing?.accessDetails ?? '',
-      otherNotes: existing?.otherNotes ?? '',
-      localImagePaths: _allPhotoPaths,
-      reviews: existing?.reviews ?? const [],
-      isVerified: existing?.isVerified ?? false,
-    );
-
-    debugPrint(
-      '[RegisterBusinessWizard] _finish(): about to save "${business.name}" '
-      '(${_isEditing ? 'update' : 'create'}) with confirmedLocation='
-      '(lat=${location.latitude}, lng=${location.longitude}), '
-      'mapCenter=(lat=${_mapCenter.latitude}, lng=${_mapCenter.longitude})',
-    );
-
     try {
+      // Se sube recién acá, no al elegir la foto: si el usuario abandona el
+      // formulario a mitad de camino, no queda un archivo huérfano en
+      // Storage. Las que ya venían de un negocio existente (URL de Storage o,
+      // en negocios viejos, path local de otro dispositivo) se dejan tal
+      // cual — solo lo recién elegido en este wizard necesita subirse.
+      final uploadedNewPhotos = <String>[
+        for (final image in _images) await _storageService.uploadImage(image),
+      ];
+      final photoPaths = [..._existingImagePaths, ...uploadedNewPhotos];
+      final logoImage = _logoImage;
+      final logoUrl = logoImage == null
+          ? _existingLogoUrl
+          : await _storageService.uploadImage(logoImage);
+
+      final business = BusinessModel(
+        id: existing?.id ?? const Uuid().v4(),
+        name: _nameController.text.trim(),
+        category: _category,
+        description: _descriptionController.text.trim(),
+        city: _city,
+        locationText: _addressController.text.trim(),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
+        instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
+        facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
+        tiktokLink: _tiktokController.text.trim().replaceFirst('@', ''),
+        amenities: _selectedAmenities.toList(),
+        activities: _selectedActivities.toList(),
+        ecoSealRequested: _ecoSealRequested,
+        ecoPractices: _ecoPractices.toList(),
+        hostName: hostName,
+        logoUrl: logoUrl,
+        showHost: _showHost,
+        ownerId: ownerId,
+        schedules: _ScheduleEntry.format(_schedule),
+        accessDetails: _accessDetailsController.text.trim(),
+        otherNotes: _otherNotesController.text.trim(),
+        localImagePaths: photoPaths,
+        reviews: existing?.reviews ?? const [],
+        isVerified: existing?.isVerified ?? false,
+      );
+
+      debugPrint(
+        '[RegisterBusinessWizard] _finish(): about to save "${business.name}" '
+        '(${_isEditing ? 'update' : 'create'}) with confirmedLocation='
+        '(lat=${location.latitude}, lng=${location.longitude}), '
+        'mapCenter=(lat=${_mapCenter.latitude}, lng=${_mapCenter.longitude})',
+      );
+
       if (existing != null) {
         await _storageService.updateBusiness(business);
         if (!mounted) return;
@@ -918,6 +971,28 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       maxLines: 4,
                       maxLength: 160,
                     ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'ACCESO PARA VISITANTES (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 7),
+                    _WizardTextField(
+                      controller: _accessDetailsController,
+                      hint: 'Parqueo, senderos, accesibilidad...',
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'OTROS ASPECTOS A DESTACAR (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 7),
+                    _WizardTextField(
+                      controller: _otherNotesController,
+                      hint: 'Cualquier otra cosa que quieras contar',
+                      maxLines: 3,
+                    ),
                   ],
                 ),
                 _card(
@@ -936,8 +1011,18 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         Expanded(
                           child: _WizardTextField(
                             controller: _phoneController,
-                            hint: '8123 4567',
+                            hint: '8123-4567',
                             keyboardType: TextInputType.phone,
+                            // Mismo formateador que el celular en el registro
+                            // de cuenta (register_screen.dart) — un mismo
+                            // dato no debería verse distinto según qué
+                            // formulario lo pida.
+                            inputFormatters: _countryCode == '+505'
+                                ? const [NicaraguaPhoneInputFormatter()]
+                                : [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(12),
+                                  ],
                           ),
                         ),
                       ],
@@ -980,6 +1065,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       iconColor: AppColors.wizardFacebookIcon,
                       controller: _facebookController,
                       hint: 'facebook.com/tunegocio',
+                    ),
+                    const SizedBox(height: 8),
+                    _SocialField(
+                      icon: Icons.music_note_rounded,
+                      iconBg: AppColors.neutral900.withValues(alpha: 0.1),
+                      iconColor: AppColors.neutral900,
+                      controller: _tiktokController,
+                      hint: '@tunegocio',
                     ),
                   ],
                 ),
@@ -1312,6 +1405,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   Widget _buildStep3() {
     final photos = _allPhotoPaths;
+    final logoPath = _logoImage?.path ?? _existingLogoUrl;
     final customActivities = _selectedActivities.where(
       (a) => !_kActivityPresets.contains(a),
     );
@@ -1522,6 +1616,109 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     Text(
                       'Toca una foto para hacerla portada. Mínimo una para publicar.',
                       style: AppTextStyles.wizardCaption,
+                    ),
+                  ],
+                ),
+                // PROVISIONAL (Fase B, 2026-08-27): logo propio + anfitrión
+                // opcional, ver bóveda "Identidad del negocio - logo propio y
+                // anfitrion opcional". Cambiar esto después de publicado no
+                // reabre la revisión: es presentación, no algo que se verificó.
+                _card(
+                  children: [
+                    Text(
+                      'Identidad de tu negocio',
+                      style: AppTextStyles.wizardCardTitle,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Cómo te van a reconocer los viajeros, separado de la galería.',
+                      style: AppTextStyles.wizardCaption,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'LOGO (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: _pickLogo,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            child: SizedBox(
+                              width: 64,
+                              height: 64,
+                              child: logoPath == null
+                                  ? Container(
+                                      color: AppColors.wizardUploadZoneBg,
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.add_photo_alternate_outlined,
+                                        color: AppColors.primary500,
+                                      ),
+                                    )
+                                  : LocalImage(path: logoPath),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Tu avatar dentro de la app. Sin logo, mostramos '
+                            'tus iniciales.',
+                            style: AppTextStyles.wizardCaption,
+                          ),
+                        ),
+                        if (logoPath != null)
+                          GestureDetector(
+                            onTap: _removeLogo,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: AppColors.removeButtonBackground,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                semanticLabel: 'Quitar logo',
+                                size: 13,
+                                color: AppColors.surface100,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Mostrarme como anfitrión',
+                                style: AppTextStyles.wizardCardTitle,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Tu perfil y tu foto aparecen en el detalle '
+                                'público de este negocio.',
+                                style: AppTextStyles.wizardCaption,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _showHost,
+                          onChanged: (v) => setState(() => _showHost = v),
+                          activeThumbColor: AppColors.surface100,
+                          activeTrackColor: AppColors.primary500,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2151,6 +2348,7 @@ class _WizardTextField extends StatelessWidget {
     this.maxLength,
     this.keyboardType,
     this.onSubmitted,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -2159,6 +2357,7 @@ class _WizardTextField extends StatelessWidget {
   final int? maxLength;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -2167,6 +2366,7 @@ class _WizardTextField extends StatelessWidget {
       maxLines: maxLines,
       maxLength: maxLength,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       style: AppTextStyles.wizardFieldValue,
       onSubmitted: onSubmitted,
       decoration: InputDecoration(

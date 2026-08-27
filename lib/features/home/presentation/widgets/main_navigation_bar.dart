@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -19,7 +18,14 @@ class NavItem {
   final Color activeColor;
 }
 
-/// Las cinco tabs que ve cualquier persona.
+/// Las cinco tabs de la barra — las mismas para cualquier persona, sin
+/// importar el rol.
+///
+/// Hubo una sexta condicional por rol ("Panel" para admin/auditor,
+/// "Negocio" para emprendedor). Se revirtió tras probarla en un teléfono
+/// real: con seis slots en 384dp cada tab mide ~57dp y la barra se ve
+/// sobrecargada. Esas dos experiencias viven ahora en el sistema de caras de
+/// perfil y en una fila de Ajustes, no en la barra.
 const List<NavItem> kBaseNavItems = [
   NavItem(Icons.home_rounded, 'Inicio'),
   NavItem(Icons.map_rounded, 'Mapa'),
@@ -27,33 +33,6 @@ const List<NavItem> kBaseNavItems = [
   NavItem(Icons.route_rounded, 'Rutas'),
   NavItem(Icons.person_rounded, 'Perfil'),
 ];
-
-/// La barra según el rol activo: una función pura de [role].
-///
-/// Un perfil tiene **un solo** [UserRole] (ver `user_model.dart`), así que
-/// "Panel" y "Negocio" nunca compiten por el sexto lugar y no hace falta lógica
-/// de prioridad. Un turista se queda en cinco.
-///
-/// La etiqueta del emprendedor dice "Negocio" y no "Mi negocio" —que es como se
-/// llama la pantalla— porque con seis slots cada uno mide ~57dp y dos palabras
-/// se cortarían.
-List<NavItem> navItemsForRole(UserRole role) {
-  return [
-    ...kBaseNavItems,
-    if (role == UserRole.admin || role == UserRole.auditor)
-      const NavItem(
-        Icons.shield_outlined,
-        'Panel',
-        activeColor: AppColors.oliveText,
-      ),
-    if (role == UserRole.emprendedor)
-      const NavItem(
-        Icons.storefront_rounded,
-        'Negocio',
-        activeColor: AppColors.oliveText,
-      ),
-  ];
-}
 
 const _kPillSize = Size(40, 32);
 const _kPillTopInset = 4.0;
@@ -64,16 +43,15 @@ class MainNavigationBar extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
-    this.items = kBaseNavItems,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  /// Los tabs a dibujar. Los arma `MainLayout` con [navItemsForRole] y le pasa
-  /// la misma lista que usa para construir las pantallas, así el índice de la
-  /// barra y el del `IndexedStack` no pueden desalinearse.
-  final List<NavItem> items;
+  /// Siempre [kBaseNavItems]: la barra ya no se arma por rol, así que no hay
+  /// una lista variable que pueda desalinearse con el `IndexedStack` de
+  /// `MainLayout`.
+  List<NavItem> get items => kBaseNavItems;
 
   @override
   Widget build(BuildContext context) {

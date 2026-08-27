@@ -9,6 +9,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.d
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -106,6 +107,9 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
 
   Future<void> _toggleJoin(EcoActivityModel activity) async {
     if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
+    if (!mounted) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
+    if (!mounted) return;
     final joining = !activity.isJoinedByCurrentUser;
     _applyOptimistic(activity.id, joining: joining);
     try {

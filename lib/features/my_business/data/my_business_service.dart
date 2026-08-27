@@ -16,7 +16,20 @@ class MyBusinessServiceException implements Exception {
   String toString() => message;
 }
 
-/// Una tarjeta del grid de métricas del dashboard.
+/// Qué **categoría de dato** representa una métrica. No es una preferencia
+/// estética: es lo que decide su color en la UI, y por eso vive acá y no en el
+/// widget.
+///
+/// - [reputation] — lo que opinan de vos: calificación y reseñas. Se pinta en
+///   Gold.
+/// - [community] — cuánta gente se involucró: guardados en favoritos,
+///   voluntarios, jornadas. Se pinta en Olive.
+/// - [inactive] — una métrica que todavía no tiene de dónde salir. Se pinta en
+///   neutro apagado, así el color comunica "no disponible" por sí solo y no
+///   depende de que alguien lea la leyenda.
+enum MetricAccent { reputation, community, inactive }
+
+/// Una tarjeta del grid de métricas o una columna de la fila de estadísticas.
 ///
 /// [comingSoon] no es un placeholder decorativo: marca una métrica que el
 /// prototipo pide pero que **no tiene de dónde salir todavía** (vistas de
@@ -28,6 +41,7 @@ class DashboardMetric {
     required this.label,
     required this.value,
     required this.icon,
+    required this.accent,
     this.caption,
     this.comingSoon = false,
   });
@@ -35,13 +49,26 @@ class DashboardMetric {
   const DashboardMetric.comingSoon({required this.label, required this.icon})
     : value = '—',
       caption = 'Próximamente',
-      comingSoon = true;
+      comingSoon = true,
+      accent = MetricAccent.inactive;
 
   final String label;
   final String value;
   final String? caption;
   final IconData icon;
+  final MetricAccent accent;
   final bool comingSoon;
+
+  /// Etiqueta corta para la fila de estadísticas de la cabecera, donde no
+  /// entran dos palabras por columna.
+  DashboardMetric withShortLabel(String shortLabel) => DashboardMetric(
+    label: shortLabel,
+    value: value,
+    icon: icon,
+    accent: accent,
+    caption: caption,
+    comingSoon: comingSoon,
+  );
 }
 
 /// Lo que el dashboard "Mi negocio" necesita: qué administra esta cuenta y qué
@@ -98,20 +125,55 @@ class MyBusinessService {
     return items;
   }
 
-  /// Las cuatro métricas de la cabecera, según qué se esté mirando.
+  /// Las tres columnas de la fila de estadísticas de la cabecera del perfil de
+  /// una cara: los números que **sí** existen hoy.
+  ///
+  /// Van separadas de [metricsFor] para que ningún dato aparezca dos veces en
+  /// la misma pantalla — arriba lo real, abajo lo que todavía no tiene de dónde
+  /// salir.
   ///
   /// Un fallo de red devuelve la métrica en su estado vacío en lugar de tumbar
-  /// el dashboard: las tarjetas son un acompañamiento, lo que no puede faltar
-  /// es el estado de revisión y los accesos de edición.
-  Future<List<DashboardMetric>> metricsFor(ManagedItem item) {
+  /// el perfil: los números son un acompañamiento, lo que no puede faltar son
+  /// los accesos de edición.
+  Future<List<DashboardMetric>> headlineStatsFor(ManagedItem item) {
     return switch (item.kind) {
-      ManagedItemKind.business => _businessMetrics(item.id),
-      ManagedItemKind.organization => _organizationMetrics(item.id),
-      ManagedItemKind.ecoActivity => _activityMetrics(item),
+      ManagedItemKind.business => _businessHeadline(item.id),
+      ManagedItemKind.organization => _organizationHeadline(item.id),
+      ManagedItemKind.ecoActivity => _activityHeadline(item),
     };
   }
 
-  Future<List<DashboardMetric>> _businessMetrics(String businessId) async {
+  /// Las tarjetas del grid secundario: por ahora, solo lo que está en
+  /// "Próximamente". Se dibujan igual en vez de esconderse para que el hueco
+  /// quede a la vista (ver [DashboardMetric]).
+  List<DashboardMetric> metricsFor(ManagedItem item) {
+    return switch (item.kind) {
+      ManagedItemKind.business => const [
+        DashboardMetric.comingSoon(
+          label: 'Vistas del perfil',
+          icon: Icons.visibility_outlined,
+        ),
+        DashboardMetric.comingSoon(
+          label: 'Contactos por WhatsApp',
+          icon: Icons.chat_bubble_outline_rounded,
+        ),
+      ],
+      ManagedItemKind.organization => const [
+        DashboardMetric.comingSoon(
+          label: 'Vistas del perfil',
+          icon: Icons.visibility_outlined,
+        ),
+      ],
+      ManagedItemKind.ecoActivity => const [
+        DashboardMetric.comingSoon(
+          label: 'Vistas de la jornada',
+          icon: Icons.visibility_outlined,
+        ),
+      ],
+    };
+  }
+
+  Future<List<DashboardMetric>> _businessHeadline(String businessId) async {
     var saved = 0;
     try {
       saved = await FavoritesService().countFavoritesForBusiness(businessId);
@@ -127,32 +189,28 @@ class MyBusinessService {
     }
 
     return [
-      const DashboardMetric.comingSoon(
-        label: 'Vistas del perfil',
-        icon: Icons.visibility_outlined,
-      ),
-      const DashboardMetric.comingSoon(
-        label: 'Contactos por WhatsApp',
-        icon: Icons.chat_bubble_outline_rounded,
-      ),
-      DashboardMetric(
-        label: 'Guardados por viajeros',
-        value: '$saved',
-        icon: Icons.favorite_border_rounded,
-      ),
       DashboardMetric(
         label: 'Calificación',
         value: summary.isEmpty ? '—' : summary.average.toStringAsFixed(1),
-        caption: summary.isEmpty
-            ? 'Sin reseñas todavía'
-            : '${summary.count} '
-                  '${summary.count == 1 ? 'reseña' : 'reseñas'}',
-        icon: Icons.star_border_rounded,
+        icon: Icons.star_rounded,
+        accent: MetricAccent.reputation,
+      ),
+      DashboardMetric(
+        label: summary.count == 1 ? 'Reseña' : 'Reseñas',
+        value: '${summary.count}',
+        icon: Icons.rate_review_outlined,
+        accent: MetricAccent.reputation,
+      ),
+      DashboardMetric(
+        label: 'Guardados',
+        value: '$saved',
+        icon: Icons.favorite_rounded,
+        accent: MetricAccent.community,
       ),
     ];
   }
 
-  Future<List<DashboardMetric>> _organizationMetrics(
+  Future<List<DashboardMetric>> _organizationHeadline(
     String organizationId,
   ) async {
     var published = 0;
@@ -174,32 +232,30 @@ class MyBusinessService {
 
     return [
       DashboardMetric(
-        label: 'Jornadas publicadas',
+        label: 'Jornadas',
         value: '$published',
         icon: Icons.event_available_outlined,
+        accent: MetricAccent.community,
       ),
       DashboardMetric(
-        label: 'Voluntarios inscritos',
+        label: 'Voluntarios',
         value: '$volunteers',
-        caption: 'En todas tus jornadas',
         icon: Icons.groups_outlined,
+        accent: MetricAccent.community,
       ),
       DashboardMetric(
-        label: 'Jornadas próximas',
+        label: 'Próximas',
         value: '$upcoming',
         icon: Icons.schedule_rounded,
-      ),
-      const DashboardMetric.comingSoon(
-        label: 'Vistas del perfil',
-        icon: Icons.visibility_outlined,
+        accent: MetricAccent.community,
       ),
     ];
   }
 
   /// Los inscritos de una jornada ya vienen contados en el propio modelo (el
-  /// embed de `eco_participants`), así que esta es la única métrica del
-  /// dashboard que no necesita ninguna consulta extra.
-  Future<List<DashboardMetric>> _activityMetrics(ManagedItem item) async {
+  /// embed de `eco_participants`), así que esta es la única fuente del perfil
+  /// que no necesita ninguna consulta extra.
+  Future<List<DashboardMetric>> _activityHeadline(ManagedItem item) async {
     final activity = item.activity;
     if (activity == null) return const [];
     final spots = activity.spotsAvailable;
@@ -207,27 +263,24 @@ class MyBusinessService {
 
     return [
       DashboardMetric(
-        label: 'Voluntarios inscritos',
+        label: 'Inscritos',
         value: '${activity.participantCount}',
         icon: Icons.groups_outlined,
+        accent: MetricAccent.community,
       ),
       DashboardMetric(
         label: 'Cupos libres',
         value: spots == null ? '∞' : '$spots',
-        caption: spots == null ? 'Sin límite de cupo' : null,
         icon: Icons.event_seat_outlined,
+        accent: MetricAccent.community,
       ),
       DashboardMetric(
-        label: activity.isPast ? 'Finalizó hace' : 'Empieza en',
+        label: activity.isPast ? 'Días atrás' : 'Días para empezar',
         value: activity.isPast
             ? '${-daysLeft}'
             : '${daysLeft < 0 ? 0 : daysLeft}',
-        caption: 'días',
         icon: Icons.calendar_today_outlined,
-      ),
-      const DashboardMetric.comingSoon(
-        label: 'Vistas de la jornada',
-        icon: Icons.visibility_outlined,
+        accent: MetricAccent.community,
       ),
     ];
   }

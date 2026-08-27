@@ -19,6 +19,7 @@ import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bot
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -135,6 +136,8 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   Future<void> _toggleFavorite() async {
     if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
     if (!mounted) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) return;
+    if (!mounted) return;
     // Desde que los favoritos viven en `user_favorites`, guardar puede fallar
     // por red. El corazón no se mueve si eso pasa: pintarlo lleno haría creer
     // que el negocio quedó guardado cuando no se escribió ninguna fila.
@@ -161,6 +164,8 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _openWriteReview() async {
+    if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
+    if (!mounted) return;
     final draft = await showModalBottomSheet<_ReviewDraft>(
       context: context,
       isScrollControlled: true,
@@ -460,8 +465,6 @@ class _InformationTabState extends State<_InformationTab> {
         SocialContact.facebook(business.facebookLink),
       if (business.tiktokLink.isNotEmpty)
         SocialContact.tiktok(business.tiktokLink),
-      if (business.socialMediaLink.isNotEmpty)
-        SocialContact.link(business.socialMediaLink),
     ];
 
     final sections = <Widget>[
@@ -476,12 +479,13 @@ class _InformationTabState extends State<_InformationTab> {
         ),
       if (business.amenities.isNotEmpty)
         _ServicesSection(amenities: business.amenities),
-      _HostSection(
-        business: business,
-        currentProfile: widget.currentProfile,
-        ownerProfile: widget.ownerProfile,
-        onTap: widget.onOwnerTap,
-      ),
+      if (business.showHost)
+        _HostSection(
+          business: business,
+          currentProfile: widget.currentProfile,
+          ownerProfile: widget.ownerProfile,
+          onTap: widget.onOwnerTap,
+        ),
       _ScheduleSection(business: business),
       if (contacts.isNotEmpty) _ContactSection(contacts: contacts),
       _DirectionsSection(business: business, onTap: widget.onDirections),

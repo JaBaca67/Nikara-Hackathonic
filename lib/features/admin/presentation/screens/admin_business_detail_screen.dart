@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/legal_identity_model.dart';
 import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/legal_identity_service.dart';
 import 'package:nikara_app/core/services/permission_service.dart';
 import 'package:nikara_app/features/admin/data/admin_service.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_business_summary.dart';
@@ -37,10 +39,66 @@ class AdminBusinessDetailScreen extends StatefulWidget {
 
 class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
   final _service = AdminService();
+  final _legalIdentityService = LegalIdentityService();
 
   late AdminBusinessSummary _business = widget.business;
   bool _saving = false;
   bool _changed = false;
+
+  // PROVISIONAL (Fase C, 2026-08-27): identidad legal del dueño, cargada
+  // aparte porque `legal_identities` vive por usuario, no por negocio.
+  LegalIdentityModel? _identity;
+  bool _loadingIdentity = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIdentity();
+  }
+
+  Future<void> _loadIdentity() async {
+    try {
+      final identity = await _legalIdentityService.getForUser(
+        _business.ownerId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _identity = identity;
+        _loadingIdentity = false;
+      });
+    } on LegalIdentityServiceException {
+      if (mounted) setState(() => _loadingIdentity = false);
+    }
+  }
+
+  Future<void> _viewDocumentPhoto(String objectPath) async {
+    final String url;
+    try {
+      url = await _legalIdentityService.signedUrlFor(objectPath);
+    } on LegalIdentityServiceException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: Image.network(url, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _approve() async {
     final confirmed = await showDialog<bool>(
@@ -166,122 +224,164 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: SafeArea(
-          child: Column(
-            children: [
-              _Header(
-                title: 'Ficha de revisión',
-                subtitle: _business.category.isEmpty
-                    ? 'Sin categoría declarada'
-                    : _business.category,
-                onBack: () => Navigator.of(context).pop(_changed),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.lg,
-                    AppSpacing.xxxl,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _business.name.isEmpty
-                                  ? 'Sin nombre'
-                                  : _business.name,
-                              style: AppTextStyles.sectionTitle.copyWith(
-                                color: AppColors.textPrimary,
-                              ),
+        // El header (surface) llega hasta y=0 y absorbe la barra de estado
+        // con su propio color — ver home_screen.dart.
+        body: Column(
+          children: [
+            _Header(
+              title: 'Ficha de revisión',
+              subtitle: _business.category.isEmpty
+                  ? 'Sin categoría declarada'
+                  : _business.category,
+              onBack: () => Navigator.of(context).pop(_changed),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.xxxl,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _business.name.isEmpty
+                                ? 'Sin nombre'
+                                : _business.name,
+                            style: AppTextStyles.sectionTitle.copyWith(
+                              color: AppColors.textPrimary,
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.sm),
-                          AdminStatusPill(status: _business.reviewStatus),
-                        ],
-                      ),
-                      if (_business.reviewStatus.isRechazado &&
-                          (_business.rejectionReason ?? '').trim().isNotEmpty)
-                        _RejectionNotice(
-                          reason: _business.rejectionReason!.trim(),
-                          reviewedAt: _business.reviewedAt,
                         ),
-                      // El sello solo tiene sentido sobre algo ya publicado:
-                      // ofrecerlo en un negocio pendiente invitaría a marcar
-                      // como "verificado" algo que nadie ve todavía.
-                      if (canVerify && _business.reviewStatus.isAprobado) ...[
-                        const AdminSectionLabel(label: 'Sello de verificado'),
-                        _SealRow(
-                          isVerified: _business.isVerified,
-                          enabled: !_saving,
-                          onChanged: (_) => _toggleVerification(),
-                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        AdminStatusPill(status: _business.reviewStatus),
                       ],
-                      const AdminSectionLabel(label: 'Datos del registro'),
-                      _DetailField(
-                        label: 'Descripción',
-                        value: _business.description,
+                    ),
+                    if (_business.reviewStatus.isRechazado &&
+                        (_business.rejectionReason ?? '').trim().isNotEmpty)
+                      _RejectionNotice(
+                        reason: _business.rejectionReason!.trim(),
+                        reviewedAt: _business.reviewedAt,
                       ),
-                      _DetailField(label: 'Ciudad', value: _business.city),
-                      _DetailField(
-                        label: 'Dirección',
-                        value: _business.addressText,
-                      ),
-                      _DetailField(label: 'Teléfono', value: _business.phone),
-                      _DetailField(
-                        label: 'Horarios',
-                        value: _business.schedules,
-                      ),
-                      _DetailField(
-                        label: 'Instagram',
-                        value: _business.instagramHandle.isEmpty
-                            ? ''
-                            : '@${_business.instagramHandle}',
-                      ),
-                      _DetailField(
-                        label: 'Facebook',
-                        value: _business.facebookHandle,
-                      ),
-                      _DetailField(
-                        label: 'Fotos cargadas',
-                        value: _business.photos.isEmpty
-                            ? ''
-                            : '${_business.photos.length}',
-                      ),
-                      const AdminSectionLabel(label: 'Responsable'),
-                      _DetailField(
-                        label: 'Dueño',
-                        value: _business.ownerName,
-                        fallback: 'Perfil no encontrado',
-                      ),
-                      _DetailField(
-                        label: 'Correo',
-                        value: _business.ownerEmail,
-                        fallback: 'Sin correo',
-                      ),
-                      _DetailField(
-                        label: 'Registrado el',
-                        value: _business.createdAt == null
-                            ? ''
-                            : _formatDate(_business.createdAt!),
+                    // El sello solo tiene sentido sobre algo ya publicado:
+                    // ofrecerlo en un negocio pendiente invitaría a marcar
+                    // como "verificado" algo que nadie ve todavía.
+                    if (canVerify && _business.reviewStatus.isAprobado) ...[
+                      const AdminSectionLabel(label: 'Sello de verificado'),
+                      _SealRow(
+                        isVerified: _business.isVerified,
+                        enabled: !_saving,
+                        onChanged: (_) => _toggleVerification(),
                       ),
                     ],
-                  ),
+                    const AdminSectionLabel(label: 'Datos del registro'),
+                    _DetailField(
+                      label: 'Descripción',
+                      value: _business.description,
+                    ),
+                    _DetailField(label: 'Ciudad', value: _business.city),
+                    _DetailField(
+                      label: 'Dirección',
+                      value: _business.addressText,
+                    ),
+                    _DetailField(label: 'Teléfono', value: _business.phone),
+                    _DetailField(label: 'Horarios', value: _business.schedules),
+                    _DetailField(
+                      label: 'Instagram',
+                      value: _business.instagramHandle.isEmpty
+                          ? ''
+                          : '@${_business.instagramHandle}',
+                    ),
+                    _DetailField(
+                      label: 'Facebook',
+                      value: _business.facebookHandle,
+                    ),
+                    _DetailField(
+                      label: 'Fotos cargadas',
+                      value: _business.photos.isEmpty
+                          ? ''
+                          : '${_business.photos.length}',
+                    ),
+                    const AdminSectionLabel(label: 'Responsable'),
+                    _DetailField(
+                      label: 'Dueño',
+                      value: _business.ownerName,
+                      fallback: 'Perfil no encontrado',
+                    ),
+                    _DetailField(
+                      label: 'Correo',
+                      value: _business.ownerEmail,
+                      fallback: 'Sin correo',
+                    ),
+                    _DetailField(
+                      label: 'Registrado el',
+                      value: _business.createdAt == null
+                          ? ''
+                          : _formatDate(_business.createdAt!),
+                    ),
+                    const AdminSectionLabel(label: 'Identidad legal'),
+                    if (_loadingIdentity)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (_identity == null)
+                      _DetailField(
+                        label: 'Documento',
+                        value: '',
+                        fallback:
+                            'Sin identidad legal cargada — negocio de antes '
+                            'de la Fase C, o dato pendiente.',
+                      )
+                    else ...[
+                      _DetailField(label: 'Tipo', value: _identity!.kind.label),
+                      _DetailField(
+                        label: _identity!.kind.documentLabel,
+                        value: _identity!.documentNumber,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          _DocumentThumbnail(
+                            label: _identity!.kind == LegalIdentityKind.natural
+                                ? 'Frente'
+                                : 'Documento',
+                            onTap: () =>
+                                _viewDocumentPhoto(_identity!.documentPhotoUrl),
+                          ),
+                          if (_identity!.documentPhotoBackUrl
+                              case final backPath?) ...[
+                            const SizedBox(width: 8),
+                            _DocumentThumbnail(
+                              label: 'Reverso',
+                              onTap: () => _viewDocumentPhoto(backPath),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (PermissionService().can(Permission.reviewSubmissions))
-                _ActionBar(
-                  status: _business.reviewStatus,
-                  saving: _saving,
-                  onApprove: _saving ? null : _approve,
-                  onReject: _saving ? null : _reject,
-                ),
-            ],
-          ),
+            ),
+            if (PermissionService().can(Permission.reviewSubmissions))
+              _ActionBar(
+                status: _business.reviewStatus,
+                saving: _saving,
+                onApprove: _saving ? null : _approve,
+                onReject: _saving ? null : _reject,
+              ),
+          ],
         ),
       ),
     );
@@ -340,6 +440,50 @@ class _DetailField extends StatelessWidget {
   }
 }
 
+/// Botón que abre la foto del documento en grande — firma la URL recién al
+/// tocarlo (ver `LegalIdentityService.signedUrlFor`), nunca la guarda.
+class _DocumentThumbnail extends StatelessWidget {
+  const _DocumentThumbnail({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.settingsBackground,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.image_outlined,
+                size: 16,
+                color: AppColors.oliveText,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Ver $label',
+                style: AppTextStyles.settingsRowCaption.copyWith(
+                  color: AppColors.oliveText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.title,
@@ -355,9 +499,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
-        AppSpacing.lg,
+        MediaQuery.of(context).padding.top + AppSpacing.lg,
         AppSpacing.xl,
         AppSpacing.xl,
       ),

@@ -12,6 +12,7 @@ import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bot
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -54,6 +55,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
 
   Future<void> _toggleJoin() async {
     if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
+    if (!mounted) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
+    if (!mounted) return;
     final joining = !_activity.isJoinedByCurrentUser;
     setState(() {
       _isSubmitting = true;

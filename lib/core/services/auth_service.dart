@@ -14,6 +14,7 @@ import 'package:nikara_app/core/models/saved_account.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/account_switcher_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/supabase/supabase_config.dart';
 
@@ -267,6 +268,7 @@ class AuthService {
     }
     await _client.auth.signOut();
     FavoritesService().invalidate();
+    ProfileFaceService().invalidate();
   }
 
   // ==================== Cambio rápido de cuentas ====================
@@ -367,6 +369,7 @@ class AuthService {
       // cuenta nueva heredaría los favoritos de la anterior, porque el
       // pushAndRemoveUntil del selector recrea la UI pero no el proceso.
       FavoritesService().invalidate();
+      ProfileFaceService().invalidate();
       await rememberCurrentAccount();
       return const AuthResult.success();
     } on AuthException catch (e) {

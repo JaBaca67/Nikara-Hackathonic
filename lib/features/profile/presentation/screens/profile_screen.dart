@@ -6,25 +6,31 @@ import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
-import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
-import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
-import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
-import 'package:nikara_app/features/eco/utils/eco_format.dart';
-import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
+import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Figma nodes 377:483/421:361. Todo se calcula en vivo desde Supabase/[FavoritesService]/[UserStatsService], sin datos mock de respaldo.
+///
+/// **Control de cambio de cara — provisional.** El nombre de la cara activa con
+/// un chevron al lado, en la cabecera, abre la hoja de perfiles
+/// ([showProfileFaceSheet]). Es un gesto de trabajo, decidido sin prototipo de
+/// Claude Design, para que la interacción exista y se pueda probar; el pulido
+/// visual viene después. El avatar **no** cambió de función: sigue sirviendo
+/// para cambiar la foto de perfil, que es justo por qué el cambio de cara
+/// necesitaba un control propio y no podía colgarse de él.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onExploreRequested});
 
@@ -40,6 +46,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _favoritesService = FavoritesService();
   final _userStatsService = UserStatsService();
   final _businessStorageService = BusinessStorageService();
+  final _faceService = ProfileFaceService();
 
   bool _isLoading = true;
   String? _loadError;
@@ -55,8 +62,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     savedPlacesCount: 0,
     reviewsCount: 0,
   );
-  List<BusinessModel> _myBusinesses = const [];
-  List<EcoActivityModel> _myEcoActivities = const [];
   int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
 
   @override
@@ -66,6 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
     EcoService.revision.addListener(_onDataChanged);
+    ProfileFaceService.revision.addListener(_onFacesChanged);
     _loadAll();
   }
 
@@ -74,12 +80,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _favoritesService.idsNotifier.removeListener(_onDataChanged);
     BusinessStorageService.revision.removeListener(_onDataChanged);
     EcoService.revision.removeListener(_onDataChanged);
+    ProfileFaceService.revision.removeListener(_onFacesChanged);
     super.dispose();
   }
 
   void _onDataChanged() {
     if (!mounted) return;
     _loadAll();
+  }
+
+  /// Un cambio de cara no recarga favoritos ni estadísticas: solo cambia qué
+  /// se dibuja arriba, así que alcanza con reconstruir.
+  void _onFacesChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _loadAll() async {
@@ -99,20 +113,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .where((b) => favoriteIds.contains(b.id))
           .toList(growable: false);
 
-      // No se filtra `allBusinesses` por `ownerId`: esa lista ya viene
-      // recortada a los negocios aprobados, y el dueño tiene que ver también
-      // los suyos en revisión o rechazados.
-      final myBusinesses = await _businessStorageService.getMyBusinesses();
-      if (!mounted) return;
-
-      // Falla suave a propósito: el perfil completo no debe quedar en estado
-      // de error solo porque el feed ECO no respondió.
-      var myEcoActivities = const <EcoActivityModel>[];
-      try {
-        myEcoActivities = await EcoService().getMyActivities();
-      } on EcoServiceException {
-        // Se muestra el apartado vacío.
-      }
+      // Forzado: una cara nace cuando un admin aprueba la solicitud, del lado
+      // del servidor, así que el cliente no se entera por ningún evento local.
+      // Recargar acá es lo que hace que la cara nueva aparezca al volver al
+      // perfil.
+      await _faceService.load(force: true);
       if (!mounted) return;
 
       setState(() {
@@ -120,8 +125,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _favoriteDestinations = favoriteDestinations;
         _favoriteBusinesses = favoriteBusinesses;
         _stats = stats;
-        _myBusinesses = myBusinesses;
-        _myEcoActivities = myEcoActivities;
         _isLoading = false;
       });
     } on AuthServiceException catch (e) {
@@ -137,115 +140,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoading = false;
       });
     }
-  }
-
-  /// Abre el wizard directo en su primer paso.
-  ///
-  /// Antes pasaba por `EditBusinessHubScreen`, un menú intermedio que elegía
-  /// qué paso editar. Ese hub se retiró al absorber sus filas en el dashboard
-  /// "Mi negocio", que es donde ahora vive la gestión completa; desde el perfil
-  /// alcanza con entrar a editar.
-  Future<void> _editBusiness(BusinessModel business) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => RegisterBusinessWizard(existingBusiness: business),
-      ),
-    );
-    await _loadAll();
-  }
-
-  Future<void> _confirmDeleteBusiness(BusinessModel business) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: const Text('¿Eliminar negocio?'),
-        content: Text(
-          'Se eliminará "${business.name}" de forma permanente. Esta '
-          'acción no se puede deshacer.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: TextStyle(color: AppColors.destructive),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await _businessStorageService.deleteBusiness(business.id);
-    await _loadAll();
-  }
-
-  Future<void> _openEcoActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
-    await _loadAll();
-  }
-
-  Future<void> _editEcoActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CreateEcoActivityScreen(existingActivity: activity),
-      ),
-    );
-    await _loadAll();
-  }
-
-  Future<void> _confirmDeleteEcoActivity(EcoActivityModel activity) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: const Text('¿Eliminar actividad?'),
-        content: Text(
-          activity.participantCount == 0
-              ? 'Se eliminará "${activity.title}" de forma permanente. '
-                    'Esta acción no se puede deshacer.'
-              : 'Se eliminará "${activity.title}" y se cancelará la '
-                    'inscripción de ${activity.participantCount} '
-                    'participante(s). Esta acción no se puede deshacer.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: TextStyle(color: AppColors.destructive),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await EcoService().deleteActivity(activity.id);
-    } on EcoServiceException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
-      return;
-    }
-    await _loadAll();
   }
 
   Future<void> _toggleFavorite(String id) async {
@@ -285,6 +179,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+  }
+
+  /// Control provisional de cambio de cara — ver el docstring de la pantalla.
+  Future<void> _openFaceSheet() async {
+    final changed = await showProfileFaceSheet(context);
+    if (!mounted || !changed) return;
+    await _loadAll();
   }
 
   Future<void> _openAccountSwitcher() async {
@@ -490,6 +391,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
+    // Con una cara de negocio o fundación puesta, la pestaña Perfil muestra el
+    // perfil de esa cara. La de turista es la única con la experiencia completa
+    // —favoritos, insignias, gamificación— y por eso es la que vive acá.
+    final activeFace = _faceService.activeFace;
+    if (activeFace != null && !activeFace.isTurista) {
+      return FaceProfileScreen(
+        face: activeFace,
+        onFaceTap: _openFaceSheet,
+        onSettingsTap: _openSettings,
+      );
+    }
+
     final points = _userStatsService.computePoints(_stats);
     final levelInfo = GamificationEngine.calculate(points);
     final badges = BadgesLogic.build(_stats);
@@ -519,19 +432,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ProfileHeaderCard(
-                      fullName: fullName,
-                      initials: initials,
-                      avatarUrl: _profile?.avatarUrl,
-                      isSavingAvatar: _isSavingAvatar,
-                      tripsCount: _stats.tripsCount,
-                      badgesCount: unlockedCount,
-                      points: points,
-                      onAvatarTap: _pickAvatar,
-                      onEditTap: _openSettings,
-                      onSettingsTap: _openSettings,
-                      onShareTap: _showComingSoon,
-                      onSwitchAccountTap: _openAccountSwitcher,
+                    ProfileHeaderShell(
+                      actions: [
+                        ProfileHeaderIconButton(
+                          label: 'Cambiar de cuenta',
+                          icon: Icons.switch_account_outlined,
+                          onTap: _openAccountSwitcher,
+                        ),
+                        ProfileHeaderIconButton(
+                          label: 'Editar perfil',
+                          icon: Icons.edit_outlined,
+                          onTap: _openSettings,
+                        ),
+                        ProfileHeaderIconButton(
+                          label: 'Ajustes',
+                          icon: Icons.settings_outlined,
+                          onTap: _openSettings,
+                        ),
+                        ProfileHeaderIconButton(
+                          label: 'Compartir perfil',
+                          icon: Icons.ios_share,
+                          onTap: _showComingSoon,
+                        ),
+                      ],
+                      avatar: ProfileFaceAvatar(
+                        imageUrl: _profile?.avatarUrl,
+                        initials: initials,
+                        label: 'Cambiar foto de perfil',
+                        isSaving: _isSavingAvatar,
+                        onTap: _pickAvatar,
+                      ),
+                      faceControl: FaceSelectorControl(
+                        name: activeFace?.name ?? fullName,
+                        kindLabel: activeFace?.kind.label,
+                        onTap: _openFaceSheet,
+                      ),
+                      stats: [
+                        ProfileStat(
+                          value: '${_stats.tripsCount}',
+                          label: 'Viajes',
+                        ),
+                        ProfileStat(
+                          value: '$unlockedCount',
+                          label: 'Insignias',
+                        ),
+                        ProfileStat(value: '$points', label: 'Puntos'),
+                      ],
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -568,361 +514,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                       ),
                     ),
-                    // Solo bajo Favoritos: no tienen relación con insignias/gamificación. El divider + gap extra las distingue visualmente del contenido del tab.
-                    if (_activeTab == 0 &&
-                        (_myBusinesses.isNotEmpty ||
-                            _myEcoActivities.isNotEmpty)) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                        child: Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: AppColors.profileDivider,
-                        ),
-                      ),
-                      if (_myBusinesses.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                          child: _MyBusinessesSection(
-                            businesses: _myBusinesses,
-                            onEdit: _editBusiness,
-                            onDelete: _confirmDeleteBusiness,
-                          ),
-                        ),
-                      if (_myEcoActivities.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                          child: _MyEcoActivitiesSection(
-                            activities: _myEcoActivities,
-                            onOpen: _openEcoActivity,
-                            onEdit: _editEcoActivity,
-                            onDelete: _confirmDeleteEcoActivity,
-                          ),
-                        ),
-                    ],
                   ],
                 ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileHeaderCard extends StatelessWidget {
-  const _ProfileHeaderCard({
-    required this.fullName,
-    required this.initials,
-    required this.avatarUrl,
-    required this.isSavingAvatar,
-    required this.tripsCount,
-    required this.badgesCount,
-    required this.points,
-    required this.onAvatarTap,
-    required this.onEditTap,
-    required this.onSettingsTap,
-    required this.onShareTap,
-    required this.onSwitchAccountTap,
-  });
-
-  final String fullName;
-  final String initials;
-  final String? avatarUrl;
-  final bool isSavingAvatar;
-  final int tripsCount;
-  final int badgesCount;
-  final int points;
-  final VoidCallback onAvatarTap;
-  final VoidCallback onEditTap;
-  final VoidCallback onSettingsTap;
-  final VoidCallback onShareTap;
-  final VoidCallback onSwitchAccountTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.surface100,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xl,
-              AppSpacing.lg,
-              AppSpacing.xl,
-              AppSpacing.md,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Perfil', style: AppTextStyles.profileScreenTitle),
-                Row(
-                  children: [
-                    _HeaderIconButton(
-                      label: 'Cambiar de cuenta',
-                      icon: Icons.switch_account_outlined,
-                      onTap: onSwitchAccountTap,
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIconButton(
-                      label: 'Editar perfil',
-                      icon: Icons.edit_outlined,
-                      onTap: onEditTap,
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIconButton(
-                      label: 'Ajustes',
-                      icon: Icons.settings_outlined,
-                      onTap: onSettingsTap,
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIconButton(
-                      icon: Icons.ios_share,
-                      onTap: onShareTap,
-                      label: 'Compartir perfil',
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _ProfileAvatar(
-                  avatarUrl: avatarUrl,
-                  isSaving: isSavingAvatar,
-                  initials: initials,
-                  onTap: onAvatarTap,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    fullName,
-                    style: AppTextStyles.profileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _StatsRow(
-            tripsCount: tripsCount,
-            badgesCount: badgesCount,
-            points: points,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({
-    required this.icon,
-    required this.onTap,
-    required this.label,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  /// Descripción para lectores de pantalla — el botón no tiene texto visible.
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: AppColors.profileDivider,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({
-    required this.avatarUrl,
-    required this.isSaving,
-    required this.initials,
-    required this.onTap,
-  });
-
-  /// URL pública de `profiles.avatar_url`; nula = iniciales.
-  final String? avatarUrl;
-
-  /// Subida en curso: se tapa la foto con un spinner y se ignoran los toques.
-  final bool isSaving;
-  final String initials;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final path = avatarUrl;
-    final hasPhoto = path != null && path.isNotEmpty;
-
-    return GestureDetector(
-      onTap: isSaving ? null : onTap,
-      child: Container(
-        width: 80,
-        height: 80,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.settingsAccent, AppColors.destructive],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.settingsAccent.withValues(alpha: 0.35),
-              offset: const Offset(0, 4),
-              blurRadius: 10,
-            ),
-          ],
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(1.6),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.fromBorderSide(
-              BorderSide(color: AppColors.surface100, width: 1.6),
-            ),
-          ),
-          child: ClipOval(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (hasPhoto)
-                  LocalImage(path: path)
-                else
-                  Container(
-                    color: AppColors.profileDivider,
-                    alignment: Alignment.center,
-                    child: Text(
-                      initials,
-                      style: AppTextStyles.h5.copyWith(
-                        color: AppColors.settingsTextDark,
-                      ),
-                    ),
-                  ),
-                if (isSaving)
-                  Container(
-                    color: AppColors.detailCoverCounterBg,
-                    alignment: Alignment.center,
-                    child: const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.2,
-                        valueColor: AlwaysStoppedAnimation(
-                          AppColors.surface100,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({
-    required this.tripsCount,
-    required this.badgesCount,
-    required this.points,
-  });
-
-  final int tripsCount;
-  final int badgesCount;
-  final int points;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.profileDivider, width: 0.8),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatColumn(
-              value: '$tripsCount',
-              label: 'Viajes',
-              showDivider: true,
-            ),
-          ),
-          Expanded(
-            child: _StatColumn(
-              value: '$badgesCount',
-              label: 'Insignias',
-              showDivider: true,
-            ),
-          ),
-          Expanded(
-            child: _StatColumn(
-              value: '$points',
-              label: 'Puntos',
-              showDivider: false,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatColumn extends StatelessWidget {
-  const _StatColumn({
-    required this.value,
-    required this.label,
-    required this.showDivider,
-  });
-
-  final String value;
-  final String label;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: showDivider
-          ? const BoxDecoration(
-              border: Border(
-                right: BorderSide(color: AppColors.profileDivider, width: 0.8),
-              ),
-            )
-          : null,
-      child: Column(
-        children: [
-          Text(value, style: AppTextStyles.profileStatValue),
-          const SizedBox(height: 2),
-          Text(label, style: AppTextStyles.profileStatLabel),
         ],
       ),
     );
@@ -1562,394 +1158,6 @@ class _BadgeCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Solo se renderiza cuando la cuenta es dueña de al menos un [BusinessModel] ([BusinessModel.ownerId]).
-/// "Mis actividades ECO" — el equivalente de [_MyBusinessesSection] para las
-/// jornadas que organiza el usuario, con las mismas acciones editar/eliminar.
-class _MyEcoActivitiesSection extends StatelessWidget {
-  const _MyEcoActivitiesSection({
-    required this.activities,
-    required this.onOpen,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final List<EcoActivityModel> activities;
-  final ValueChanged<EcoActivityModel> onOpen;
-  final ValueChanged<EcoActivityModel> onEdit;
-  final ValueChanged<EcoActivityModel> onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Mis actividades ECO', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 10),
-        for (final activity in activities) ...[
-          _MyEcoActivityCard(
-            activity: activity,
-            onOpen: () => onOpen(activity),
-            onEdit: () => onEdit(activity),
-            onDelete: () => onDelete(activity),
-          ),
-          const SizedBox(height: 10),
-        ],
-      ],
-    );
-  }
-}
-
-class _MyEcoActivityCard extends StatelessWidget {
-  const _MyEcoActivityCard({
-    required this.activity,
-    required this.onOpen,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final EcoActivityModel activity;
-  final VoidCallback onOpen;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPast = activity.isPast;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardGlowSoft,
-            offset: Offset(0, 2),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: onOpen,
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: 58,
-                    height: 52,
-                    child: LocalImage(
-                      path: activity.imageUrl,
-                      fallbackIcon: ecoCategoryIcon(activity.category),
-                      fallbackIconSize: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        activity.title,
-                        style: AppTextStyles.favoriteCardTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(
-                            isPast
-                                ? Icons.event_available
-                                : Icons.calendar_month,
-                            size: 9,
-                            color: AppColors.settingsTextMuted,
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              formatEcoDateTimeLong(activity.startTime),
-                              style: AppTextStyles.favoriteCardCaption,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _EcoMetaPill(
-                icon: Icons.people_alt_outlined,
-                label: activity.maxCapacity == null
-                    ? '${activity.participantCount} inscritos'
-                    : '${activity.participantCount}/${activity.maxCapacity} '
-                          'inscritos',
-              ),
-              if (isPast)
-                const _EcoMetaPill(icon: Icons.history, label: 'Finalizada'),
-              if (activity.isFromOrganization)
-                _EcoMetaPill(
-                  icon: Icons.groups_outlined,
-                  label: activity.organizerDisplayName,
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Editar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.wizardFocus,
-                    side: const BorderSide(color: AppColors.warmChipBorder),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('Eliminar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.destructive,
-                    side: BorderSide(
-                      color: AppColors.destructive.withValues(alpha: 0.4),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EcoMetaPill extends StatelessWidget {
-  const _EcoMetaPill({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: AppColors.detailActivityIconBg,
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: AppColors.oliveText),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: AppTextStyles.profileCaption10.copyWith(
-                color: AppColors.oliveText,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MyBusinessesSection extends StatelessWidget {
-  const _MyBusinessesSection({
-    required this.businesses,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final List<BusinessModel> businesses;
-  final ValueChanged<BusinessModel> onEdit;
-  final ValueChanged<BusinessModel> onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Mis Negocios', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 10),
-        if (businesses.isEmpty)
-          Text(
-            'Aún no tienes negocios registrados.',
-            style: AppTextStyles.bodyText2.copyWith(
-              color: AppColors.settingsTextMuted,
-            ),
-          )
-        else
-          for (final business in businesses) ...[
-            _MyBusinessCard(
-              business: business,
-              onEdit: () => onEdit(business),
-              onDelete: () => onDelete(business),
-            ),
-            const SizedBox(height: 10),
-          ],
-      ],
-    );
-  }
-}
-
-class _MyBusinessCard extends StatelessWidget {
-  const _MyBusinessCard({
-    required this.business,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final BusinessModel business;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final imagePath = business.localImagePaths.isNotEmpty
-        ? business.localImagePaths.first
-        : null;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardGlowSoft,
-            offset: Offset(0, 2),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 58,
-                  height: 52,
-                  child: LocalImage(
-                    path: imagePath,
-                    fallbackIcon: Icons.storefront_outlined,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      business.name,
-                      style: AppTextStyles.favoriteCardTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 9,
-                          color: AppColors.settingsTextMuted,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            business.city,
-                            style: AppTextStyles.favoriteCardCaption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Editar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.wizardFocus,
-                    side: const BorderSide(color: AppColors.warmChipBorder),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('Eliminar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.destructive,
-                    side: BorderSide(
-                      color: AppColors.destructive.withValues(alpha: 0.4),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

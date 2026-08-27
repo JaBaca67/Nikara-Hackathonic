@@ -1,10 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
@@ -19,18 +20,71 @@ class BusinessServiceException implements Exception {
   String toString() => message;
 }
 
-/// Persiste [BusinessModel] en la tabla `businesses` de Supabase.
-///
-/// La tabla aún no tiene columnas para price/amenities/activities/schedules/
-/// etc.; esos campos se cachean en SharedPreferences y se fusionan al leer —
-/// trade-off deliberado de una migración parcial de backend, no un bug.
+/// Persiste [BusinessModel] en la tabla `businesses` de Supabase. Hasta la
+/// migración `021_business_extras_columns.sql`, `amenities`/`activities`/
+/// `ecoSealRequested`/`ecoPractices`/`accessDetails`/`otherNotes` vivían solo
+/// en un cache local de `SharedPreferences` — invisibles para cualquier
+/// dispositivo que no fuera el que registró el negocio. Ya son columnas
+/// reales; no queda cache local que fusionar.
 class BusinessStorageService {
-  static const _localExtrasKey = 'business_local_extras_json';
-
   /// Se incrementa en cada escritura para que pantallas como "Mis Negocios" se refresquen sin reiniciar.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
+  /// Bucket público con portada + galería (ver supabase/sql/022_business_photos_storage.sql).
+  static const photosBucket = 'businesses';
+
   SupabaseClient get _client => Supabase.instance.client;
+
+  /// Sube una foto y devuelve su URL pública — mismo patrón que
+  /// `AuthService.updateAvatar` y `OrganizationService.uploadImage`. El wizard
+  /// la llama una vez por foto nueva, al guardar (no al elegirla), para no
+  /// dejar archivos huérfanos si el usuario abandona el formulario.
+  ///
+  /// Antes `businesses.photos` guardaba la ruta local de `image_picker` — una
+  /// portada/galería que solo existía en el dispositivo que la subió, el
+  /// mismo bug que ya se había arreglado para avatars (015) y organizations
+  /// (017).
+  Future<String> uploadImage(XFile image) async {
+    final user = AuthService().currentAuthUser;
+    if (user == null) {
+      throw const BusinessServiceException(
+        'Necesitas iniciar sesión para subir una foto.',
+      );
+    }
+    final format = resolveImageUploadFormat(
+      image.name,
+      reportedMimeType: image.mimeType,
+    );
+    final objectPath = '${user.id}/${const Uuid().v4()}.${format.extension}';
+    try {
+      // readAsBytes y no File: en web `XFile.path` es un `blob:`, no una ruta.
+      final bytes = await image.readAsBytes();
+      await _client.storage
+          .from(photosBucket)
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: format.mimeType,
+              upsert: false,
+            ),
+          );
+      return _client.storage.from(photosBucket).getPublicUrl(objectPath);
+    } on StorageException catch (e) {
+      // La ruta se acaba de generar, así que un 404 solo puede ser el bucket.
+      if (e.statusCode == '404') {
+        throw const BusinessServiceException(
+          'Falta crear el almacenamiento de fotos. Corre '
+          'supabase/sql/022_business_photos_storage.sql en Supabase.',
+        );
+      }
+      throw BusinessServiceException('No se pudo subir la foto: ${e.message}');
+    } catch (_) {
+      throw const BusinessServiceException(
+        'No se pudo subir una foto. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
 
   /// Listado público: solo negocios aprobados.
   ///
@@ -74,23 +128,15 @@ class BusinessStorageService {
     );
   }
 
-  /// Completa las filas crudas con las dos fuentes que no están en
-  /// `businesses`: el cache local de campos sin columna (precio, amenidades,
-  /// horarios) y las reseñas, que desde ahora viven en la tabla `reviews`.
+  /// Completa las filas crudas con las reseñas, que viven en la tabla
+  /// `reviews` en vez de en `businesses`.
   ///
   /// Las reseñas se piden en **una sola** consulta para todo el lote, no una
   /// por negocio. Si esa consulta falla, los negocios se devuelven sin reseñas
   /// en vez de tumbar el listado: un feed sin calificaciones sigue siendo útil,
   /// un feed vacío no.
   Future<List<BusinessModel>> _hydrate(List<Map<String, dynamic>> rows) async {
-    final localExtras = await _readLocalExtras();
-    final cores = rows
-        .map((row) {
-          final core = _fromRow(row);
-          final cached = localExtras[core.id];
-          return cached == null ? core : _mergeExtras(core, cached);
-        })
-        .toList(growable: false);
+    final cores = rows.map(_fromRow).toList(growable: false);
 
     Map<String, List<ReviewModel>> reviews = const {};
     try {
@@ -184,7 +230,6 @@ class BusinessStorageService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _writeLocalExtra(business);
     revision.value++;
   }
 
@@ -225,7 +270,6 @@ class BusinessStorageService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _writeLocalExtra(business);
     revision.value++;
   }
 
@@ -301,7 +345,6 @@ class BusinessStorageService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _removeLocalExtra(id);
     revision.value++;
   }
 
@@ -352,6 +395,7 @@ class BusinessStorageService {
       contactPhone: sanitizePhone(b.contactPhone),
       instagramLink: sanitizeInstagramHandle(b.instagramLink),
       facebookLink: sanitizeFacebookHandle(b.facebookLink),
+      tiktokLink: sanitizeTiktokHandle(b.tiktokLink),
       schedules: sanitizeText(b.schedules, maxLength: InputLimits.mediumText),
       accessDetails: sanitizeMultilineText(b.accessDetails),
       otherNotes: sanitizeMultilineText(b.otherNotes),
@@ -441,22 +485,34 @@ class BusinessStorageService {
     }
   }
 
-  /// PostgREST no conoce `schedules`/`facebook_handle` porque falta la
-  /// migración 018. Se reintenta sin esas dos claves en vez de impedir que se
-  /// registre un negocio: el resto de los datos sí se puede guardar, y los
-  /// horarios/Facebook siguen viviendo en el cache local como antes.
-  static const _post018Columns = ['schedules', 'facebook_handle'];
+  /// Columnas que pueden no existir todavía según qué migraciones ya corrió
+  /// cada entorno: `schedules`/`facebook_handle` (018) y el lote de
+  /// `021_business_extras_columns.sql` (amenities/activities/eco_*/
+  /// access_details/other_notes/tiktok_handle). Se reintenta sin esas claves
+  /// en vez de impedir que se registre un negocio: el resto de los datos sí
+  /// se puede guardar.
+  static const _softColumns = [
+    'schedules',
+    'facebook_handle',
+    'amenities',
+    'activities',
+    'eco_seal_requested',
+    'eco_practices',
+    'access_details',
+    'other_notes',
+    'tiktok_handle',
+  ];
 
-  static bool _isMissingPost018Column(PostgrestException e) =>
+  static bool _isMissingSoftColumn(PostgrestException e) =>
       (e.code == 'PGRST204' || e.code == '42703') &&
-      _post018Columns.any(e.message.contains);
+      _softColumns.any(e.message.contains);
 
   Future<void> _insertRow(Map<String, dynamic> row) async {
     try {
       await _client.from('businesses').insert(row);
     } on PostgrestException catch (e) {
-      if (!_isMissingPost018Column(e)) rethrow;
-      await _client.from('businesses').insert(_withoutPost018(row));
+      if (!_isMissingSoftColumn(e)) rethrow;
+      await _client.from('businesses').insert(_withoutSoftColumns(row));
     }
   }
 
@@ -479,10 +535,10 @@ class BusinessStorageService {
           .eq('owner_id', ownerId)
           .select('id');
     } on PostgrestException catch (e) {
-      if (!_isMissingPost018Column(e)) rethrow;
+      if (!_isMissingSoftColumn(e)) rethrow;
       updated = await _client
           .from('businesses')
-          .update(_withoutPost018(row))
+          .update(_withoutSoftColumns(row))
           .eq('id', id)
           .eq('owner_id', ownerId)
           .select('id');
@@ -494,33 +550,12 @@ class BusinessStorageService {
     }
   }
 
-  static Map<String, dynamic> _withoutPost018(Map<String, dynamic> row) {
+  static Map<String, dynamic> _withoutSoftColumns(Map<String, dynamic> row) {
     final trimmed = Map<String, dynamic>.of(row);
-    for (final column in _post018Columns) {
+    for (final column in _softColumns) {
       trimmed.remove(column);
     }
     return trimmed;
-  }
-
-  BusinessModel _mergeExtras(BusinessModel core, BusinessModel cached) {
-    return core.copyWith(
-      allowsReservations: cached.allowsReservations,
-      price: cached.price,
-      amenities: cached.amenities,
-      activities: cached.activities,
-      ecoSealRequested: cached.ecoSealRequested,
-      ecoPractices: cached.ecoPractices,
-      // Solo si el cache local tiene algo: desde 018 estas dos viven en la
-      // tabla, así que un cache vacío no debe borrar lo que vino del servidor.
-      facebookLink: cached.facebookLink.isEmpty ? null : cached.facebookLink,
-      socialMediaLink: cached.socialMediaLink,
-      schedules: cached.schedules.isEmpty ? null : cached.schedules,
-      accessDetails: cached.accessDetails,
-      otherNotes: cached.otherNotes,
-      // `reviews` ya no sale del cache: es dato real de la tabla `reviews` y lo
-      // completa [_hydrate]. Tomarlo de acá devolvería la copia local vieja y
-      // pisaría lo que escribieron otras personas.
-    );
   }
 
   /// Solo las columnas de contenido: `id` y `owner_id` los agrega quien
@@ -538,8 +573,17 @@ class BusinessStorageService {
       'phone': b.contactPhone,
       'instagram_handle': b.instagramLink,
       'facebook_handle': b.facebookLink,
+      'tiktok_handle': b.tiktokLink,
       'schedules': b.schedules,
       'photos': b.localImagePaths,
+      'amenities': b.amenities,
+      'activities': b.activities,
+      'eco_seal_requested': b.ecoSealRequested,
+      'eco_practices': b.ecoPractices,
+      'access_details': b.accessDetails,
+      'other_notes': b.otherNotes,
+      'logo_url': b.logoUrl,
+      'show_host': b.showHost,
     };
   }
 
@@ -569,9 +613,21 @@ class BusinessStorageService {
       longitude: point?.$2,
       contactPhone: row['phone'] as String? ?? '',
       instagramLink: row['instagram_handle'] as String? ?? '',
-      // Ausentes (no vacías) mientras no haya corrido la migración 018.
+      // Ausentes (no vacías) mientras no haya corrido la migración 018/021.
       facebookLink: row['facebook_handle'] as String? ?? '',
+      tiktokLink: row['tiktok_handle'] as String? ?? '',
       schedules: row['schedules'] as String? ?? '',
+      amenities:
+          (row['amenities'] as List<dynamic>?)?.cast<String>() ?? const [],
+      activities:
+          (row['activities'] as List<dynamic>?)?.cast<String>() ?? const [],
+      ecoSealRequested: row['eco_seal_requested'] as bool? ?? false,
+      ecoPractices:
+          (row['eco_practices'] as List<dynamic>?)?.cast<String>() ?? const [],
+      accessDetails: row['access_details'] as String? ?? '',
+      otherNotes: row['other_notes'] as String? ?? '',
+      logoUrl: row['logo_url'] as String?,
+      showHost: row['show_host'] as bool? ?? true,
       localImagePaths:
           (row['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
       isVerified: row['is_verified'] as bool? ?? false,
@@ -579,8 +635,7 @@ class BusinessStorageService {
       rejectionReason: row['rejection_reason'] as String?,
       reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
       reviewedBy: row['reviewed_by'] as String?,
-      // Sin columna aún; son defaults reales que el merge de extras locales sobrescribe si hay cache.
-      allowsReservations: false,
+      // Sin columna aún (ver "Identidad del negocio" en la bóveda).
       hostName: '',
     );
   }
@@ -648,36 +703,5 @@ class BusinessStorageService {
     final lng = buffer.getFloat64(offset, endian);
     final lat = buffer.getFloat64(offset + 8, endian);
     return (lat, lng);
-  }
-
-  Future<Map<String, BusinessModel>> _readLocalExtras() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_localExtrasKey);
-    if (raw == null) return {};
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    final list = decoded
-        .map((e) => BusinessModel.fromJson(e as Map<String, dynamic>))
-        .toList();
-    return {for (final b in list) b.id: b};
-  }
-
-  Future<void> _writeLocalExtra(BusinessModel business) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cache = await _readLocalExtras();
-    cache[business.id] = business;
-    await prefs.setString(
-      _localExtrasKey,
-      jsonEncode(cache.values.map((b) => b.toJson()).toList()),
-    );
-  }
-
-  Future<void> _removeLocalExtra(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cache = await _readLocalExtras();
-    cache.remove(id);
-    await prefs.setString(
-      _localExtrasKey,
-      jsonEncode(cache.values.map((b) => b.toJson()).toList()),
-    );
   }
 }

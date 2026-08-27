@@ -189,27 +189,26 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            _AdminHeader(
-              role: role,
-              title: current.title,
-              subtitle: current.subtitle,
-              onExit: widget.onExit ?? () => Navigator.of(context).maybePop(),
+      // El header (surface) llega hasta y=0 y absorbe la barra de estado con
+      // su propio color — ver home_screen.dart.
+      body: Column(
+        children: [
+          _AdminHeader(
+            role: role,
+            title: current.title,
+            subtitle: current.subtitle,
+            onExit: widget.onExit ?? () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: index,
+              children: [
+                for (final destination in destinations)
+                  Builder(builder: destination.builder),
+              ],
             ),
-            Expanded(
-              child: IndexedStack(
-                index: index,
-                children: [
-                  for (final destination in destinations)
-                    Builder(builder: destination.builder),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
       bottomNavigationBar: _AdminNavBar(
         destinations: destinations,
@@ -239,9 +238,9 @@ class _AdminHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
-        AppSpacing.lg,
+        MediaQuery.of(context).padding.top + AppSpacing.lg,
         AppSpacing.xl,
         AppSpacing.xl,
       ),

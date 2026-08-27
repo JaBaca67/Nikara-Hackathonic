@@ -21,6 +21,7 @@ import 'package:nikara_app/features/map/domain/route_progress.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -347,7 +348,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       latitude: request.latitude,
       longitude: request.longitude,
       contactPhone: '',
-      allowsReservations: false,
       hostName: '',
     );
   }
@@ -1195,6 +1195,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final origin = _tripOrigin;
     final route = _navigationRoute;
     if (origin == null || route == null) return;
+    // El preview ("Cómo llegar") sí está permitido desde cualquier cara: lo
+    // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
+    if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
+    if (!mounted) return;
 
     final initialBearing = route.points.length > 1
         ? Geolocator.bearingBetween(
@@ -3331,6 +3335,10 @@ class _FavoriteToggle extends StatelessWidget {
         return GestureDetector(
           onTap: () async {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
+              return;
+            }
+            if (!context.mounted) return;
+            if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) {
               return;
             }
             if (!context.mounted) return;

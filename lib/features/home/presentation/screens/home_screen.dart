@@ -11,12 +11,13 @@ import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -209,11 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openWizard() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RegisterBusinessWizard()));
-  }
+  void _openWizard() => openBusinessRegistrationFlow(context);
 
   List<String> _availableCategories(List<BusinessModel> businesses) {
     final categories = businesses.map((b) => b.category).toSet().toList()
@@ -267,36 +264,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            SearchHeaderWidget(
-              userName: _userName,
-              isGuest:
-                  GuestSessionService().isGuest || !AuthService().isLoggedIn,
-              notificationCount: _unreadNotifications,
-              onNotificationTap: _openNotifications,
-              onFilterTap: _openFilterSheet,
-            ),
-            Expanded(
-              child: _loadError != null
-                  ? _LoadErrorState(
-                      message: _loadError!,
-                      onRetry: _loadBusinesses,
-                    )
-                  : businesses == null
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary500,
-                      ),
-                    )
-                  : businesses.isEmpty
-                  ? _EmptyState(onRegister: _openWizard)
-                  : _buildFeed(businesses),
-            ),
-          ],
-        ),
+      // PROVISIONAL (2026-08-27): antes había un SafeArea(top: true) envolviendo
+      // todo el body, así que la barra de estado del teléfono se pintaba con
+      // AppColors.background (beige) y quedaba una costura de color contra
+      // SearchHeaderWidget, que es surface100 (blanco) — un tono distinto justo
+      // debajo. Igual que en map_screen, el elemento visual real (acá el header
+      // blanco) llega hasta y=0 y absorbe la barra de estado en vez de dejar que
+      // el Scaffold pinte una franja aparte; el padding de MediaQuery empuja el
+      // contenido del header, no un SafeArea que recorta todo el body.
+      body: Column(
+        children: [
+          SearchHeaderWidget(
+            userName: _userName,
+            isGuest: GuestSessionService().isGuest || !AuthService().isLoggedIn,
+            notificationCount: _unreadNotifications,
+            onNotificationTap: _openNotifications,
+            onFilterTap: _openFilterSheet,
+          ),
+          Expanded(
+            child: _loadError != null
+                ? _LoadErrorState(
+                    message: _loadError!,
+                    onRetry: _loadBusinesses,
+                  )
+                : businesses == null
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary500,
+                    ),
+                  )
+                : businesses.isEmpty
+                ? _EmptyState(onRegister: _openWizard)
+                : _buildFeed(businesses),
+          ),
+        ],
       ),
     );
   }
@@ -1099,6 +1100,10 @@ class _FavoriteButton extends StatelessWidget {
         return GestureDetector(
           onTap: () async {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
+              return;
+            }
+            if (!context.mounted) return;
+            if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) {
               return;
             }
             if (!context.mounted) return;

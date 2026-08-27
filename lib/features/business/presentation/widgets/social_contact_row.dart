@@ -122,15 +122,6 @@ class SocialContact {
       uri: Uri.parse('https://www.tiktok.com/@$handle'),
     );
   }
-
-  factory SocialContact.link(String link) => SocialContact(
-    icon: Icons.link_rounded,
-    label: 'Enlace',
-    handle: '',
-    tint: AppColors.neutral600,
-    iconBackground: AppColors.neutral600.withValues(alpha: 0.1),
-    uri: Uri.parse(link),
-  );
 }
 
 class SocialHub extends StatelessWidget {

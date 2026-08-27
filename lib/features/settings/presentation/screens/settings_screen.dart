@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
@@ -202,187 +202,181 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.settingsBackground,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SettingsHeader(onBack: () => Navigator.of(context).maybePop()),
-              const SizedBox(height: 20),
-              _SettingsSection(
-                label: 'Mi cuenta',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.person_outline,
-                    title: 'Editar perfil',
-                    onTap: _openEditProfile,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.lock_outline,
-                    title: 'Cambiar contraseña',
-                    onTap: _openChangePassword,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.mail_outline,
-                    title: 'Correo electrónico',
-                    value: _email,
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.call_outlined,
-                    title: 'Teléfono',
-                    value: _phone,
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Notificaciones',
-                children: [
-                  _SettingsToggleRow(
-                    icon: Icons.notifications_none,
-                    title: 'Novedades de viaje',
-                    value: _tripAlerts,
-                    onChanged: (v) => setState(() => _tripAlerts = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.eco_outlined,
-                    title: 'Campañas ecológicas',
-                    value: _ecoCampaigns,
-                    onChanged: (v) => setState(() => _ecoCampaigns = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.local_offer_outlined,
-                    title: 'Ofertas y promociones',
-                    value: _offers,
-                    onChanged: (v) => setState(() => _offers = v),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Privacidad',
-                children: [
-                  _SettingsToggleRow(
-                    icon: Icons.person_outline,
-                    title: 'Perfil público',
-                    value: _publicProfile,
-                    onChanged: (v) => setState(() => _publicProfile = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.location_on_outlined,
-                    title: 'Compartir ubicación',
-                    value: _shareLocation,
-                    onChanged: (v) => setState(() => _shareLocation = v),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Para negocios turísticos',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.storefront_outlined,
-                    iconTint: AppColors.oliveText,
-                    title: 'Registrar mi negocio',
-                    caption: 'Llega a más viajeros en Nicaragua',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterBusinessWizard(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Comunidad ECO',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.eco_outlined,
-                    iconTint: AppColors.oliveText,
-                    title: 'Registrar actividad ECO',
-                    caption: 'Organiza una jornada ambiental',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CreateEcoActivityScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _SettingsRow(
-                    icon: Icons.groups_outlined,
-                    iconTint: AppColors.oliveText,
-                    title: 'Registrar / Gestionar Fundación',
-                    caption: 'Publica jornadas a nombre de tu organización',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CreateOrganizationScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Soporte',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.help_outline,
-                    title: 'Centro de ayuda',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.description_outlined,
-                    title: 'Términos y condiciones',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.info_outline,
-                    title: 'Acerca de Níkara',
-                    value: 'v1.0.0',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Sesión',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.switch_account_outlined,
-                    iconTint: AppColors.oliveText,
-                    title: 'Cambiar de cuenta',
-                    caption: _savedAccountsCaption,
-                    onTap: _openAccountSwitcher,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.logout,
-                    iconTint: AppColors.destructive,
-                    titleColor: AppColors.destructive,
-                    title: 'Cerrar sesión',
-                    onTap: _confirmLogout,
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Zona de peligro',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.delete_forever_outlined,
-                    iconTint: AppColors.destructive,
-                    titleColor: AppColors.destructive,
-                    title: 'Eliminar cuenta',
-                    caption: 'Borra tu perfil y datos de forma permanente',
-                    onTap: _confirmDeleteAccount,
-                  ),
-                ],
-              ),
-            ],
-          ),
+      // El header blanco (surface100) llega hasta y=0 y absorbe la barra de
+      // estado con su propio color, en vez de que el Scaffold pinte una
+      // franja de settingsBackground (beige) detrás — ver home_screen.dart.
+      body: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SettingsHeader(onBack: () => Navigator.of(context).maybePop()),
+            const SizedBox(height: 20),
+            _SettingsSection(
+              label: 'Mi cuenta',
+              children: [
+                _SettingsRow(
+                  icon: Icons.person_outline,
+                  title: 'Editar perfil',
+                  onTap: _openEditProfile,
+                ),
+                _SettingsRow(
+                  icon: Icons.lock_outline,
+                  title: 'Cambiar contraseña',
+                  onTap: _openChangePassword,
+                ),
+                _SettingsRow(
+                  icon: Icons.mail_outline,
+                  title: 'Correo electrónico',
+                  value: _email,
+                  onTap: () => _showSnack('Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.call_outlined,
+                  title: 'Teléfono',
+                  value: _phone,
+                  onTap: () => _showSnack('Próximamente'),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Notificaciones',
+              children: [
+                _SettingsToggleRow(
+                  icon: Icons.notifications_none,
+                  title: 'Novedades de viaje',
+                  value: _tripAlerts,
+                  onChanged: (v) => setState(() => _tripAlerts = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.eco_outlined,
+                  title: 'Campañas ecológicas',
+                  value: _ecoCampaigns,
+                  onChanged: (v) => setState(() => _ecoCampaigns = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.local_offer_outlined,
+                  title: 'Ofertas y promociones',
+                  value: _offers,
+                  onChanged: (v) => setState(() => _offers = v),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Privacidad',
+              children: [
+                _SettingsToggleRow(
+                  icon: Icons.person_outline,
+                  title: 'Perfil público',
+                  value: _publicProfile,
+                  onChanged: (v) => setState(() => _publicProfile = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.location_on_outlined,
+                  title: 'Compartir ubicación',
+                  value: _shareLocation,
+                  onChanged: (v) => setState(() => _shareLocation = v),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Para negocios turísticos',
+              children: [
+                _SettingsRow(
+                  icon: Icons.storefront_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar mi negocio',
+                  caption: 'Llega a más viajeros en Nicaragua',
+                  onTap: () => openBusinessRegistrationFlow(context),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Comunidad ECO',
+              children: [
+                _SettingsRow(
+                  icon: Icons.eco_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar actividad ECO',
+                  caption: 'Organiza una jornada ambiental',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CreateEcoActivityScreen(),
+                      ),
+                    );
+                  },
+                ),
+                _SettingsRow(
+                  icon: Icons.groups_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar / Gestionar Fundación',
+                  caption: 'Publica jornadas a nombre de tu organización',
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const CreateOrganizationScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Soporte',
+              children: [
+                _SettingsRow(
+                  icon: Icons.help_outline,
+                  title: 'Centro de ayuda',
+                  onTap: () => _showSnack('Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.description_outlined,
+                  title: 'Términos y condiciones',
+                  onTap: () => _showSnack('Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.info_outline,
+                  title: 'Acerca de Níkara',
+                  value: 'v1.0.0',
+                  onTap: () => _showSnack('Próximamente'),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Sesión',
+              children: [
+                _SettingsRow(
+                  icon: Icons.switch_account_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Cambiar de cuenta',
+                  caption: _savedAccountsCaption,
+                  onTap: _openAccountSwitcher,
+                ),
+                _SettingsRow(
+                  icon: Icons.logout,
+                  iconTint: AppColors.destructive,
+                  titleColor: AppColors.destructive,
+                  title: 'Cerrar sesión',
+                  onTap: _confirmLogout,
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Zona de peligro',
+              children: [
+                _SettingsRow(
+                  icon: Icons.delete_forever_outlined,
+                  iconTint: AppColors.destructive,
+                  titleColor: AppColors.destructive,
+                  title: 'Eliminar cuenta',
+                  caption: 'Borra tu perfil y datos de forma permanente',
+                  onTap: _confirmDeleteAccount,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -398,9 +392,9 @@ class _SettingsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface100,
-      padding: const EdgeInsets.fromLTRB(
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
-        AppSpacing.lg,
+        MediaQuery.of(context).padding.top + AppSpacing.lg,
         AppSpacing.xl,
         AppSpacing.xl,
       ),

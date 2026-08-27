@@ -418,6 +418,15 @@ String sanitizeFacebookHandle(String? raw) => _sanitizeHandle(
   lowercase: false,
 );
 
+/// TikTok: minúsculas y mismo alfabeto que Instagram (letras, dígitos, punto,
+/// guion bajo) — TikTok además acepta guion, así que se suma acá.
+String sanitizeTiktokHandle(String? raw) => _sanitizeHandle(
+  raw,
+  hostFragment: 'tiktok.com',
+  allowed: RegExp(r'[^a-z0-9._\-]'),
+  lowercase: true,
+);
+
 /// Handle de fundación (`organizations.handle`, UNIQUE). Mismo criterio que
 /// `OrganizationModel.normalizeHandle`, pero tolerando que peguen una URL.
 String sanitizeOrganizationHandle(String? raw) {
@@ -428,6 +437,42 @@ String sanitizeOrganizationHandle(String? raw) {
     lowercase: true,
   );
   return handle.replaceAll(RegExp(r'^[._]+'), '');
+}
+
+// ---------------------------------------------------------------------------
+// Identidad legal (RUC / cédula) — legal_identities.document_number
+// ---------------------------------------------------------------------------
+
+/// RUC de persona jurídica: letra `J` + 13 dígitos, 14 caracteres en total
+/// (comúnmente empieza `J0`, pero eso no es parte del formato exigido). Sin
+/// guiones — a diferencia de la cédula, la DGI no agrupa el RUC.
+final RegExp rucPattern = RegExp(r'^J\d{13}$');
+
+/// Cédula de persona natural, formato canónico con guiones:
+/// `001-201208-1009S` (departamento/municipio 3 + fecha de nacimiento 6 +
+/// control 4 + letra). Confirmado por José el 2026-08-27, con ejemplo real —
+/// corrige tanto la nota fuente original ("14 dígitos + letra", sin guiones)
+/// como la primera versión de esta migración (sin guiones tampoco). El
+/// agrupado en vivo lo pone `CedulaInputFormatter`, no solo la validación.
+final RegExp cedulaPattern = RegExp(r'^\d{3}-\d{6}-\d{4}[A-Z]$');
+
+/// Persona natural **sin** cédula (extranjeros, menores, casos especiales):
+/// letra `N` + 13 dígitos, 14 caracteres — mismo formato que el RUC pero con
+/// `N` en vez de `J`. Pedido explícito de José, 2026-08-27, con ejemplo real
+/// (`N0000000000019`). Sin guiones: no es una cédula real, es un número
+/// administrativo de la DGI para quien no tiene una.
+final RegExp cedulaSinDocumentoPattern = RegExp(r'^N\d{13}$');
+
+/// A diferencia del resto de los sanitizadores de texto, **no** le quita los
+/// guiones: son parte del formato canónico de la cédula
+/// (`001-201208-1009S`), no ruido a limpiar. Solo pasa a mayúsculas y saca
+/// espacios/caracteres invisibles — la forma exacta (con o sin guion, según
+/// el tipo de documento) la exige `rucPattern`/`cedulaPattern`/
+/// `cedulaSinDocumentoPattern` en el punto de guardado, no este sanitizador.
+String sanitizeLegalDocumentNumber(String? raw) {
+  if (raw == null) return '';
+  final normalized = _normalizeChars(raw).toUpperCase();
+  return normalized.replaceAll(RegExp(r'\s+'), '');
 }
 
 // ---------------------------------------------------------------------------

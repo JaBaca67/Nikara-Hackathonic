@@ -41,9 +41,12 @@ class SearchHeaderWidget extends StatelessWidget {
         : '${_timeOfDayGreeting()}, $name';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(
+      // PROVISIONAL (2026-08-27): el header llega hasta y=0 (ver docstring de
+      // home_screen.dart) — este padding.top reemplaza al SafeArea que antes
+      // envolvía todo el body, así el saludo no queda debajo de la hora/batería.
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
-        AppSpacing.sm,
+        MediaQuery.of(context).padding.top + AppSpacing.sm,
         AppSpacing.xl,
         AppSpacing.lg,
       ),
