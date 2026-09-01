@@ -3,10 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/permission_service.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_business_summary.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_metrics.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_user_summary.dart';
+import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 /// Error del panel de administración, con [message] ya en español.
@@ -72,6 +75,32 @@ class AdminService {
           .from('businesses')
           .select(_businessColumns)
           .eq('status', status.wireValue)
+          .order('created_at', ascending: false);
+      final businesses = (rows as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(AdminBusinessSummary.fromRow)
+          .toList(growable: false);
+      return _withOwners(businesses);
+    } on PostgrestException catch (e) {
+      throw AdminServiceException(_friendlyError(e, 'cargar los negocios'));
+    } catch (_) {
+      throw const AdminServiceException(_connectionError);
+    }
+  }
+
+  /// Todos los negocios sin filtrar por estado — el drill-down "Total
+  /// registrados" de Métricas. Mismo permiso y enriquecimiento de dueño que
+  /// [getBusinesses]; a diferencia de aquella, no hay una cola específica que
+  /// mostrar como vacía, así que no tiene su propio mensaje de estado vacío.
+  Future<List<AdminBusinessSummary>> getAllBusinesses() async {
+    await _permissions.require(
+      Permission.reviewSubmissions,
+      action: 'revisar negocios',
+    );
+    try {
+      final rows = await _client
+          .from('businesses')
+          .select(_businessColumns)
           .order('created_at', ascending: false);
       final businesses = (rows as List<dynamic>)
           .cast<Map<String, dynamic>>()
@@ -220,10 +249,6 @@ class AdminService {
   }
 
   /// Mismo mecanismo que [setBusinessVerified] sobre `organizations`.
-  ///
-  /// El panel todavía no lista organizaciones (la cola de revisión arranca
-  /// solo con negocios), pero el permiso `verifyOrganization` existe y el rol
-  /// auditor lo tiene: esto es lo que evita que sea un permiso decorativo.
   Future<void> setOrganizationVerified({
     required String id,
     required bool isVerified,
@@ -382,6 +407,67 @@ class AdminService {
         '[AdminService] _notifyReviewed: no se pudo avisarle al dueño de '
         '"${business.name}" — ${e.message}',
       );
+    }
+  }
+
+  // ==================== Jornadas ECO / Fundaciones (drill-down) ====================
+
+  /// Todas las jornadas sin filtrar por estado, para el drill-down "Jornadas
+  /// publicadas" de Métricas.
+  ///
+  /// A diferencia de [getAllBusinesses], reusa directamente [EcoActivityModel]
+  /// en vez de un summary propio: ese modelo ya sale entero de Supabase (sin
+  /// cache local del dispositivo, a diferencia de `BusinessModel`), así que no
+  /// hay nada que perder al mostrarlo también acá.
+  Future<List<EcoActivityModel>> getEcoActivitiesForAdmin() async {
+    await _permissions.require(
+      Permission.reviewSubmissions,
+      action: 'revisar jornadas',
+    );
+    try {
+      final rows = await _client
+          .from('eco_activities')
+          .select(
+            '*, eco_participants(user_id, joined_at), '
+            'organizations(id, name, handle, logo_url, is_verified)',
+          )
+          .order('start_time', ascending: false);
+      final currentUserId = AuthService().currentAuthUser?.id;
+      return (rows as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(
+            (row) =>
+                EcoActivityModel.fromRow(row, currentUserId: currentUserId),
+          )
+          .toList(growable: false);
+    } on PostgrestException catch (e) {
+      throw AdminServiceException(_friendlyError(e, 'cargar las jornadas'));
+    } catch (_) {
+      throw const AdminServiceException(_connectionError);
+    }
+  }
+
+  /// Todas las fundaciones, para el drill-down "Organizaciones" de Métricas.
+  /// Mismo motivo que [getEcoActivitiesForAdmin] para reusar el modelo
+  /// público en vez de un summary propio.
+  Future<List<OrganizationModel>> getOrganizations() async {
+    await _permissions.require(
+      Permission.verifyOrganization,
+      action: 'revisar fundaciones',
+    );
+    try {
+      final rows = await _client
+          .from('organizations')
+          .select()
+          .order('created_at', ascending: false);
+      return (rows as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(OrganizationModel.fromRow)
+          .toList(growable: false);
+    } on PostgrestException catch (e) {
+      throw AdminServiceException(_friendlyError(e, 'cargar las fundaciones'));
+    } catch (_) {
+      throw const AdminServiceException(_connectionError);
     }
   }
 

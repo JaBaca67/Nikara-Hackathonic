@@ -192,6 +192,117 @@ class NotificationService {
     );
   }
 
+  /// Avisa a quien organiza una jornada ECO que la administración la revisó
+  /// — mismo mecanismo que [notifyBusinessReviewed]. La consumen
+  /// `EcoDetailScreen`/`OrganizationProfileScreen` justo después de que
+  /// `AdminService.reviewEcoActivity`/`reviewOrganization` respondieron (esos
+  /// métodos no notifican solos: a diferencia de `reviewBusiness`, no
+  /// vuelven a leer la fila, así que quien ya tiene el modelo en memoria —la
+  /// pantalla— es quien puede armar el aviso sin un viaje de más).
+  Future<void> notifyEcoActivityReviewed({
+    required String organizerId,
+    required String activityId,
+    required String activityTitle,
+    required bool approved,
+    String? reason,
+  }) {
+    final trimmed = reason?.trim() ?? '';
+    final motive = trimmed.isEmpty
+        ? ''
+        : ' Motivo: ${trimmed.length > 160 ? '${trimmed.substring(0, 160)}…' : trimmed}';
+    return _create(
+      recipientId: organizerId,
+      title: approved
+          ? 'Tu jornada fue aprobada'
+          : 'Tu jornada necesita ajustes',
+      body: approved
+          ? '"$activityTitle" ya está publicada en Níkara. ¡Felicidades!'
+          : '"$activityTitle" no pasó la revisión.$motive Corrige los datos '
+                'y vuelve a enviarla.',
+      type: approved
+          ? NotificationType.ecoActivityApproved
+          : NotificationType.ecoActivityRejected,
+      referenceId: activityId,
+    );
+  }
+
+  /// Mismo mecanismo sobre una fundación.
+  Future<void> notifyOrganizationReviewed({
+    required String ownerId,
+    required String organizationId,
+    required String organizationName,
+    required bool approved,
+    String? reason,
+  }) {
+    final trimmed = reason?.trim() ?? '';
+    final motive = trimmed.isEmpty
+        ? ''
+        : ' Motivo: ${trimmed.length > 160 ? '${trimmed.substring(0, 160)}…' : trimmed}';
+    return _create(
+      recipientId: ownerId,
+      title: approved
+          ? 'Tu fundación fue aprobada'
+          : 'Tu fundación necesita ajustes',
+      body: approved
+          ? '"$organizationName" ya está publicada en Níkara. ¡Felicidades!'
+          : '"$organizationName" no pasó la revisión.$motive Corrige los '
+                'datos y vuelve a enviarla.',
+      type: approved
+          ? NotificationType.organizationApproved
+          : NotificationType.organizationRejected,
+      referenceId: organizationId,
+    );
+  }
+
+  /// Avisa a **cada** cuenta admin que hay un negocio/jornada/fundación
+  /// nuevo esperando revisión.
+  ///
+  /// La consumen los servicios de creación (`BusinessStorageService.addBusiness`,
+  /// `EcoService.createActivity`, `OrganizationService.createOrganization`)
+  /// justo después de insertar la fila en estado pendiente. Va como consulta
+  /// directa a `profiles` y no vía `AdminService.getUsers()` a propósito: quien
+  /// llama es el propio emprendedor/turista que está registrando algo, no un
+  /// admin — pedirle el permiso `manageUsers` que exige `getUsers()` rompería
+  /// su propio flujo de creación.
+  ///
+  /// Es fan-out best-effort: un destinatario que falle no debe tumbar a los
+  /// demás ni, sobre todo, la creación que ya se guardó — por eso cada envío
+  /// va en su propio `try` y el método entero nunca lanza.
+  Future<void> notifyAdminsOfPendingReview({
+    required String title,
+    required String body,
+  }) async {
+    List<dynamic> admins;
+    try {
+      admins = await _client.from('profiles').select('id').eq('role', 'admin');
+    } on PostgrestException catch (e) {
+      debugPrint(
+        '[NotificationService] notifyAdminsOfPendingReview: no se pudo '
+        'listar admins (${e.code}) ${e.message}',
+      );
+      return;
+    } catch (_) {
+      return;
+    }
+    for (final row in admins.cast<Map<String, dynamic>>()) {
+      final adminId = row['id'] as String?;
+      if (adminId == null || adminId.isEmpty) continue;
+      try {
+        await _create(
+          recipientId: adminId,
+          title: title,
+          body: body,
+          type: NotificationType.reviewPending,
+        );
+      } on NotificationServiceException catch (e) {
+        debugPrint(
+          '[NotificationService] notifyAdminsOfPendingReview: no se pudo '
+          'avisar a $adminId — ${e.message}',
+        );
+      }
+    }
+  }
+
   /// Inserción genérica que usan los `notifyX` de arriba.
   ///
   /// Ojo con la regla de "la columna de dueño se estampa con

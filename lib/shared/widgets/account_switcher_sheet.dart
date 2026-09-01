@@ -244,7 +244,6 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
     UserRole.turista => 'Turista',
     UserRole.emprendedor => 'Emprendedor',
     UserRole.admin => 'Equipo Níkara',
-    UserRole.auditor => 'Auditor',
   };
 }
 

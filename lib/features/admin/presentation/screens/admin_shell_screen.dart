@@ -51,7 +51,7 @@ const _kDestinations = <_AdminDestination>[
     permission: Permission.reviewSubmissions,
     icon: Icons.verified_outlined,
     label: 'Aprobados',
-    title: 'Negocios aprobados',
+    title: 'Aprobados',
     subtitle: 'Lo que ya está publicado en la app',
     builder: _buildApproved,
   ),
@@ -59,7 +59,7 @@ const _kDestinations = <_AdminDestination>[
     permission: Permission.reviewSubmissions,
     icon: Icons.gpp_maybe_outlined,
     label: 'Rechazados',
-    title: 'Negocios rechazados',
+    title: 'Rechazados',
     subtitle: 'Esperando que su dueño los corrija',
     builder: _buildRejected,
   ),
@@ -90,19 +90,20 @@ Widget _buildRejected(BuildContext _) =>
 Widget _buildMetrics(BuildContext _) => const AdminMetricsView();
 Widget _buildUsers(BuildContext _) => const AdminUsersView();
 
-/// Experiencia propia de las cuentas `admin` y `auditor` — tier **Funcional**,
-/// único acento de marca Olive.
+/// Experiencia propia de la cuenta `admin` — tier **Funcional**, único
+/// acento de marca Olive.
 ///
 /// Es un shell completo con su **propia** barra de navegación, no una pantalla
 /// suelta colgada de Ajustes: el rol de moderación tiene un espacio de trabajo
 /// al mismo nivel que el de un turista (mapa) o un emprendedor (registrar
 /// negocio). La barra principal de la app se queda en 5 tabs y no se toca.
 ///
-/// La diferencia auditor ↔ admin es literal y se ve en el primer segundo: el
-/// auditor entra a un panel de **3 destinos** (Revisión, Aprobados,
-/// Rechazados) y el admin a uno de **5** (suma Métricas y Usuarios). Sale de
-/// filtrar [_kDestinations] por los permisos del rol activo, así que no hay
-/// forma de que la barra y lo que el servicio permite se contradigan.
+/// Los 5 destinos (Revisión, Aprobados, Rechazados, Métricas, Usuarios) salen
+/// de filtrar [_kDestinations] por los permisos del rol activo — hubo un rol
+/// `auditor` con un subconjunto de 3 destinos hasta el 2026-08-27, retirado
+/// del sistema porque nunca se usó en la práctica. `_kDestinations` se queda
+/// filtrado por permiso (no hardcodeado a "siempre 5") por si en el futuro
+/// vuelve a hacer falta un segundo rol de moderación con menos alcance.
 ///
 /// "Rechazados" no es un archivo muerto: un negocio rechazado sigue existiendo
 /// y su dueño puede corregirlo y reenviarlo, así que tiene que poder mirarse
@@ -178,8 +179,8 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
           icon: Icons.lock_outline,
           title: 'Este panel no es para tu cuenta',
           message:
-              'Solo las cuentas del equipo de Níkara (auditor o admin) '
-              'pueden revisar contenido de la plataforma.',
+              'Solo las cuentas del equipo de Níkara pueden revisar '
+              'contenido de la plataforma.',
         ),
       );
     }

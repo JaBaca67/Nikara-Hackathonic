@@ -2,7 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/permission_service.dart';
+import 'package:nikara_app/features/admin/data/admin_service.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
@@ -10,6 +16,7 @@ import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -39,6 +46,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   List<EcoActivityModel> _activities = const [];
   bool _isLoading = true;
   String? _loadError;
+  bool _savingReview = false;
 
   String get _organizationId =>
       widget.organization?.id ?? widget.organizationId!;
@@ -93,6 +101,106 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
     return organization != null &&
         organization.ownerId.isNotEmpty &&
         organization.ownerId == AuthService().currentAuthUser?.id;
+  }
+
+  bool get _canReview => PermissionService().can(Permission.verifyOrganization);
+
+  Future<void> _approveOrganization() async {
+    final organization = _organization;
+    if (organization == null) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewOrganization(
+        id: organization.id,
+        status: ReviewStatus.aprobado,
+      );
+      await _notifyOwner(organization, approved: true);
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${organization.name}" quedó publicada.')),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  Future<void> _rejectOrganization() async {
+    final organization = _organization;
+    if (organization == null) return;
+    final reason = await showRejectionReasonDialog(
+      context,
+      subjectName: organization.name.isEmpty
+          ? 'esta fundación'
+          : organization.name,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewOrganization(
+        id: organization.id,
+        status: ReviewStatus.rechazado,
+        reason: reason,
+      );
+      await _notifyOwner(organization, approved: false, reason: reason);
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rechazaste "${organization.name}". Le avisamos a quien la registró.',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  /// El aviso al dueño no puede tumbar la revisión: si falla, se registra y
+  /// se sigue — mismo criterio que `AdminService._notifyReviewed`.
+  Future<void> _notifyOwner(
+    OrganizationModel organization, {
+    required bool approved,
+    String? reason,
+  }) async {
+    if (organization.ownerId.isEmpty) return;
+    try {
+      await NotificationService().notifyOrganizationReviewed(
+        ownerId: organization.ownerId,
+        organizationId: organization.id,
+        organizationName: organization.name,
+        approved: approved,
+        reason: reason,
+      );
+    } on NotificationServiceException catch (e) {
+      debugPrint(
+        '[OrganizationProfileScreen] _notifyOwner: no se pudo avisar — '
+        '${e.message}',
+      );
+    }
   }
 
   Future<void> _manage(OrganizationModel organization) async {
@@ -167,6 +275,22 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                     (value: '$_upcoming', label: 'Próximas'),
                   ],
                 ),
+                if (_canReview)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      0,
+                    ),
+                    child: AdminInlineReviewCard(
+                      status: organization.reviewStatus,
+                      rejectionReason: organization.rejectionReason,
+                      saving: _savingReview,
+                      onApprove: _approveOrganization,
+                      onReject: _rejectOrganization,
+                    ),
+                  ),
                 if (organization.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 22),
                   Padding(

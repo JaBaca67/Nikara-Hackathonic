@@ -10,6 +10,9 @@ enum NotificationTarget {
   /// Abre el detalle de la jornada ECO cuyo id viaja en `reference_id`.
   ecoActivity,
 
+  /// Abre el perfil de la fundación cuyo id viaja en `reference_id`.
+  organization,
+
   /// Informativa: al tocarla solo se marca como leída.
   none,
 }
@@ -37,6 +40,34 @@ enum NotificationType {
     'eco_activity_reminder',
     Icons.alarm_rounded,
     NotificationTarget.ecoActivity,
+  ),
+  ecoActivityApproved(
+    'eco_activity_approved',
+    Icons.verified_rounded,
+    NotificationTarget.ecoActivity,
+  ),
+  ecoActivityRejected(
+    'eco_activity_rejected',
+    Icons.gpp_maybe_rounded,
+    NotificationTarget.ecoActivity,
+  ),
+  organizationApproved(
+    'organization_approved',
+    Icons.verified_rounded,
+    NotificationTarget.organization,
+  ),
+  organizationRejected(
+    'organization_rejected',
+    Icons.gpp_maybe_rounded,
+    NotificationTarget.organization,
+  ),
+
+  /// Un negocio/fundación/jornada nueva entró a la cola de revisión — la
+  /// recibe cada cuenta admin (ver `AdminService._notifyReviewers`).
+  reviewPending(
+    'review_pending',
+    Icons.pending_actions_rounded,
+    NotificationTarget.none,
   ),
   system('system', Icons.notifications_rounded, NotificationTarget.none);
 

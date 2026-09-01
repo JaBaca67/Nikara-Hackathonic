@@ -5,7 +5,7 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 ## Stack
 
 - **Flutter** 3.44.5 / **Dart** ^3.12.2 (ver `flutter --version`).
-- **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`, `auditor`). Credenciales en `lib/core/supabase/supabase_config.dart`.
+- **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`). Credenciales en `lib/core/supabase/supabase_config.dart`. Hubo un cuarto rol `auditor` hasta el 2026-08-27 — se definió al inicio del proyecto pero nunca se usó en la práctica (nadie llegó a registrarse con él) y se retiró del sistema de permisos; el tipo `user_role` de Postgres puede seguir teniendo el valor sin que nada dependa de él.
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
 - **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).

@@ -10,6 +10,7 @@ import 'package:nikara_app/features/admin/domain/models/admin_business_summary.d
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -94,6 +95,23 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(AppRadius.lg),
             child: Image.network(url, fit: BoxFit.contain),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _viewBusinessPhoto(String url) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: LocalImage(path: url, fit: BoxFit.contain),
           ),
         ),
       ),
@@ -302,11 +320,33 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
                       label: 'Facebook',
                       value: _business.facebookHandle,
                     ),
-                    _DetailField(
-                      label: 'Fotos cargadas',
-                      value: _business.photos.isEmpty
-                          ? ''
-                          : '${_business.photos.length}',
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Fotos cargadas',
+                            style: AppTextStyles.settingsRowCaption.copyWith(
+                              color: AppColors.settingsTextMuted,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          if (_business.photos.isEmpty)
+                            Text(
+                              'Sin completar',
+                              style: AppTextStyles.body.copyWith(
+                                color: AppColors.settingsTextMuted,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            )
+                          else
+                            _PhotoThumbnails(
+                              photos: _business.photos,
+                              onTapPhoto: _viewBusinessPhoto,
+                            ),
+                        ],
+                      ),
                     ),
                     const AdminSectionLabel(label: 'Responsable'),
                     _DetailField(
@@ -435,6 +475,44 @@ class _DetailField extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Miniaturas reales de las fotos del negocio, no solo su conteo — un
+/// revisor necesita ver qué cargó el emprendedor, no solo cuánto.
+/// `AdminBusinessSummary.photos` ya son URLs públicas del bucket de
+/// Storage, así que se dibujan directo con [LocalImage], sin firmar nada
+/// (a diferencia de la identidad legal, que vive en un bucket privado).
+class _PhotoThumbnails extends StatelessWidget {
+  const _PhotoThumbnails({required this.photos, required this.onTapPhoto});
+
+  final List<String> photos;
+  final ValueChanged<String> onTapPhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 72,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (context, index) {
+          final url = photos[index];
+          return GestureDetector(
+            onTap: () => onTapPhoto(url),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: SizedBox(
+                width: 72,
+                height: 72,
+                child: LocalImage(path: url),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

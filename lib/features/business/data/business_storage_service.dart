@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -10,6 +12,7 @@ import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class BusinessServiceException implements Exception {
   const BusinessServiceException(this.message);
@@ -231,6 +234,12 @@ class BusinessStorageService {
       );
     }
     revision.value++;
+    unawaited(
+      NotificationService().notifyAdminsOfPendingReview(
+        title: 'Negocio nuevo por revisar',
+        body: '"${business.name}" está esperando tu revisión.',
+      ),
+    );
   }
 
   Future<void> updateBusiness(BusinessModel rawBusiness) async {

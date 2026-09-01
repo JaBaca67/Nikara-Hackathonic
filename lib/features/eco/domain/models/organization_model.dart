@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
 
 /// Fila de `public.organizations` (supabase/sql/010_organizations.sql); una persona (`owner_id`) puede tener varias.
 class OrganizationModel {
@@ -49,6 +50,15 @@ class OrganizationModel {
   final DateTime createdAt;
 
   String get handleTag => '@$handle';
+
+  /// Compara [query] contra nombre y handle — mismo buscador del panel de
+  /// admin, sin tildes en ningún lado (ver [normalizeForSearch]).
+  bool matchesQuery(String query) {
+    final q = normalizeForSearch(query.trim());
+    if (q.isEmpty) return true;
+    return normalizeForSearch(name).contains(q) ||
+        normalizeForSearch(handle).contains(q);
+  }
 
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);

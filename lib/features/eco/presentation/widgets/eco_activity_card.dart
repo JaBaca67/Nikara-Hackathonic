@@ -107,7 +107,7 @@ class EcoActivityCard extends StatelessWidget {
                     children: [
                       EcoParticipantAvatars(
                         count: activity.participantCount,
-                        participants: activity.participants,
+                        participants: activity.visibleParticipants,
                         size: 28,
                       ),
                       EcoStatusBadge(status: activity.status),

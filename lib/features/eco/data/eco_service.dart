@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,6 +10,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class EcoServiceException implements Exception {
   const EcoServiceException(this.message);
@@ -37,7 +40,7 @@ class EcoService {
   /// viaje en vez de una consulta por actividad.
   static const _participantsEmbed =
       'eco_participants(user_id, joined_at, '
-      'profiles(id, full_name, avatar_url))';
+      'profiles(id, full_name, avatar_url, role))';
 
   static const _selectWithOrganization =
       '*, $_participantsEmbed, '
@@ -198,12 +201,20 @@ class EcoService {
   /// Inscritos con nombre y foto en un solo viaje: `eco_participants.user_id`
   /// apunta a `public.profiles(id)` desde 013, así que el perfil se embebe en
   /// vez de resolverse con una consulta por persona.
+  ///
+  /// Esta lista alimenta la pestaña pública "Participantes" del detalle, así
+  /// que filtra las cuentas admin antes de devolverla — mismo motivo
+  /// que [EcoActivityModel.visibleParticipants]. Es un filtro de UI, no
+  /// seguridad real: con RLS deshabilitada, `eco_participants`/`profiles`
+  /// siguen siendo legibles crudos por cualquiera que consulte la REST API
+  /// con la anon key (ver CLAUDE.md > seguridad).
   Future<List<EcoParticipant>> getParticipants(String activityId) async {
     try {
-      return await _runParticipantsSelect(
+      final participants = await _runParticipantsSelect(
         activityId,
-        'user_id, joined_at, profiles(id, full_name, avatar_url)',
+        'user_id, joined_at, profiles(id, full_name, avatar_url, role)',
       );
+      return participants.where((p) => !p.isStaff).toList(growable: false);
     } on PostgrestException catch (e) {
       if (_isMissingEmbed(e)) {
         return _runParticipantsSelect(activityId, 'user_id, joined_at');
@@ -401,6 +412,12 @@ class EcoService {
         'organization_id': organizationId,
       });
       revision.value++;
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Jornada ECO nueva por revisar',
+          body: '"$title" está esperando tu revisión.',
+        ),
+      );
     } on PostgrestException catch (e) {
       // PGRST204 = PostgREST no conoce `image_url` porque falta la migración
       // 014; se distingue del error genérico para decir exactamente qué correr.

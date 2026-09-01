@@ -7,6 +7,7 @@ import 'package:nikara_app/core/services/legal_identity_service.dart';
 import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -17,7 +18,33 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// por [LegalIdentityGateScreen]. Único punto de entrada — home_screen.dart y
 /// settings_screen.dart llaman a esto en vez de empujar `RegisterBusinessWizard`
 /// directamente, así el gate no se puede saltear por otro camino.
-Future<void> openBusinessRegistrationFlow(BuildContext context) async {
+Future<void> openBusinessRegistrationFlow(BuildContext context) =>
+    _openLegalIdentityGatedFlow(
+      context,
+      destination: (_) => const RegisterBusinessWizard(),
+    );
+
+/// Misma puerta que [openBusinessRegistrationFlow], para registrar una
+/// fundación. `legal_identity_service.dart` y `023_legal_identities.sql` ya
+/// hablaban de "negocio, fundación o jornada ECO" desde el diseño original —
+/// esta conexión faltaba, no era una decisión de dejarla afuera.
+///
+/// Una jornada ECO **no** tiene su propia puerta: solo se puede crear a
+/// nombre de una fundación ya elegida (`create_eco_activity_screen.dart`
+/// exige seleccionarla antes de guardar), y esa fundación ya pasó por este
+/// mismo gate al registrarse. Pedir RUC/cédula otra vez en cada jornada sería
+/// repetir una verificación que ya ocurrió — sí pasa por su propia cola de
+/// revisión (pendiente/aprobada/rechazada), solo no por este gate.
+Future<void> openOrganizationRegistrationFlow(BuildContext context) =>
+    _openLegalIdentityGatedFlow(
+      context,
+      destination: (_) => const CreateOrganizationScreen(),
+    );
+
+Future<void> _openLegalIdentityGatedFlow(
+  BuildContext context, {
+  required WidgetBuilder destination,
+}) async {
   LegalIdentityModel? identity;
   try {
     identity = await LegalIdentityService().getMine();
@@ -32,19 +59,23 @@ Future<void> openBusinessRegistrationFlow(BuildContext context) async {
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => identity == null
-          ? const LegalIdentityGateScreen()
-          : const RegisterBusinessWizard(),
+          ? LegalIdentityGateScreen(destination: destination)
+          : Builder(builder: destination),
     ),
   );
 }
 
-/// Pantalla previa al wizard de registro (Fase C, 2026-08-27): persona
-/// jurídica o natural, RUC/cédula validado, y foto(s) del documento. Se
-/// carga **una sola vez por cuenta** — `legal_identities` tiene `unique
-/// (user_id)` — y sirve para cualquier negocio/fundación que esa cuenta
-/// registre después, no solo este.
+/// Pantalla previa a cualquiera de los tres wizards de registro (Fase C,
+/// 2026-08-27): persona jurídica o natural, RUC/cédula validado, y foto(s)
+/// del documento. Se carga **una sola vez por cuenta** — `legal_identities`
+/// tiene `unique(user_id)` — y sirve para cualquier negocio, fundación o
+/// jornada ECO que esa cuenta registre después, no solo el que disparó el
+/// gate esta vez.
 class LegalIdentityGateScreen extends StatefulWidget {
-  const LegalIdentityGateScreen({super.key});
+  const LegalIdentityGateScreen({super.key, required this.destination});
+
+  /// A qué wizard pasar una vez guardada la identidad.
+  final WidgetBuilder destination;
 
   @override
   State<LegalIdentityGateScreen> createState() =>
@@ -161,9 +192,9 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
         documentPhotoBackUrl: backPath,
       );
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const RegisterBusinessWizard()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: widget.destination));
     } on LegalIdentityServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
@@ -207,15 +238,15 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Antes de registrar tu negocio',
+                            'Antes de continuar',
                             style: AppTextStyles.wizardStepHeading,
                           ),
                           const SizedBox(height: 3),
                           Text(
                             'Níkara pide un documento oficial para poder '
-                            'asociar la responsabilidad legal de cada perfil '
-                            '— se carga una sola vez y se guarda de forma '
-                            'confidencial.',
+                            'asociar la responsabilidad legal de cada '
+                            'negocio o fundación que registres — se carga '
+                            'una sola vez y se guarda de forma confidencial.',
                             style: AppTextStyles.wizardStepSubtitle,
                           ),
                         ],
@@ -224,7 +255,7 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
                     _card(
                       children: [
                         Text(
-                          '¿CÓMO ESTÁ CONSTITUIDO TU NEGOCIO?',
+                          '¿CÓMO ESTÁS CONSTITUIDO LEGALMENTE?',
                           style: AppTextStyles.wizardFieldLabel,
                         ),
                         const SizedBox(height: 10),

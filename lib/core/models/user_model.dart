@@ -1,5 +1,14 @@
-/// Replica el enum `user_role` de Supabase (`public.profiles.role`); los nombres se envían/leen tal cual contra Postgres.
-enum UserRole { turista, emprendedor, admin, auditor }
+/// Replica el enum `user_role` de Supabase (`public.profiles.role`); los
+/// nombres se envían/leen tal cual contra Postgres.
+///
+/// `auditor` existió acá hasta el 2026-08-27: se definió al inicio del
+/// proyecto pero nunca se le dio un rol real distinto de `admin` (nadie llegó
+/// a registrarse con él — confirmado en `profiles` antes de sacarlo). El tipo
+/// `user_role` de Postgres puede seguir teniendo el valor `'auditor'` sin que
+/// esto rompa nada: si alguna fila vieja lo tuviera, [_roleFromString] lo
+/// degrada a `turista` por el mismo `default` que ya cubre cualquier valor
+/// desconocido.
+enum UserRole { turista, emprendedor, admin }
 
 UserRole _roleFromString(String? raw) {
   switch (raw) {
@@ -7,8 +16,6 @@ UserRole _roleFromString(String? raw) {
       return UserRole.emprendedor;
     case 'admin':
       return UserRole.admin;
-    case 'auditor':
-      return UserRole.auditor;
     default:
       return UserRole.turista;
   }
@@ -126,9 +133,6 @@ enum Permission {
 /// necesita sesión y caché — "qué rol tiene el usuario de ahora mismo" — vive
 /// aparte en `PermissionService`.
 ///
-/// Diferencia deliberada auditor <-> admin: el auditor **revisa** contenido
-/// ajeno (verifica/desverifica) pero no lo edita ni ve datos de usuarios; el
-/// admin suma métricas globales y el listado de perfiles.
 extension UserRolePermissions on UserRole {
   static const _turista = <Permission>{
     Permission.browseContent,
@@ -143,18 +147,6 @@ extension UserRolePermissions on UserRole {
     Permission.manageOwnEcoActivities,
   };
 
-  /// El auditor parte del turista, no del emprendedor: revisar contenido ajeno
-  /// no le da derecho a publicar el propio desde este rol.
-  static const _auditor = <Permission>{
-    ..._turista,
-    Permission.reviewSubmissions,
-    Permission.verifyBusiness,
-    Permission.verifyOrganization,
-  };
-
-  /// Se enumera completo en vez de esparcir `_emprendedor` + `_auditor`: los
-  /// dos comparten la base de turista y un set constante no admite elementos
-  /// repetidos.
   static const _admin = <Permission>{
     Permission.browseContent,
     Permission.saveFavorites,
@@ -172,7 +164,6 @@ extension UserRolePermissions on UserRole {
   Set<Permission> get permissions => switch (this) {
     UserRole.turista => _turista,
     UserRole.emprendedor => _emprendedor,
-    UserRole.auditor => _auditor,
     UserRole.admin => _admin,
   };
 
@@ -187,7 +178,6 @@ extension UserRolePermissions on UserRole {
     UserRole.turista => 'Turista',
     UserRole.emprendedor => 'Emprendedor',
     UserRole.admin => 'Equipo Níkara',
-    UserRole.auditor => 'Auditor',
   };
 
   /// Descripción corta de qué habilita el rol; se muestra en el listado de
@@ -195,7 +185,6 @@ extension UserRolePermissions on UserRole {
   String get permissionsSummary => switch (this) {
     UserRole.turista => 'Explora, guarda favoritos y se une a jornadas ECO',
     UserRole.emprendedor => 'Publica y gestiona sus negocios, rutas y jornadas',
-    UserRole.auditor => 'Verifica negocios y organizaciones de la plataforma',
-    UserRole.admin => 'Verificación, métricas globales y gestión de usuarios',
+    UserRole.admin => 'Revisión, métricas globales y gestión de usuarios',
   };
 }

@@ -98,7 +98,6 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
   String get _roleLabel => switch (_profile?.role) {
     UserRole.emprendedor => 'Emprendedor local',
     UserRole.admin => 'Equipo Níkara',
-    UserRole.auditor => 'Auditor Níkara',
     _ => 'Viajero Níkara',
   };
 

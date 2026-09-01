@@ -54,7 +54,6 @@ class SavedAccount {
     UserRole.turista => 'Turista',
     UserRole.emprendedor => 'Emprendedor',
     UserRole.admin => 'Equipo Níkara',
-    UserRole.auditor => 'Auditor',
   };
 
   Map<String, dynamic> toJson() => {

@@ -252,9 +252,9 @@ class _UserRow extends StatelessWidget {
 
 /// Etiqueta de rol.
 ///
-/// Solo los dos roles con privilegios de moderación se pintan con el acento
-/// Olive; turista y emprendedor van en neutro. Así el listado se escanea
-/// buscando justo lo que un admin necesita auditar: quién tiene poder.
+/// Solo el rol con privilegios de moderación se pinta con el acento Olive;
+/// turista y emprendedor van en neutro. Así el listado se escanea buscando
+/// justo lo que un admin necesita auditar: quién tiene poder.
 class _RoleTag extends StatelessWidget {
   const _RoleTag({required this.role});
 
@@ -262,7 +262,7 @@ class _RoleTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final privileged = role == UserRole.admin || role == UserRole.auditor;
+    final privileged = role == UserRole.admin;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,

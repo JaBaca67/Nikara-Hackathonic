@@ -5,7 +5,9 @@ import 'package:nikara_app/features/business/data/business_storage_service.dart'
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/domain/models/app_notification.dart';
 import 'package:nikara_app/features/notifications/presentation/widgets/notification_tile.dart';
@@ -147,6 +149,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           await _openBusiness(notification.referenceId!);
         case NotificationTarget.ecoActivity:
           await _openEcoActivity(notification.referenceId!);
+        case NotificationTarget.organization:
+          await _openOrganization(notification.referenceId!);
         case NotificationTarget.none:
           break;
       }
@@ -205,6 +209,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
       );
     } on EcoServiceException catch (e) {
+      _showMessage(e.message);
+    }
+  }
+
+  Future<void> _openOrganization(String id) async {
+    try {
+      final organization = await OrganizationService().getById(id);
+      if (!mounted) return;
+      if (organization == null) {
+        _showMessage('Esta fundación ya no está disponible.');
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => OrganizationProfileScreen(organization: organization),
+        ),
+      );
+    } on OrganizationServiceException catch (e) {
       _showMessage(e.message);
     }
   }

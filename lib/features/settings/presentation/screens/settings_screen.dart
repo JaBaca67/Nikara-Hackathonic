@@ -7,7 +7,6 @@ import 'package:nikara_app/features/admin/presentation/screens/admin_shell_scree
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
-import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -336,13 +335,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   iconTint: AppColors.oliveText,
                   title: 'Registrar / Gestionar Fundación',
                   caption: 'Publica jornadas a nombre de tu organización',
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CreateOrganizationScreen(),
-                      ),
-                    );
-                  },
+                  onTap: () => openOrganizationRegistrationFlow(context),
                 ),
               ],
             ),

@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
 
 /// Estados 1/2/3 de "fases-pantalla-eco"; derivado siempre desde [EcoActivityModel.status], nunca almacenado.
 enum EcoActivityStatus {
@@ -25,6 +26,7 @@ class EcoParticipant {
     required this.joinedAt,
     this.fullName,
     this.avatarUrl,
+    this.isStaff = false,
   });
 
   final String userId;
@@ -33,6 +35,13 @@ class EcoParticipant {
   /// Nulo si `profiles` no fue legible (invitado) o falta la migración 013.
   final String? fullName;
   final String? avatarUrl;
+
+  /// `true` si `profiles.role` es `admin`. Una cuenta del equipo puede
+  /// unirse a una jornada como cualquier turista, pero su identidad no debe
+  /// quedar a la vista de otros usuarios en una pantalla pública (ver
+  /// CLAUDE.md > seguridad) — [EcoActivityModel.visibleParticipants] filtra
+  /// por esto antes de dibujar avatares/nombres.
+  final bool isStaff;
 
   String get displayName {
     final name = fullName?.trim();
@@ -50,11 +59,13 @@ class EcoParticipant {
 
   factory EcoParticipant.fromRow(Map<String, dynamic> row) {
     final profile = row['profiles'] as Map<String, dynamic>?;
+    final role = profile?['role'] as String?;
     return EcoParticipant(
       userId: row['user_id'] as String,
       joinedAt: DateTime.parse(row['joined_at'] as String),
       fullName: profile?['full_name'] as String?,
       avatarUrl: profile?['avatar_url'] as String?,
+      isStaff: role == 'admin',
     );
   }
 }
@@ -137,6 +148,15 @@ class EcoActivityModel {
   final int participantCount;
   final bool isJoinedByCurrentUser;
 
+  /// [participants] sin las cuentas admin/auditor — lo que se dibuja en la
+  /// pila de avatares y en la pestaña "Participantes". [participantCount] y
+  /// [isJoinedByCurrentUser] se calculan de la lista **completa**, no de
+  /// esta: una cuenta del equipo que se une sigue contando para el cupo y
+  /// sigue viendo "Abandonar actividad" en su propia sesión, solo no
+  /// aparece con su nombre/foto real para los demás usuarios.
+  List<EcoParticipant> get visibleParticipants =>
+      participants.where((p) => !p.isStaff).toList(growable: false);
+
   /// Estado de revisión (`eco_activities.status`, migración 019).
   ///
   /// Se llama `reviewStatus` y no `status` porque [status] ya existe con otro
@@ -200,6 +220,18 @@ class EcoActivityModel {
       return null;
     }
     return '@$handle';
+  }
+
+  /// Compara [query] contra título, categoría, ubicación y organizador —
+  /// mismo buscador que [AdminBusinessSummary.matchesQuery], sin tildes en
+  /// ningún lado (ver [normalizeForSearch]).
+  bool matchesQuery(String query) {
+    final q = normalizeForSearch(query.trim());
+    if (q.isEmpty) return true;
+    return normalizeForSearch(title).contains(q) ||
+        normalizeForSearch(category).contains(q) ||
+        normalizeForSearch(location).contains(q) ||
+        normalizeForSearch(organizerDisplayName).contains(q);
   }
 
   String get organizerInitials {

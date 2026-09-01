@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/features/admin/data/admin_service.dart';
+import 'package:nikara_app/features/admin/domain/models/admin_business_summary.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_metrics.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_business_list_screen.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_eco_activity_list_screen.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_organization_list_screen.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Métricas globales de la plataforma — **solo admin**.
-///
-/// Es una de las dos vistas que un auditor no ve nunca (la otra es Usuarios):
-/// esa es la diferencia concreta y visible entre los dos roles de moderación,
-/// no una etiqueta distinta sobre la misma pantalla.
+/// Métricas globales de la plataforma — **solo admin** (`Permission.viewGlobalMetrics`).
 class AdminMetricsView extends StatefulWidget {
   const AdminMetricsView({super.key});
 
@@ -79,16 +79,24 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
                 value: '${metrics.pendingBusinesses}',
                 icon: Icons.schedule_rounded,
                 highlight: metrics.pendingBusinesses > 0,
+                onTap: () => _openBusinessList(
+                  'Pendientes de verificar',
+                  (b) => !b.isVerified,
+                ),
               ),
               AdminStatTile(
                 label: 'Verificados',
                 value: '${metrics.verifiedBusinesses}',
                 icon: Icons.verified_outlined,
+                onTap: () =>
+                    _openBusinessList('Verificados', (b) => b.isVerified),
               ),
               AdminStatTile(
                 label: 'Total registrados',
                 value: '${metrics.totalBusinesses}',
                 icon: Icons.storefront_outlined,
+                onTap: () =>
+                    _openBusinessList('Todos los negocios', (b) => true),
               ),
               AdminStatTile(
                 label: 'Cobertura verificada',
@@ -108,6 +116,11 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
                 label: 'Jornadas publicadas',
                 value: '${metrics.totalEcoActivities}',
                 icon: Icons.eco_outlined,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AdminEcoActivityListScreen(),
+                  ),
+                ),
               ),
               AdminStatTile(
                 label: 'Jornadas por venir',
@@ -119,6 +132,11 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
                 label: 'Organizaciones',
                 value: '${metrics.totalOrganizations}',
                 icon: Icons.groups_outlined,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AdminOrganizationListScreen(),
+                  ),
+                ),
               ),
               AdminStatTile(
                 label: 'Organizaciones sin verificar',
@@ -154,6 +172,17 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
   static String _percent(int part, int total) {
     if (total == 0) return '—';
     return '${(part * 100 / total).round()}%';
+  }
+
+  void _openBusinessList(
+    String title,
+    bool Function(AdminBusinessSummary) filter,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminBusinessListScreen(title: title, filter: filter),
+      ),
+    );
   }
 }
 

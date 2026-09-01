@@ -58,6 +58,12 @@ app.*.map.json
 .env
 *.env
 
+# Configuración de Firebase (Cloud Messaging) — client config generado por
+# consola, se mantiene solo en local igual que dart_defines.json.
+/android/app/google-services.json
+/firebase.json
+/lib/firebase_options.dart
+
 # Migraciones SQL de Supabase — se mantienen solo en local.
 # Ojo: son la definición del esquema (ver docs/database_erd.md), no secretos;
 # quien clone el repo no podrá recrear la base de datos sin ellas.

@@ -2,12 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/permission_service.dart';
+import 'package:nikara_app/features/admin/data/admin_service.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_participant_avatars.dart';
 import 'package:nikara_app/features/eco/utils/eco_format.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
@@ -38,10 +45,114 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   List<EcoParticipant>? _participants;
   bool _loadingParticipants = false;
 
+  bool _savingReview = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_refresh());
+  }
+
+  bool get _canReview => PermissionService().can(Permission.reviewSubmissions);
+
+  Future<void> _approveActivity() async {
+    final organizerId = _activity.organizerId;
+    final title = _activity.title;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewEcoActivity(
+        id: _activity.id,
+        status: ReviewStatus.aprobado,
+      );
+      await _notifyOrganizer(organizerId, title, approved: true);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('"$title" quedó publicada.')));
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  Future<void> _rejectActivity() async {
+    final organizerId = _activity.organizerId;
+    final title = _activity.title;
+    final reason = await showRejectionReasonDialog(
+      context,
+      subjectName: title.isEmpty ? 'esta jornada' : title,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewEcoActivity(
+        id: _activity.id,
+        status: ReviewStatus.rechazado,
+        reason: reason,
+      );
+      await _notifyOrganizer(
+        organizerId,
+        title,
+        approved: false,
+        reason: reason,
+      );
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rechazaste "$title". Le avisamos a quien la organiza.',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  /// El aviso a quien organiza no puede tumbar la revisión: si falla, se
+  /// registra y se sigue — mismo criterio que
+  /// `AdminService._notifyReviewed` para negocios.
+  Future<void> _notifyOrganizer(
+    String? organizerId,
+    String title, {
+    required bool approved,
+    String? reason,
+  }) async {
+    if (organizerId == null || organizerId.isEmpty) return;
+    try {
+      await NotificationService().notifyEcoActivityReviewed(
+        organizerId: organizerId,
+        activityId: _activity.id,
+        activityTitle: title,
+        approved: approved,
+        reason: reason,
+      );
+    } on NotificationServiceException catch (e) {
+      debugPrint(
+        '[EcoDetailScreen] _notifyOrganizer: no se pudo avisar — ${e.message}',
+      );
+    }
   }
 
   Future<void> _refresh() async {
@@ -209,6 +320,22 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                 ),
               ),
             ),
+            if (_canReview)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                ),
+                child: AdminInlineReviewCard(
+                  status: activity.reviewStatus,
+                  rejectionReason: activity.rejectionReason,
+                  saving: _savingReview,
+                  onApprove: _approveActivity,
+                  onReject: _rejectActivity,
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               child: Column(
@@ -411,7 +538,7 @@ class _ParticipantsPreview extends StatelessWidget {
     }
     return EcoParticipantAvatars(
       count: activity.participantCount,
-      participants: activity.participants,
+      participants: activity.visibleParticipants,
     );
   }
 }

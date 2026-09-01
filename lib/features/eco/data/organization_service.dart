@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +9,7 @@ import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class OrganizationServiceException implements Exception {
   const OrganizationServiceException(this.message);
@@ -116,6 +119,12 @@ class OrganizationService {
           .select()
           .single();
       revision.value++;
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Fundación nueva por revisar',
+          body: '"$name" está esperando tu revisión.',
+        ),
+      );
       return OrganizationModel.fromRow(row);
     } on PostgrestException catch (e) {
       if (e.code == '23505') {

@@ -50,7 +50,11 @@ class _ProfileFaceSheetState extends State<ProfileFaceSheet> {
   }
 
   Future<void> _load() async {
-    final faces = await _faceService.load();
+    // `force: true` a propósito: `ProfileFaceService.load()` cachea por
+    // sesión, así que sin esto una fundación/negocio recién aprobado no
+    // aparecería acá hasta cerrar sesión — justo el momento en que la
+    // notificación de aprobación invita a abrir esta hoja.
+    final faces = await _faceService.load(force: true);
     if (!mounted) return;
     setState(() {
       _faces = faces;

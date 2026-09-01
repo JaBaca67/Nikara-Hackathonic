@@ -858,20 +858,36 @@ class _HostSection extends StatelessWidget {
       currentProfile != null &&
       business.ownerId == currentProfile!.id;
 
+  /// Una cuenta admin puede registrar y operar negocios como cualquier otra
+  /// (ver CLAUDE.md > seguridad): lo que no debe pasar es que su identidad
+  /// real quede a la vista de otros usuarios en una pantalla pública. Esto
+  /// solo oculta el nombre/foto que se **dibujan** — la fila en
+  /// `businesses.owner_id` sigue siendo la real (así el propio dueño puede
+  /// seguir editando su negocio), así que sigue siendo legible por cualquiera
+  /// que consulte la REST API directo con la anon key mientras RLS esté
+  /// deshabilitada. El propio dueño admin sigue viendo su nombre real al
+  /// entrar a su propio negocio; solo se enmascara para otros usuarios.
+  bool get _maskOwnerIdentity {
+    if (_isOwnBusiness) return false;
+    return ownerProfile?.role == UserRole.admin;
+  }
+
   @override
   Widget build(BuildContext context) {
     final owner = ownerProfile;
+    final maskIdentity = _maskOwnerIdentity;
     return DetailSection(
       title: 'Anfitrión',
       child: _HostRow(
         hostName: business.hostName,
-        linkedName: owner?.fullName,
-        linkedAvatarUrl: owner?.avatarUrl,
+        linkedName: maskIdentity ? null : owner?.fullName,
+        linkedAvatarUrl: maskIdentity ? null : owner?.avatarUrl,
         isOwnBusiness: _isOwnBusiness,
         hasWhatsapp: business.contactPhone.isNotEmpty,
         // Hay perfil que abrir siempre que exista owner_id: el propio va a
-        // ProfileScreen, el ajeno al perfil público.
-        onTap: business.ownerId.isEmpty ? null : onTap,
+        // ProfileScreen, el ajeno al perfil público. Enmascarado = tampoco
+        // hay a dónde llevar el toque.
+        onTap: business.ownerId.isEmpty || maskIdentity ? null : onTap,
       ),
     );
   }

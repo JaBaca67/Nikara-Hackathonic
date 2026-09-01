@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
 
 /// Vista reducida de una fila de `businesses` para la cola de revisión.
 ///
@@ -86,6 +87,20 @@ class AdminBusinessSummary {
     final email = ownerEmail.trim();
     if (email.isNotEmpty) return email;
     return 'Dueño desconocido';
+  }
+
+  /// Compara [query] contra nombre, categoría, ciudad y dueño — el buscador
+  /// del panel (cola de revisión y drill-down de métricas) filtra con esto en
+  /// vez de repetir la comparación en cada pantalla. Ignora tildes en ambos
+  /// lados (ver [normalizeForSearch]): sin esto, buscar "Rosquilleria" sin la
+  /// tilde no encontraba "Rosquillería".
+  bool matchesQuery(String query) {
+    final q = normalizeForSearch(query.trim());
+    if (q.isEmpty) return true;
+    return normalizeForSearch(name).contains(q) ||
+        normalizeForSearch(category).contains(q) ||
+        normalizeForSearch(city).contains(q) ||
+        normalizeForSearch(ownerLabel).contains(q);
   }
 
   AdminBusinessSummary copyWith({
