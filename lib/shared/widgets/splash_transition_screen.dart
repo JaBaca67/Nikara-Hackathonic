@@ -102,6 +102,8 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       child: Scaffold(
         backgroundColor: AppColors.oliveMidFill,
         body: AuroraBackgroundWidget(
+          // El logo del Splash va centrado, no en la franja de arriba como en Auth.
+          logoFocusY: 0.5,
           child: Center(
             child: Padding(
               // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.

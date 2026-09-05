@@ -86,9 +86,11 @@ dev_dependencies:
 # monograma "N + hojas" (propuesta de Claude Design del 2026-08-26) sobre el
 # gradiente cálido de marca; el logotipo horizontal anterior quedó archivado en
 # assets/icon/_propuestas/v1_logotipo/ — se leía ilegible a 48dp.
-# El foreground se escala a 500/1024 px porque la máscara adaptativa de Android
-# solo deja visibles 72 de los 108 dp del canvas: más grande y se recortan las
-# puntas de las hojas. Regenerar los 3 PNGs si el logo o el gradiente cambian.
+# El foreground se escala a 580/1024 px: la máscara adaptativa de Android solo
+# garantiza el 66% central del canvas (círculo de 682 px), y a ese ancho el punto
+# más lejano del isotipo queda en radio 316 contra los 341 disponibles. A 620 ya
+# roza el borde. El icono legacy va a 740 px, que no pasa por esa máscara.
+# Regenerar los 3 PNGs si el logo o el gradiente cambian.
 flutter_launcher_icons:
   android: true
   ios: true
