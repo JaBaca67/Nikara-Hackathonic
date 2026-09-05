@@ -47,6 +47,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   bool _isLoading = true;
   String? _loadError;
   bool _savingReview = false;
+  bool _savingSeal = false;
 
   String get _organizationId =>
       widget.organization?.id ?? widget.organizationId!;
@@ -179,6 +180,65 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
     }
   }
 
+  /// Mismo mecanismo que el sello de negocios
+  /// (`admin_business_detail_screen.dart`), pero sobre `organizations` — el
+  /// sello es independiente de aprobar/rechazar, así que solo se ofrece
+  /// sobre una fundación ya aprobada.
+  Future<void> _toggleVerification() async {
+    final organization = _organization;
+    if (organization == null) return;
+    final target = !organization.isVerified;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AdminConfirmDialog(
+        title: target ? 'Dar el sello' : 'Quitar el sello',
+        message: target
+            ? '"${organization.name}" va a mostrarse con el sello de '
+                  'verificado en toda la app. No cambia si está publicada o '
+                  'no. ¿Confirmas?'
+            : '"${organization.name}" deja de mostrar el sello de '
+                  'verificado, pero sigue publicada. ¿Confirmas?',
+        confirmLabel: target ? 'Dar el sello' : 'Quitar el sello',
+        confirmColor: target ? AppColors.oliveText : AppColors.destructive,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _savingSeal = true);
+    try {
+      await AdminService().setOrganizationVerified(
+        id: organization.id,
+        isVerified: target,
+      );
+      if (!mounted) return;
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            target
+                ? '"${organization.name}" ya muestra el sello.'
+                : 'Le quitaste el sello a "${organization.name}".',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   /// El aviso al dueño no puede tumbar la revisión: si falla, se registra y
   /// se sigue — mismo criterio que `AdminService._notifyReviewed`.
   Future<void> _notifyOwner(
@@ -289,6 +349,22 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                       saving: _savingReview,
                       onApprove: _approveOrganization,
                       onReject: _rejectOrganization,
+                    ),
+                  ),
+                // El sello solo tiene sentido sobre una fundación ya
+                // publicada — ver `_toggleVerification`.
+                if (_canReview && organization.reviewStatus.isAprobado)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      0,
+                    ),
+                    child: AdminSealRow(
+                      isVerified: organization.isVerified,
+                      enabled: !_savingSeal,
+                      onChanged: (_) => _toggleVerification(),
                     ),
                   ),
                 if (organization.description.trim().isNotEmpty) ...[

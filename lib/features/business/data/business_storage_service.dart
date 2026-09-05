@@ -305,13 +305,27 @@ class BusinessStorageService {
           .eq('id', id)
           .eq('owner_id', ownerId)
           .eq('status', ReviewStatus.rechazado.wireValue)
-          .select('id');
-      if ((updated as List<dynamic>).isEmpty) {
+          .select('id, name');
+      final rows = updated as List<dynamic>;
+      if (rows.isEmpty) {
         throw const BusinessServiceException(
           'No se pudo reenviar el negocio: ya no existe, no es tuyo o no '
           'está rechazado.',
         );
       }
+      // Sin esto, un negocio corregido y reenviado nunca avisaba a los
+      // admins — quedaba en "pendiente" pero nadie recibía la señal para
+      // volver a mirarlo, a diferencia de un registro nuevo. Encontrado
+      // probando el ciclo completo en la auditoría del 2026-09-05.
+      final name = rows.first['name'] as String? ?? 'un negocio';
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Negocio reenviado a revisión',
+          body:
+              '"$name" corrigió sus datos y está esperando tu revisión '
+              'de nuevo.',
+        ),
+      );
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
         'No se pudo reenviar el negocio: ${e.message}',
@@ -405,7 +419,20 @@ class BusinessStorageService {
       instagramLink: sanitizeInstagramHandle(b.instagramLink),
       facebookLink: sanitizeFacebookHandle(b.facebookLink),
       tiktokLink: sanitizeTiktokHandle(b.tiktokLink),
-      schedules: sanitizeText(b.schedules, maxLength: InputLimits.mediumText),
+      // `sanitizeText` colapsa TODO whitespace (incluido '\n') a un solo
+      // espacio — `_ScheduleEntry.format()`/`.parse()` en el wizard dependen
+      // de '\n' para separar cada franja horaria. Con `sanitizeText`, un
+      // horario de 2 franjas se guardaba en una sola línea; al reabrirlo para
+      // editar, `_ScheduleEntry.parse()` no lo reconocía como 2 entradas y
+      // caía al fallback (todo el texto original como "día" + hora inventada
+      // 08:00–17:00), que se reescribía encima al guardar. Bug real y ya
+      // manifestado: los 6 negocios reales de la base tienen
+      // ": 08:00–17:00" pegado al final de su horario por esto. Encontrado
+      // en la auditoría del 2026-09-05 al editar y reenviar un negocio.
+      schedules: sanitizeMultilineText(
+        b.schedules,
+        maxLength: InputLimits.mediumText,
+      ),
       accessDetails: sanitizeMultilineText(b.accessDetails),
       otherNotes: sanitizeMultilineText(b.otherNotes),
       amenities: sanitizeTextList(b.amenities),

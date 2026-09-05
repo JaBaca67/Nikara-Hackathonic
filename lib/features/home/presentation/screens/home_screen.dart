@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
@@ -17,10 +18,12 @@ import 'package:nikara_app/features/business/presentation/screens/legal_identity
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -225,11 +228,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openBusinessDetail(BusinessModel business) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: business),
-      ),
-    );
+    pushSharedAxis(context, BusinessDetailScreen(business: business));
   }
 
   void _openWizard() => openBusinessRegistrationFlow(context);
@@ -1062,14 +1061,28 @@ class _CercaDeTiSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Column(
               children: [
-                for (final business in nearest)
+                for (final (index, business) in nearest.indexed)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _NearbyRow(
-                      business: business,
-                      locationLabel: _cityWithDistance(userPosition, business),
-                      onTap: () => onTap(business),
-                    ),
+                    child:
+                        _NearbyRow(
+                              business: business,
+                              locationLabel: _cityWithDistance(
+                                userPosition,
+                                business,
+                              ),
+                              onTap: () => onTap(business),
+                            )
+                            .animate(delay: AppMotion.microDuration * index)
+                            .fadeIn(
+                              duration: AppMotion.standardDuration,
+                              curve: AppMotion.enter,
+                            )
+                            .slideY(
+                              begin: 0.08,
+                              duration: AppMotion.standardDuration,
+                              curve: AppMotion.enter,
+                            ),
                   ),
               ],
             ),

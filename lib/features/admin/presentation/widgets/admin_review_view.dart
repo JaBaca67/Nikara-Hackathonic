@@ -50,10 +50,32 @@ extension on _ReviewKind {
 /// (`EcoDetailScreen`/`OrganizationProfileScreen`), con la franja de
 /// aprobar/rechazar ([AdminInlineReviewCard]) agregada ahí.
 class AdminReviewView extends StatefulWidget {
-  const AdminReviewView({super.key, required this.status});
+  const AdminReviewView({
+    super.key,
+    required this.status,
+    this.active = true,
+    this.refreshToken = 0,
+  });
 
   /// Qué cola muestra: el `status` de la tabla activa debe ser igual a este.
   final ReviewStatus status;
+
+  /// Si esta cola es la pestaña visible ahora mismo.
+  ///
+  /// `AdminShellScreen` mantiene las 3 colas vivas dentro de un
+  /// `IndexedStack` (para no perder el scroll al ir y volver), así que
+  /// `initState`/`_load` solo corren una vez, cuando el panel se abre —
+  /// rechazar un negocio desde "Revisión" nunca haría aparecer esa fila en
+  /// "Rechazados" hasta un pull-to-refresh manual, porque esa pestaña ya
+  /// estaba montada con su snapshot viejo. `didUpdateWidget` detecta el
+  /// flanco false→true (se volvió la pestaña activa) y recarga. Bug real
+  /// encontrado en la auditoría del 2026-09-05 probando el ciclo completo
+  /// aprobar/rechazar en el dispositivo.
+  final bool active;
+
+  /// Sube al tocar el botón de recarga del encabezado del panel — fuerza un
+  /// `_load()` sin importar si esta pestaña ya estaba activa.
+  final int refreshToken;
 
   @override
   State<AdminReviewView> createState() => _AdminReviewViewState();
@@ -75,6 +97,15 @@ class _AdminReviewViewState extends State<AdminReviewView> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(AdminReviewView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final justActivated = widget.active && !oldWidget.active;
+    final refreshed =
+        widget.active && widget.refreshToken != oldWidget.refreshToken;
+    if (justActivated || refreshed) _load();
   }
 
   @override

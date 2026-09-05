@@ -134,6 +134,14 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
     });
   }
 
+  /// Antes recortaba con `image_cropper` para encuadrar la foto al tamaño de
+  /// cédula/RUC — se revirtió el 2026-09-05: el plugin tira
+  /// `IllegalStateException: Reply already submitted` en
+  /// `ImageCropperDelegate.onActivityResult` y cierra la app entera. Crasheó
+  /// en el dispositivo real de José justo en este paso, que es obligatorio
+  /// para registrar cualquier negocio o fundación — demasiado riesgo la
+  /// noche antes de la entrega. Queda pendiente investigar el plugin con
+  /// calma (ver `pubspec.yaml`, la dependencia se quitó del todo).
   Future<void> _pickPhoto({required bool back}) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.camera);
     if (picked == null || !mounted) return;

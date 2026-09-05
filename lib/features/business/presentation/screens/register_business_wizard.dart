@@ -263,89 +263,149 @@ String _departmentForCity(String city) {
 }
 
 /// [weekdays] queda vacío en entradas de texto libre porque no se puede mapear texto arbitrario a días reales de forma confiable.
+/// Una franja horaria — cualquier combinación de días de la semana, no solo
+/// los 2 presets fijos que existían antes ("Lunes a viernes"/"Sábado y
+/// domingo"). [weekdays] (1=lunes .. 7=domingo) es la única fuente de verdad;
+/// [daysLabel] siempre se calcula a partir de él, nunca se guarda como texto
+/// suelto — así no puede desincronizarse de los días reales, que era la raíz
+/// del bug encontrado en la auditoría del 2026-09-05: un horario con 2
+/// franjas se guardaba en una sola línea (`sanitizeText` colapsaba el `\n`),
+/// y al no reconocerse como estructurado, todo el texto pasaba a ser una
+/// única "etiqueta de día" con una hora inventada (08:00–17:00) que se
+/// reescribía encima cada vez que alguien volvía a guardar. Ahora, si el
+/// texto guardado no calza con el formato estructurado (`tryParseStructured`
+/// devuelve `null`), la pantalla lo trata como texto libre y lo conserva
+/// literal — nunca lo fuerza a un formato que no le corresponde.
 class _ScheduleEntry {
   _ScheduleEntry({
-    required this.daysLabel,
     required this.weekdays,
     required this.start,
     required this.end,
   });
 
-  String daysLabel;
   Set<int> weekdays;
   TimeOfDay start;
   TimeOfDay end;
 
+  static const Map<int, String> _dayAbbrev = {
+    1: 'L',
+    2: 'M',
+    3: 'M',
+    4: 'J',
+    5: 'V',
+    6: 'S',
+    7: 'D',
+  };
+
+  static const Map<int, String> _dayNames = {
+    1: 'Lunes',
+    2: 'Martes',
+    3: 'Miércoles',
+    4: 'Jueves',
+    5: 'Viernes',
+    6: 'Sábado',
+    7: 'Domingo',
+  };
+
+  /// Compat con datos guardados antes del 2026-09-05, cuando el día se
+  /// guardaba como una de estas 3 etiquetas fijas en vez de números.
+  static const Map<String, Set<int>> _legacyDayLabels = {
+    'Lunes a viernes': {1, 2, 3, 4, 5},
+    'Sábado y domingo': {6, 7},
+    'Todos los días': {1, 2, 3, 4, 5, 6, 7},
+  };
+
   static _ScheduleEntry weekdays9to6() => _ScheduleEntry(
-    daysLabel: 'Lunes a viernes',
     weekdays: {1, 2, 3, 4, 5},
     start: const TimeOfDay(hour: 7, minute: 0),
     end: const TimeOfDay(hour: 18, minute: 0),
   );
 
   static _ScheduleEntry weekend() => _ScheduleEntry(
-    daysLabel: 'Sábado y domingo',
     weekdays: {6, 7},
     start: const TimeOfDay(hour: 6, minute: 0),
     end: const TimeOfDay(hour: 19, minute: 0),
   );
-
-  static const Map<String, Set<int>> _knownDayLabels = {
-    'Lunes a viernes': {1, 2, 3, 4, 5},
-    'Sábado y domingo': {6, 7},
-    'Todos los días': {1, 2, 3, 4, 5, 6, 7},
-  };
 
   static String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   String get hoursLabel => '${_fmt(start)}–${_fmt(end)}';
 
-  String toLine() => '$daysLabel: $hoursLabel';
+  /// Etiqueta legible: colapsa un rango contiguo ("Lunes a Viernes"), nombra
+  /// "Todos los días" para los 7, o lista abreviaturas para combinaciones
+  /// sueltas ("L, X, V") — nunca texto libre inventado.
+  String get daysLabel {
+    if (weekdays.isEmpty) return 'Elige los días';
+    if (weekdays.length == 7) return 'Todos los días';
+    final sorted = weekdays.toList()..sort();
+    final isContiguous = List.generate(
+      sorted.length,
+      (i) => sorted[i] == sorted.first + i,
+    ).every((ok) => ok);
+    if (isContiguous && sorted.length > 1) {
+      return '${_dayNames[sorted.first]} a ${_dayNames[sorted.last]}';
+    }
+    if (sorted.length == 1) return _dayNames[sorted.first]!;
+    return sorted.map((d) => _dayAbbrev[d]).join(', ');
+  }
+
+  String toLine() {
+    final days = (weekdays.toList()..sort()).join(',');
+    return '$days: $hoursLabel';
+  }
+
+  static final _hoursPattern = RegExp(r'^(\d{1,2}):(\d{2})–(\d{1,2}):(\d{2})$');
 
   static _ScheduleEntry? _parseLine(String line) {
     final parts = line.split(': ');
     if (parts.length != 2) return null;
-    final hours = RegExp(
-      r'^(\d{1,2}):(\d{2})–(\d{1,2}):(\d{2})$',
-    ).firstMatch(parts[1]);
+    final hours = _hoursPattern.firstMatch(parts[1]);
     if (hours == null) return null;
-    return _ScheduleEntry(
-      daysLabel: parts[0],
-      weekdays: _knownDayLabels[parts[0]] ?? {},
-      start: TimeOfDay(
-        hour: int.parse(hours.group(1)!),
-        minute: int.parse(hours.group(2)!),
-      ),
-      end: TimeOfDay(
-        hour: int.parse(hours.group(3)!),
-        minute: int.parse(hours.group(4)!),
-      ),
+    final start = TimeOfDay(
+      hour: int.parse(hours.group(1)!),
+      minute: int.parse(hours.group(2)!),
     );
+    final end = TimeOfDay(
+      hour: int.parse(hours.group(3)!),
+      minute: int.parse(hours.group(4)!),
+    );
+    // Formato actual: días como números separados por coma ("1,2,3,4,5").
+    if (RegExp(r'^\d(,\d)*$').hasMatch(parts[0])) {
+      final weekdays = parts[0].split(',').map(int.parse).toSet();
+      if (weekdays.any((d) => d < 1 || d > 7)) return null;
+      return _ScheduleEntry(weekdays: weekdays, start: start, end: end);
+    }
+    // Formato legado: una de las 3 etiquetas fijas de antes del 2026-09-05.
+    final legacyDays = _legacyDayLabels[parts[0]];
+    if (legacyDays != null) {
+      return _ScheduleEntry(weekdays: legacyDays, start: start, end: end);
+    }
+    return null;
   }
 
-  /// Preserva el texto crudo como entrada libre si el formato no matchea, para no perder el horario de negocios guardados antes de este picker estructurado.
-  static List<_ScheduleEntry> parse(String raw) {
+  /// `null` = el texto no calza con ningún formato estructurado reconocido
+  /// (típicamente horario en prosa libre, como "Lunes a Domingo de 6:00 AM a
+  /// 6:00 PM"). La pantalla que llama a esto es responsable de tratarlo como
+  /// texto libre en ese caso — **nunca** hay que forzarlo a una entrada
+  /// estructurada con una hora inventada, que es exactamente el bug que esto
+  /// reemplaza.
+  static List<_ScheduleEntry>? tryParseStructured(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return [weekdays9to6(), weekend()];
     final lines = text
         .split('\n')
         .map((l) => l.trim())
-        .where((l) => l.isNotEmpty);
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return [weekdays9to6(), weekend()];
     final parsed = <_ScheduleEntry>[];
     for (final line in lines) {
       final entry = _parseLine(line);
-      if (entry != null) parsed.add(entry);
+      if (entry == null) return null;
+      parsed.add(entry);
     }
-    if (parsed.isNotEmpty) return parsed;
-    return [
-      _ScheduleEntry(
-        daysLabel: text,
-        weekdays: const {},
-        start: const TimeOfDay(hour: 8, minute: 0),
-        end: const TimeOfDay(hour: 17, minute: 0),
-      ),
-    ];
+    return parsed;
   }
 
   static String format(List<_ScheduleEntry> entries) =>
@@ -400,7 +460,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _instagramController = TextEditingController();
   final _facebookController = TextEditingController();
   final _tiktokController = TextEditingController();
-  late List<_ScheduleEntry> _schedule = _ScheduleEntry.parse('');
+  late List<_ScheduleEntry> _schedule = _ScheduleEntry.tryParseStructured('')!;
+  // `true` cuando el horario guardado no calza con el editor estructurado
+  // (típicamente prosa libre escrita a mano, como los 6 negocios reales de
+  // antes del 2026-09-05) — en ese caso se edita como texto plano y se
+  // guarda literal, nunca se fuerza al formato de franjas.
+  bool _scheduleIsFreeform = false;
+  final _freeformScheduleController = TextEditingController();
 
   // --- Paso 2 (4b): Ubicación y pin en el mapa ---
   late String _department = _kDepartments.first;
@@ -433,12 +499,20 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     ..._images.map((x) => x.path),
   ];
 
+  /// Lo que realmente se guarda en `businesses.schedules` — texto libre tal
+  /// cual si el horario original no era estructurado, o el formato de franjas
+  /// si sí lo es. Nunca se reformatea un texto libre a través del editor
+  /// estructurado (esa reescritura silenciosa era el bug).
+  String get _scheduleValue => _scheduleIsFreeform
+      ? _freeformScheduleController.text.trim()
+      : _ScheduleEntry.format(_schedule);
+
   @override
   void initState() {
     super.initState();
     final business = widget.existingBusiness;
     if (business == null) {
-      _schedule = _ScheduleEntry.parse('');
+      _schedule = _ScheduleEntry.tryParseStructured('')!;
       _locateUser();
       return;
     }
@@ -460,7 +534,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _instagramController.text = business.instagramLink;
     _facebookController.text = business.facebookLink;
     _tiktokController.text = business.tiktokLink;
-    _schedule = _ScheduleEntry.parse(business.schedules);
+    final structured = _ScheduleEntry.tryParseStructured(business.schedules);
+    if (structured == null) {
+      _scheduleIsFreeform = true;
+      _freeformScheduleController.text = business.schedules;
+      _schedule = [_ScheduleEntry.weekdays9to6(), _ScheduleEntry.weekend()];
+    } else {
+      _schedule = structured;
+    }
     if (business.latitude != null && business.longitude != null) {
       final existingLocation = LatLng(business.latitude!, business.longitude!);
       _mapCenter = existingLocation;
@@ -498,6 +579,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _facebookController.dispose();
     _tiktokController.dispose();
     _addressController.dispose();
+    _freeformScheduleController.dispose();
     _customActivityController.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -698,7 +780,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       hostName: existing?.hostName ?? '',
       logoUrl: _logoImage?.path ?? _existingLogoUrl,
       showHost: _showHost,
-      schedules: _ScheduleEntry.format(_schedule),
+      schedules: _scheduleValue,
       accessDetails: _accessDetailsController.text.trim(),
       otherNotes: _otherNotesController.text.trim(),
       localImagePaths: _allPhotoPaths,
@@ -783,7 +865,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         logoUrl: logoUrl,
         showHost: _showHost,
         ownerId: ownerId,
-        schedules: _ScheduleEntry.format(_schedule),
+        schedules: _scheduleValue,
         accessDetails: _accessDetailsController.text.trim(),
         otherNotes: _otherNotesController.text.trim(),
         localImagePaths: photoPaths,
@@ -800,6 +882,22 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
       if (existing != null) {
         await _storageService.updateBusiness(business);
+        // Editar y guardar por sí solo no lo devolvía a la cola de revisión
+        // — ver `_RejectionBanner`. Sin este paso, el ciclo rechazar →
+        // corregir → reenviar quedaba roto en la mitad.
+        if (existing.reviewStatus.isRechazado) {
+          try {
+            await _storageService.resubmitBusiness(existing.id);
+          } on BusinessServiceException catch (e) {
+            if (!mounted) return;
+            setState(() => _isSaving = false);
+            _snack(
+              'Guardamos tus cambios, pero no pudimos reenviarlo a '
+              'revisión: ${e.message}',
+            );
+            return;
+          }
+        }
         if (!mounted) return;
         Navigator.of(context).pop(business);
         return;
@@ -893,6 +991,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   Widget _buildStep1() {
+    final existing = widget.existingBusiness;
     return Column(
       children: [
         _header('Paso 1 de 4 · borrador guardado'),
@@ -903,6 +1002,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (existing != null && existing.reviewStatus.isRechazado)
+                  _RejectionBanner(reason: existing.rejectionReason),
                 _sectionIntro(
                   'Datos generales',
                   'Cuéntanos qué ofreces y cómo te contactan.',
@@ -1089,62 +1190,119 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _OpenNowPill(entries: _schedule),
+                        if (!_scheduleIsFreeform)
+                          _OpenNowPill(entries: _schedule),
                       ],
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Con esto Níkara calcula el estado que ven los viajeros en tiempo real.',
+                      _scheduleIsFreeform
+                          ? 'Este horario está escrito como texto libre — Níkara no '
+                                'puede calcular "abierto ahora" con esto.'
+                          : 'Con esto Níkara calcula el estado que ven los viajeros en tiempo real.',
                       style: AppTextStyles.wizardCaption,
                     ),
                     const SizedBox(height: 12),
-                    Column(
-                      children: [
-                        for (var i = 0; i < _schedule.length; i++) ...[
-                          _ScheduleRow(
-                            entry: _schedule[i],
-                            onChanged: (updated) =>
-                                setState(() => _schedule[i] = updated),
-                            onRemove: _schedule.length > 1
-                                ? () => setState(() => _schedule.removeAt(i))
-                                : null,
+                    if (_scheduleIsFreeform)
+                      TextField(
+                        controller: _freeformScheduleController,
+                        maxLines: 3,
+                        style: AppTextStyles.wizardFieldValue,
+                        decoration: InputDecoration(
+                          hintText: 'Ej: Lunes a domingo de 8:00 AM a 6:00 PM',
+                          filled: true,
+                          fillColor: AppColors.settingsBackground,
+                          contentPadding: const EdgeInsets.all(12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: AppColors.settingsTextDark.withValues(
+                                alpha: 0.07,
+                              ),
+                            ),
                           ),
-                          if (i != _schedule.length - 1)
-                            const SizedBox(height: 8),
+                        ),
+                      )
+                    else
+                      Column(
+                        children: [
+                          for (var i = 0; i < _schedule.length; i++) ...[
+                            _ScheduleRow(
+                              entry: _schedule[i],
+                              onChanged: (updated) =>
+                                  setState(() => _schedule[i] = updated),
+                              onRemove: _schedule.length > 1
+                                  ? () => setState(() => _schedule.removeAt(i))
+                                  : null,
+                            ),
+                            if (i != _schedule.length - 1)
+                              const SizedBox(height: 8),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                     const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: () => setState(
-                        () => _schedule.add(
-                          _ScheduleEntry(
-                            daysLabel: 'Otro día',
-                            weekdays: const {},
-                            start: const TimeOfDay(hour: 8, minute: 0),
-                            end: const TimeOfDay(hour: 17, minute: 0),
+                    if (!_scheduleIsFreeform)
+                      GestureDetector(
+                        onTap: () => setState(
+                          () => _schedule.add(
+                            _ScheduleEntry(
+                              weekdays: const {},
+                              start: const TimeOfDay(hour: 8, minute: 0),
+                              end: const TimeOfDay(hour: 17, minute: 0),
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.add,
+                                size: 16,
+                                color: AppColors.oliveText,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Agregar otra franja',
+                                  style: AppTextStyles.detailInlineLink,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        if (_scheduleIsFreeform) {
+                          // Texto libre -> estructurado: si lo que hay
+                          // escrito ahora sí calza con el formato de franjas,
+                          // se aprovecha; si no, arranca de los valores por
+                          // defecto en vez de perder el texto en silencio.
+                          final parsed = _ScheduleEntry.tryParseStructured(
+                            _freeformScheduleController.text,
+                          );
+                          _schedule =
+                              parsed ??
+                              [
+                                _ScheduleEntry.weekdays9to6(),
+                                _ScheduleEntry.weekend(),
+                              ];
+                        } else {
+                          _freeformScheduleController.text =
+                              _ScheduleEntry.format(_schedule);
+                        }
+                        _scheduleIsFreeform = !_scheduleIsFreeform;
+                      }),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.add,
-                              size: 16,
-                              color: AppColors.oliveText,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                'Agregar un día distinto',
-                                style: AppTextStyles.detailInlineLink,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          _scheduleIsFreeform
+                              ? 'Usar el editor de franjas'
+                              : 'Escribir el horario como texto libre',
+                          style: AppTextStyles.detailInlineLink,
                         ),
                       ),
                     ),
@@ -2171,6 +2329,64 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 }
 
+/// Motivo del rechazo, visible al dueño al editar — antes invisible: la
+/// notificación de rechazo llevaba a `BusinessDetailScreen` (solo lectura,
+/// sin este motivo) y guardar ahí nunca devolvía el negocio a la cola de
+/// revisión. Encontrado y corregido en la auditoría del 2026-09-04.
+class _RejectionBanner extends StatelessWidget {
+  const _RejectionBanner({required this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = reason?.trim() ?? '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.gpp_maybe_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Este negocio necesita ajustes',
+                  style: AppTextStyles.wizardFieldLabel.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  trimmed.isEmpty
+                      ? 'El equipo de Níkara lo rechazó sin especificar un '
+                            'motivo.'
+                      : trimmed,
+                  style: AppTextStyles.wizardCaption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Corrige lo que haga falta y guarda: vuelve a la cola de '
+                  'revisión automáticamente.',
+                  style: AppTextStyles.wizardCaption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WizardHeader extends StatelessWidget {
   const _WizardHeader({
     required this.title,
@@ -2565,13 +2781,11 @@ class _ScheduleRow extends StatelessWidget {
     onChanged(
       isStart
           ? (_ScheduleEntry(
-              daysLabel: entry.daysLabel,
               weekdays: entry.weekdays,
               start: picked,
               end: entry.end,
             ))
           : (_ScheduleEntry(
-              daysLabel: entry.daysLabel,
               weekdays: entry.weekdays,
               start: entry.start,
               end: picked,
@@ -2579,72 +2793,44 @@ class _ScheduleRow extends StatelessWidget {
     );
   }
 
-  Future<void> _pickDays(BuildContext context) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface100,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final label in _ScheduleEntry._knownDayLabels.keys)
-              ListTile(
-                title: Text(label),
-                onTap: () => Navigator.of(context).pop(label),
-              ),
-            ListTile(
-              title: const Text('Escribir otro texto'),
-              onTap: () => Navigator.of(context).pop(''),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null) return;
-    if (choice.isEmpty) return;
+  void _toggleDay(int day) {
+    final updated = Set<int>.from(entry.weekdays);
+    if (!updated.remove(day)) updated.add(day);
     onChanged(
-      _ScheduleEntry(
-        daysLabel: choice,
-        weekdays: _ScheduleEntry._knownDayLabels[choice] ?? const {},
-        start: entry.start,
-        end: entry.end,
-      ),
+      _ScheduleEntry(weekdays: updated, start: entry.start, end: entry.end),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Column (no Row) para que la etiqueta de día libre y los chips de hora no compitan por el ancho y desborden.
+    // Column (no Row) para que los chips de día y los de hora no compitan por el ancho y desborden.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => _pickDays(context),
-          child: Container(
-            width: double.infinity,
-            height: 40,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            decoration: BoxDecoration(
-              color: AppColors.settingsBackground,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.settingsTextDark.withValues(alpha: 0.07),
+        // Selector de días libre — reemplaza al picker de 2 etiquetas fijas
+        // ("Lunes a viernes"/"Sábado y domingo"): cualquier negocio real con
+        // un patrón distinto (ej. cerrado los martes, o lunes a sábado en una
+        // sola franja) ya no tiene que forzar su horario a esas 2 opciones.
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var day = 1; day <= 7; day++)
+              _DayChip(
+                label: _ScheduleEntry._dayAbbrev[day]!,
+                selected: entry.weekdays.contains(day),
+                onTap: () => _toggleDay(day),
               ),
-            ),
-            child: Text(
-              entry.daysLabel,
-              style: AppTextStyles.wizardFieldValue.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          entry.daysLabel,
+          style: AppTextStyles.wizardCaption.copyWith(
+            fontWeight: FontWeight.w600,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 6),
         Row(
@@ -2701,6 +2887,51 @@ class _ScheduleRow extends StatelessWidget {
         style: AppTextStyles.wizardFieldValue.copyWith(
           fontWeight: FontWeight.w600,
           fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+/// Un día de la semana como chip individual — toggle, no radio: una franja
+/// puede cubrir cualquier combinación, no solo un rango contiguo.
+class _DayChip extends StatelessWidget {
+  const _DayChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.oliveFill : AppColors.settingsBackground,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? AppColors.oliveFill
+                : AppColors.settingsTextDark.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.wizardFieldValue.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: selected
+                ? AppColors.textPrimary
+                : AppColors.settingsTextMuted,
+          ),
         ),
       ),
     );

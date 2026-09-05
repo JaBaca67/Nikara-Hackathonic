@@ -682,14 +682,26 @@ class EcoService {
           .eq('id', id)
           .eq('organizer_id', organizerId)
           .eq('status', ReviewStatus.rechazado.wireValue)
-          .select('id');
-      if ((updated as List<dynamic>).isEmpty) {
+          .select('id, title');
+      final rows = updated as List<dynamic>;
+      if (rows.isEmpty) {
         throw const EcoServiceException(
           'No se pudo reenviar la actividad: ya no existe, no la creaste tú '
           'o no está rechazada.',
         );
       }
       revision.value++;
+      // Mismo hallazgo que `BusinessStorageService.resubmitBusiness`: sin
+      // esto, reenviar una jornada corregida nunca avisaba a los admins.
+      final title = rows.first['title'] as String? ?? 'una jornada';
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Jornada ECO reenviada a revisión',
+          body:
+              '"$title" corrigió sus datos y está esperando tu revisión '
+              'de nuevo.',
+        ),
+      );
     } on PostgrestException catch (e) {
       throw EcoServiceException(
         'No se pudo reenviar la actividad: ${e.message}',

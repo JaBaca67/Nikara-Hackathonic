@@ -80,6 +80,24 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
         bannerUrl: banner.url,
         clearBanner: banner.clear,
       );
+      // Guardar por sí solo no la devolvía a la cola de revisión — ver
+      // `_RejectionBanner`. Sin este paso, una fundación rechazada quedaba
+      // corregida pero invisible para siempre, ni publicada ni en revisión.
+      if (widget.organization.reviewStatus.isRechazado) {
+        try {
+          await OrganizationService().resubmitOrganization(
+            widget.organization.id,
+          );
+        } on OrganizationServiceException catch (e) {
+          if (!mounted) return;
+          setState(() => _isSaving = false);
+          _snack(
+            'Guardamos tus cambios, pero no pudimos reenviarla a revisión: '
+            '${e.message}',
+          );
+          return;
+        }
+      }
       if (!mounted) return;
       _snack('Se guardaron los cambios de ${updated.name}.');
       Navigator.of(context).pop(true);
@@ -159,6 +177,10 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (widget.organization.reviewStatus.isRechazado)
+                        _RejectionBanner(
+                          reason: widget.organization.rejectionReason,
+                        ),
                       const EcoSectionIntro(
                         title: 'Datos de la fundación',
                         subtitle:
@@ -301,5 +323,63 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
       return 'El handle necesita al menos 3 caracteres.';
     }
     return null;
+  }
+}
+
+/// Motivo del rechazo, visible a quien edita — antes invisible para el
+/// dueño: solo lo veía un admin dentro de `AdminInlineReviewCard` en
+/// `OrganizationProfileScreen`. Encontrado y corregido en la auditoría del
+/// 2026-09-04, mismo patrón que `register_business_wizard.dart`.
+class _RejectionBanner extends StatelessWidget {
+  const _RejectionBanner({required this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = reason?.trim() ?? '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.gpp_maybe_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Esta fundación necesita ajustes',
+                  style: AppTextStyles.settingsRowTitle.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  trimmed.isEmpty
+                      ? 'El equipo de Níkara la rechazó sin especificar un '
+                            'motivo.'
+                      : trimmed,
+                  style: AppTextStyles.settingsRowCaption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Corrige lo que haga falta y guarda: vuelve a la cola de '
+                  'revisión automáticamente.',
+                  style: AppTextStyles.settingsRowCaption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

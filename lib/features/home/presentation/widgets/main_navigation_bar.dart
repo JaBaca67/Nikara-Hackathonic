@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -78,14 +79,14 @@ class MainNavigationBar extends StatelessWidget {
             return Stack(
               children: [
                 AnimatedPositioned(
-                  duration: const Duration(milliseconds: 320),
-                  curve: Curves.easeInOutCubic,
+                  duration: AppMotion.largeDuration,
+                  curve: AppMotion.emphasized,
                   left:
                       slotWidth * currentIndex +
                       (slotWidth - _kPillSize.width) / 2,
                   top: _kPillTopInset,
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
+                    duration: AppMotion.quickDuration,
                     width: _kPillSize.width,
                     height: _kPillSize.height,
                     decoration: BoxDecoration(

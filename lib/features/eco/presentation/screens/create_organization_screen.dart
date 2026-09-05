@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
@@ -12,7 +13,9 @@ import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// `is_verified` no se pide ni se manda: arranca en `true` por default de columna, igual que `businesses.is_verified`.
+/// `is_verified` no se pide ni se manda: arranca en `false` por default de
+/// columna (`026_organizations_verified_default.sql`), igual que
+/// `businesses.is_verified` — un admin lo marca aparte, después de aprobar.
 class CreateOrganizationScreen extends StatefulWidget {
   const CreateOrganizationScreen({super.key});
 
@@ -83,6 +86,17 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         logoUrl: logo.url,
         bannerUrl: banner.url,
       );
+      // Mismo ascenso que `RegisterBusinessWizard._finish()` — sin esto, quien
+      // solo registra una fundación (nunca un negocio) se queda con el rol
+      // `turista` para siempre, aunque gestione una organización activa. Bug
+      // real encontrado en la auditoría del 2026-09-04: hoy nada en la UI
+      // depende de este rol para bloquear una acción, pero sí se ve en
+      // Admin > Usuarios, así que quedaba mal etiquetado.
+      try {
+        await AuthService().markAsEmprendedor();
+      } on AuthServiceException {
+        // Se ignora: la fundación ya se guardó correctamente.
+      }
       if (!mounted) return;
       _snack(
         '¡Solicitud enviada! Revisamos ${organization.name} en un máximo de '

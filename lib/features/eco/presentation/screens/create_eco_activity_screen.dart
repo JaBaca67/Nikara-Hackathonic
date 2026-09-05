@@ -5,11 +5,11 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
-import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
@@ -147,10 +147,14 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
     });
   }
 
+  // Antes navegaba directo a `CreateOrganizationScreen`, saltándose el gate
+  // de identidad legal (RUC/cédula) — un usuario nuevo podía crear una
+  // fundación desde acá sin haber cargado nunca su documento, algo que sí se
+  // exige entrando por "Registrar / Gestionar Fundación" en Ajustes. Bug real
+  // encontrado en la auditoría del 2026-09-04, corregido usando la misma
+  // puerta que ese otro camino.
   Future<void> _openCreateOrganization() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const CreateOrganizationScreen()),
-    );
+    await openOrganizationRegistrationFlow(context);
     if (!mounted) return;
     setState(() => _loadingOrganizations = true);
     await _loadPublishAsOptions();
@@ -377,6 +381,24 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           requirements: _requirements,
           organizationId: organization?.id,
         );
+        // Guardar por sí solo no la devolvía a la cola de revisión — ver
+        // el banner de rechazo más abajo. Sin este paso, una jornada
+        // corregida quedaba invisible para siempre, ni publicada ni en
+        // revisión. Bug encontrado y corregido en la auditoría del
+        // 2026-09-04.
+        if (existing.reviewStatus.isRechazado) {
+          try {
+            await EcoService().resubmitActivity(existing.id);
+          } on EcoServiceException catch (e) {
+            if (!mounted) return;
+            setState(() => _isSaving = false);
+            _snack(
+              'Guardamos tus cambios, pero no pudimos reenviarla a '
+              'revisión: ${e.message}',
+            );
+            return;
+          }
+        }
       }
       if (!mounted) return;
       if (existing != null) {
@@ -443,6 +465,11 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (widget.existingActivity?.reviewStatus.isRechazado ??
+                            false)
+                          _RejectionBanner(
+                            reason: widget.existingActivity!.rejectionReason,
+                          ),
                         _buildCoverSection(),
                         _buildDetailsSection(),
                         _buildLocationSection(),
@@ -1222,6 +1249,65 @@ class _PublishAsAvatar extends StatelessWidget {
 /// tiene ninguna fundación, tiene una esperando revisión, o se la rechazaron.
 /// Colapsarlas en un solo "no podés publicar" dejaría a la persona sin saber
 /// qué hacer a continuación.
+/// Motivo del rechazo, visible a quien edita — mismo patrón que
+/// `register_business_wizard.dart`/`edit_organization_screen.dart`.
+/// Encontrado y corregido en la auditoría del 2026-09-04: antes, la
+/// notificación de rechazo llevaba a `EcoDetailScreen` (solo lectura, sin
+/// este motivo) y guardar acá nunca devolvía la jornada a revisión.
+class _RejectionBanner extends StatelessWidget {
+  const _RejectionBanner({required this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = reason?.trim() ?? '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.gpp_maybe_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Esta jornada necesita ajustes',
+                  style: AppTextStyles.settingsRowTitle.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  trimmed.isEmpty
+                      ? 'El equipo de Níkara la rechazó sin especificar un '
+                            'motivo.'
+                      : trimmed,
+                  style: AppTextStyles.settingsRowCaption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Corrige lo que haga falta y guarda: vuelve a la cola de '
+                  'revisión automáticamente.',
+                  style: AppTextStyles.settingsRowCaption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _OrganizationGate extends StatelessWidget {
   const _OrganizationGate({
     required this.organizations,

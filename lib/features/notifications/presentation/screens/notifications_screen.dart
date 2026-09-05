@@ -4,9 +4,12 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
+import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/domain/models/app_notification.dart';
@@ -146,11 +149,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       switch (notification.type.target) {
         case NotificationTarget.business:
-          await _openBusiness(notification.referenceId!);
+          await _openBusiness(notification);
         case NotificationTarget.ecoActivity:
-          await _openEcoActivity(notification.referenceId!);
+          await _openEcoActivity(notification);
         case NotificationTarget.organization:
-          await _openOrganization(notification.referenceId!);
+          await _openOrganization(notification);
         case NotificationTarget.none:
           break;
       }
@@ -159,7 +162,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _openBusiness(String id) async {
+  /// [notification] llega entero (no solo el id) porque el destino depende
+  /// del tipo: una notificación de rechazo abre el wizard en modo edición
+  /// (con el motivo visible y "Guardar" ya conectado a reenviar a revisión),
+  /// no el detalle de solo lectura — antes ambos tipos abrían lo mismo y el
+  /// rechazo era un callejón sin salida (auditoría del 2026-09-04).
+  Future<void> _openBusiness(AppNotification notification) async {
+    final id = notification.referenceId!;
     BusinessModel? business;
     try {
       // `BusinessStorageService` no expone un `getById`; el listado completo
@@ -190,14 +199,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _showMessage('Este negocio ya no está disponible.');
       return;
     }
+    final rejected = notification.type == NotificationType.businessUnverified;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: business!),
+        builder: (_) => rejected
+            ? RegisterBusinessWizard(existingBusiness: business)
+            : BusinessDetailScreen(business: business!),
       ),
     );
   }
 
-  Future<void> _openEcoActivity(String id) async {
+  Future<void> _openEcoActivity(AppNotification notification) async {
+    final id = notification.referenceId!;
     try {
       final activity = await EcoService().getActivityById(id);
       if (!mounted) return;
@@ -205,15 +218,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _showMessage('Esta jornada ya no está disponible.');
         return;
       }
+      final rejected =
+          notification.type == NotificationType.ecoActivityRejected;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
+        MaterialPageRoute(
+          builder: (_) => rejected
+              ? CreateEcoActivityScreen(existingActivity: activity)
+              : EcoDetailScreen(activity: activity),
+        ),
       );
     } on EcoServiceException catch (e) {
       _showMessage(e.message);
     }
   }
 
-  Future<void> _openOrganization(String id) async {
+  Future<void> _openOrganization(AppNotification notification) async {
+    final id = notification.referenceId!;
     try {
       final organization = await OrganizationService().getById(id);
       if (!mounted) return;
@@ -221,9 +241,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _showMessage('Esta fundación ya no está disponible.');
         return;
       }
+      final rejected =
+          notification.type == NotificationType.organizationRejected;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => OrganizationProfileScreen(organization: organization),
+          builder: (_) => rejected
+              ? EditOrganizationScreen(organization: organization)
+              : OrganizationProfileScreen(organization: organization),
         ),
       );
     } on OrganizationServiceException catch (e) {

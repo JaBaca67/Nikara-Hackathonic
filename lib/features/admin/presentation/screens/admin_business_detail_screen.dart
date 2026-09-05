@@ -121,7 +121,7 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
   Future<void> _approve() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => _ConfirmDialog(
+      builder: (context) => AdminConfirmDialog(
         title: 'Aprobar negocio',
         message:
             'Al aprobarlo, "${_business.name}" queda publicado y visible '
@@ -211,7 +211,7 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
   Future<bool?> _confirm(bool target) {
     return showDialog<bool>(
       context: context,
-      builder: (context) => _ConfirmDialog(
+      builder: (context) => AdminConfirmDialog(
         title: target ? 'Dar el sello' : 'Quitar el sello',
         message: target
             ? '"${_business.name}" va a mostrarse con el sello de verificado '
@@ -292,7 +292,7 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
                     // como "verificado" algo que nadie ve todavía.
                     if (canVerify && _business.reviewStatus.isAprobado) ...[
                       const AdminSectionLabel(label: 'Sello de verificado'),
-                      _SealRow(
+                      AdminSealRow(
                         isVerified: _business.isVerified,
                         enabled: !_saving,
                         onChanged: (_) => _toggleVerification(),
@@ -618,59 +618,6 @@ class _Header extends StatelessWidget {
 
 /// Diálogo de confirmación del panel: mismo cuerpo para las tres decisiones
 /// (aprobar, dar el sello, quitarlo) para que no se separen visualmente.
-class _ConfirmDialog extends StatelessWidget {
-  const _ConfirmDialog({
-    required this.title,
-    required this.message,
-    required this.confirmLabel,
-    required this.confirmColor,
-  });
-
-  final String title;
-  final String message;
-  final String confirmLabel;
-  final Color confirmColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      title: Text(
-        title,
-        style: AppTextStyles.settingsTitle.copyWith(
-          fontSize: 18,
-          color: AppColors.textPrimary,
-        ),
-      ),
-      content: Text(
-        message,
-        style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(
-            'Cancelar',
-            style: AppTextStyles.settingsRowValue.copyWith(
-              color: AppColors.settingsTextMuted,
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: Text(
-            confirmLabel,
-            style: AppTextStyles.settingsRowTitle.copyWith(color: confirmColor),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// Motivo con el que ya se rechazó este negocio, tal cual lo lee su dueño.
 ///
 /// Se muestra dentro de la ficha y no solo en la cola: al reabrir un rechazo
@@ -714,42 +661,6 @@ class _RejectionNotice extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Fila del sello de verificado. Va como interruptor y no como botón de la
-/// barra inferior porque es la acción secundaria: la decisión principal de
-/// esta pantalla es publicar o no.
-class _SealRow extends StatelessWidget {
-  const _SealRow({
-    required this.isVerified,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final bool isVerified;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            isVerified
-                ? 'Muestra el sello de verificado'
-                : 'Sin sello de verificado',
-            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
-          ),
-        ),
-        Switch(
-          value: isVerified,
-          onChanged: enabled ? onChanged : null,
-          activeThumbColor: AppColors.oliveText,
-        ),
-      ],
     );
   }
 }

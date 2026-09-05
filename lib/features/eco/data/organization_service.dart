@@ -262,14 +262,26 @@ class OrganizationService {
           .eq('id', id)
           .eq('owner_id', userId)
           .eq('status', ReviewStatus.rechazado.wireValue)
-          .select('id');
-      if ((updated as List<dynamic>).isEmpty) {
+          .select('id, name');
+      final rows = updated as List<dynamic>;
+      if (rows.isEmpty) {
         throw const OrganizationServiceException(
           'No se pudo reenviar la fundación: ya no existe, no es tuya o no '
           'está rechazada.',
         );
       }
       revision.value++;
+      // Mismo hallazgo que `BusinessStorageService.resubmitBusiness`: sin
+      // esto, reenviar una fundación corregida nunca avisaba a los admins.
+      final name = rows.first['name'] as String? ?? 'una fundación';
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Fundación reenviada a revisión',
+          body:
+              '"$name" corrigió sus datos y está esperando tu revisión '
+              'de nuevo.',
+        ),
+      );
     } on PostgrestException catch (e) {
       throw OrganizationServiceException(
         'No se pudo reenviar la fundación: ${e.message}',

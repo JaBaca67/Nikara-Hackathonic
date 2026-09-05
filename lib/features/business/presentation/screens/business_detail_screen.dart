@@ -22,6 +22,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -147,16 +148,12 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       setState(() => _isFavorite = nowFavorite);
     } on FavoritesServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+    AppSnackbar.showInfo(context, 'Próximamente');
   }
 
   Future<void> _addToRoute() async {
@@ -199,9 +196,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       await _businessStorageService.addReview(_business, review);
     } on ReviewServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
       return;
     }
     if (!mounted) return;
@@ -211,9 +206,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       );
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('¡Gracias por tu reseña! +20 puntos')),
-    );
+    AppSnackbar.showSuccess(context, '¡Gracias por tu reseña! +20 puntos');
   }
 
   /// Enfoca el mapa propio de Níkara (no Google Maps externo) porque el mapa in-app ya traza ruta real y sigue el viaje.
@@ -221,10 +214,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     final lat = _business.latitude;
     final lng = _business.longitude;
     if (lat == null || lng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Este negocio todavía no tiene ubicación en el mapa.'),
-        ),
+      AppSnackbar.showInfo(
+        context,
+        'Este negocio todavía no tiene ubicación en el mapa.',
       );
       return;
     }
@@ -1451,9 +1443,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
   void _submit() {
     final comment = _commentController.text.trim();
     if (comment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escribe un comentario antes de enviar')),
-      );
+      AppSnackbar.showInfo(context, 'Escribe un comentario antes de enviar');
       return;
     }
     Navigator.of(context).pop(

@@ -14,7 +14,15 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// (`revoke update on profiles` + `promote_to_emprendedor()` como único
 /// camino). Habilitarlo requiere un RPC nuevo, no un `update` desde acá.
 class AdminUsersView extends StatefulWidget {
-  const AdminUsersView({super.key});
+  const AdminUsersView({super.key, this.active = true, this.refreshToken = 0});
+
+  /// Ver `AdminReviewView.active`: mismo `IndexedStack`, mismo bug de
+  /// snapshot viejo (ej. el rol recién promovido a "Emprendedor" no se veía
+  /// hasta un pull-to-refresh manual).
+  final bool active;
+
+  /// Ver `AdminReviewView.refreshToken`.
+  final int refreshToken;
 
   @override
   State<AdminUsersView> createState() => _AdminUsersViewState();
@@ -31,6 +39,15 @@ class _AdminUsersViewState extends State<AdminUsersView> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(AdminUsersView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final justActivated = widget.active && !oldWidget.active;
+    final refreshed =
+        widget.active && widget.refreshToken != oldWidget.refreshToken;
+    if (justActivated || refreshed) _load();
   }
 
   Future<void> _load() async {

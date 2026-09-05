@@ -13,7 +13,19 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 /// Métricas globales de la plataforma — **solo admin** (`Permission.viewGlobalMetrics`).
 class AdminMetricsView extends StatefulWidget {
-  const AdminMetricsView({super.key});
+  const AdminMetricsView({
+    super.key,
+    this.active = true,
+    this.refreshToken = 0,
+  });
+
+  /// Ver `AdminReviewView.active`: mismo `IndexedStack`, mismo bug de
+  /// snapshot viejo — aprobar un negocio en "Revisión" y venir directo a
+  /// "Métricas" mostraba el conteo de antes de aprobarlo.
+  final bool active;
+
+  /// Ver `AdminReviewView.refreshToken`.
+  final int refreshToken;
 
   @override
   State<AdminMetricsView> createState() => _AdminMetricsViewState();
@@ -29,6 +41,15 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(AdminMetricsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final justActivated = widget.active && !oldWidget.active;
+    final refreshed =
+        widget.active && widget.refreshToken != oldWidget.refreshToken;
+    if (justActivated || refreshed) _load();
   }
 
   Future<void> _load() async {

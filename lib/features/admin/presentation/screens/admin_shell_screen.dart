@@ -35,7 +35,13 @@ class _AdminDestination {
   /// Título del encabezado cuando este destino está activo.
   final String title;
   final String subtitle;
-  final WidgetBuilder builder;
+
+  /// [active]: si esta es la pestaña visible ahora mismo — ver
+  /// `AdminReviewView.active` para por qué hace falta. [refreshToken]: sube
+  /// en cada toque del botón de recarga del encabezado, sin importar qué
+  /// pestaña esté activa.
+  final Widget Function(BuildContext context, bool active, int refreshToken)
+  builder;
 }
 
 const _kDestinations = <_AdminDestination>[
@@ -81,14 +87,28 @@ const _kDestinations = <_AdminDestination>[
   ),
 ];
 
-Widget _buildPending(BuildContext _) =>
-    const AdminReviewView(status: ReviewStatus.pendiente);
-Widget _buildApproved(BuildContext _) =>
-    const AdminReviewView(status: ReviewStatus.aprobado);
-Widget _buildRejected(BuildContext _) =>
-    const AdminReviewView(status: ReviewStatus.rechazado);
-Widget _buildMetrics(BuildContext _) => const AdminMetricsView();
-Widget _buildUsers(BuildContext _) => const AdminUsersView();
+Widget _buildPending(BuildContext _, bool active, int refreshToken) =>
+    AdminReviewView(
+      status: ReviewStatus.pendiente,
+      active: active,
+      refreshToken: refreshToken,
+    );
+Widget _buildApproved(BuildContext _, bool active, int refreshToken) =>
+    AdminReviewView(
+      status: ReviewStatus.aprobado,
+      active: active,
+      refreshToken: refreshToken,
+    );
+Widget _buildRejected(BuildContext _, bool active, int refreshToken) =>
+    AdminReviewView(
+      status: ReviewStatus.rechazado,
+      active: active,
+      refreshToken: refreshToken,
+    );
+Widget _buildMetrics(BuildContext _, bool active, int refreshToken) =>
+    AdminMetricsView(active: active, refreshToken: refreshToken);
+Widget _buildUsers(BuildContext _, bool active, int refreshToken) =>
+    AdminUsersView(active: active, refreshToken: refreshToken);
 
 /// Experiencia propia de la cuenta `admin` — tier **Funcional**, único
 /// acento de marca Olive.
@@ -129,6 +149,15 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
 
   UserRole? _role;
   int _currentIndex = 0;
+
+  /// Se incrementa al tocar el botón de recarga del encabezado — cada vista
+  /// lo recibe junto a `active` y recarga cuando cambia, sin importar si la
+  /// pestaña ya estaba activa. El refresco automático al cambiar de pestaña
+  /// (`active` false→true) cubre el caso común; esto cubre "ya estoy en
+  /// Revisión, alguien mandó algo nuevo, quiero verlo ahora" sin salir y
+  /// volver a entrar a la pestaña ni depender del gesto de pull-to-refresh,
+  /// que en una lista vacía no siempre es obvio para quien no lo conoce.
+  int _refreshTick = 0;
 
   @override
   void initState() {
@@ -199,13 +228,17 @@ class _AdminShellScreenState extends State<AdminShellScreen> {
             title: current.title,
             subtitle: current.subtitle,
             onExit: widget.onExit ?? () => Navigator.of(context).maybePop(),
+            onRefresh: () => setState(() => _refreshTick++),
           ),
           Expanded(
             child: IndexedStack(
               index: index,
               children: [
-                for (final destination in destinations)
-                  Builder(builder: destination.builder),
+                for (final (i, destination) in destinations.indexed)
+                  Builder(
+                    builder: (context) =>
+                        destination.builder(context, i == index, _refreshTick),
+                  ),
               ],
             ),
           ),
@@ -227,12 +260,17 @@ class _AdminHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onExit,
+    required this.onRefresh,
   });
 
   final UserRole role;
   final String title;
   final String subtitle;
   final VoidCallback onExit;
+
+  /// Recarga la pestaña activa ahora mismo, sin depender de pull-to-refresh
+  /// ni de salir y volver a entrar a la pestaña.
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -280,6 +318,20 @@ class _AdminHeader extends StatelessWidget {
               const Spacer(),
               // 48x48 de área táctil: el mínimo accesible que la auditoría
               // dejó marcado como incumplido en los wrappers de ícono viejos.
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton(
+                  onPressed: onRefresh,
+                  tooltip: 'Recargar',
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                    semanticLabel: 'Recargar',
+                    size: 20,
+                    color: AppColors.settingsTextMuted,
+                  ),
+                ),
+              ),
               SizedBox(
                 width: 48,
                 height: 48,

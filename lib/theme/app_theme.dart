@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:nikara_app/theme/app_colors.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 
 export 'package:nikara_app/theme/app_colors.dart';
 
@@ -890,6 +891,30 @@ abstract class AppTheme {
           color: AppColors.textPrimary,
           fontSize: 11,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+      // Por defecto Material pinta el SnackBar pegado al borde inferior, sin
+      // radio y con el gris casi negro de fábrica — se lee desconectado del
+      // resto de la UI. `floating` + radio + superficie de marca lo acercan
+      // al resto de tarjetas de la app; ver AppSnackbar para variantes con
+      // color/ícono de estado (éxito/error/info) sobre esta misma base.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surface,
+        contentTextStyle: GoogleFonts.nunito(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        actionTextColor: AppColors.oliveText,
+        elevation: 3,
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.lg,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: const BorderSide(color: AppColors.border),
         ),
       ),
     );

@@ -455,6 +455,103 @@ class AdminSectionLabel extends StatelessWidget {
   }
 }
 
+/// Diálogo de confirmación genérico para acciones de admin reversibles pero
+/// visibles en toda la app (dar/quitar el sello de verificado). Compartido
+/// entre `admin_business_detail_screen.dart` y `organization_profile_screen.dart`.
+class AdminConfirmDialog extends StatelessWidget {
+  const AdminConfirmDialog({
+    super.key,
+    required this.title,
+    required this.message,
+    required this.confirmLabel,
+    required this.confirmColor,
+  });
+
+  final String title;
+  final String message;
+  final String confirmLabel;
+  final Color confirmColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      title: Text(
+        title,
+        style: AppTextStyles.settingsTitle.copyWith(
+          fontSize: 18,
+          color: AppColors.textPrimary,
+        ),
+      ),
+      content: Text(
+        message,
+        style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(
+            'Cancelar',
+            style: AppTextStyles.settingsRowValue.copyWith(
+              color: AppColors.settingsTextMuted,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(
+            confirmLabel,
+            style: AppTextStyles.settingsRowTitle.copyWith(color: confirmColor),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Fila del sello de verificado — interruptor y no botón porque es la acción
+/// secundaria (la principal es publicar/aprobar). Compartida entre la ficha
+/// de negocios (`admin_business_detail_screen.dart`) y el perfil de
+/// fundación (`organization_profile_screen.dart`): mismo mecanismo
+/// (`AdminService.setBusinessVerified`/`setOrganizationVerified`), mismo
+/// widget.
+class AdminSealRow extends StatelessWidget {
+  const AdminSealRow({
+    super.key,
+    required this.isVerified,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final bool isVerified;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            isVerified
+                ? 'Muestra el sello de verificado'
+                : 'Sin sello de verificado',
+            style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
+          ),
+        ),
+        Switch(
+          value: isVerified,
+          onChanged: enabled ? onChanged : null,
+          activeThumbColor: AppColors.oliveText,
+        ),
+      ],
+    );
+  }
+}
+
 /// Franja de aprobar/rechazar que se inserta en una pantalla pública (eco,
 /// fundación) cuando quien mira tiene permiso de revisión — nunca reemplaza
 /// contenido de la pantalla, solo se agrega. Mismo texto/color que la barra
