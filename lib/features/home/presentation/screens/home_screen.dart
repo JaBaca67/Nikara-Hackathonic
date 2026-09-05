@@ -72,6 +72,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String _selectedCategory = _kAllCategories;
   _SortMode _sortMode = _SortMode.recientes;
 
+  /// Se abre recién tras el primer load exitoso (mismo criterio que
+  /// `MapScreen`), para no mantener un socket realtime en pantallas que
+  /// nunca llegaron a cargar. Antes de esto, un negocio registrado desde
+  /// otra cuenta/dispositivo solo aparecía en Inicio si esta pantalla se
+  /// reconstruía por otra razón (ej. editar el propio negocio).
+  Future<void> Function()? _unsubscribeBusinessChanges;
+
   /// Hasta 5 negocios, los más recientes primero.
   List<BusinessModel> get _heroBusinesses {
     final businesses = _businesses;
@@ -100,6 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
     NotificationService.revision.removeListener(_onNotificationsChanged);
+    unawaited(_unsubscribeBusinessChanges?.call());
     _photoTimer?.cancel();
     _heroPageController.dispose();
     super.dispose();
@@ -179,6 +187,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _heroPhotoIndex = 0;
       });
       _restartPhotoTimer();
+      _unsubscribeBusinessChanges ??= _businessStorageService
+          .subscribeToBusinessChanges(_onBusinessesChanged);
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);
@@ -322,57 +332,66 @@ class _HomeScreenState extends State<HomeScreen> {
     final categories = _availableCategories(businesses);
     final visible = _visibleBusinesses(businesses);
 
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
-      // Margen extra porque MainLayout usa extendBody: true y la barra de
-      // navegación flotante se superpone al final del scroll.
-      padding: const EdgeInsets.only(bottom: 110),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_role.canAccessAdminPanel)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
-            ),
-          if (heroBusinesses.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadius.lg),
-                child: _HeroCarousel(
-                  controller: _heroPageController,
-                  businesses: heroBusinesses,
-                  activeIndex: heroIndex,
-                  photoIndex: _heroPhotoIndex,
-                  onPageChanged: _onHeroPageChanged,
-                  onSelectPhoto: _selectHeroPhoto,
-                  onTapDetail: _openBusinessDetail,
+    // El realtime de `_unsubscribeBusinessChanges` cubre negocios de otras
+    // cuentas; este gesto es el reload explícito que pidió el usuario para
+    // forzar un refresh manual sin esperar al socket.
+    return RefreshIndicator(
+      onRefresh: _loadBusinesses,
+      color: AppColors.primary500,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: ClampingScrollPhysics(),
+        ),
+        // Margen extra porque MainLayout usa extendBody: true y la barra de
+        // navegación flotante se superpone al final del scroll.
+        padding: const EdgeInsets.only(bottom: 110),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_role.canAccessAdminPanel)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
+              ),
+            if (heroBusinesses.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: _HeroCarousel(
+                    controller: _heroPageController,
+                    businesses: heroBusinesses,
+                    activeIndex: heroIndex,
+                    photoIndex: _heroPhotoIndex,
+                    onPageChanged: _onHeroPageChanged,
+                    onSelectPhoto: _selectHeroPhoto,
+                    onTapDetail: _openBusinessDetail,
+                  ),
                 ),
               ),
+            const SizedBox(height: 16),
+            _CategoryChipsRow(
+              categories: categories,
+              selected: _selectedCategory,
+              onSelect: (category) =>
+                  setState(() => _selectedCategory = category),
             ),
-          const SizedBox(height: 16),
-          _CategoryChipsRow(
-            categories: categories,
-            selected: _selectedCategory,
-            onSelect: (category) =>
-                setState(() => _selectedCategory = category),
-          ),
-          _DestacadosSection(
-            businesses: visible,
-            userPosition: _userPosition,
-            onTap: _openBusinessDetail,
-            onSeeAll: _selectedCategory == _kAllCategories
-                ? null
-                : () => setState(() => _selectedCategory = _kAllCategories),
-          ),
-          if (_userPosition case final position?)
-            _CercaDeTiSection(
-              businesses: businesses,
-              userPosition: position,
+            _DestacadosSection(
+              businesses: visible,
+              userPosition: _userPosition,
               onTap: _openBusinessDetail,
+              onSeeAll: _selectedCategory == _kAllCategories
+                  ? null
+                  : () => setState(() => _selectedCategory = _kAllCategories),
             ),
-        ],
+            if (_userPosition case final position?)
+              _CercaDeTiSection(
+                businesses: businesses,
+                userPosition: position,
+                onTap: _openBusinessDetail,
+              ),
+          ],
+        ),
       ),
     );
   }

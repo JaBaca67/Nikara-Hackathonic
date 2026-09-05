@@ -55,10 +55,24 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   /// Las paradas que se están armando, siempre reindexadas por día.
   late List<RouteStopModel> _stops = [...?widget.initialRoute?.stops];
 
-  /// Fotos de portada — cada elemento es la ruta local que devuelve
-  /// `image_picker` (o, al editar, la URL que ya tenía la ruta). Opcionales:
-  /// sin ninguna, la tarjeta cae de vuelta a las fotos de las paradas.
-  late final List<String> _coverPhotos = [...?widget.initialRoute?.imageUrls];
+  /// Fotos de portada ya subidas — al editar, las URLs que ya tenía la ruta.
+  /// Se suben nuevas recién al guardar (ver [_newCoverPhotos]), no al
+  /// elegirlas, para no dejar archivos huérfanos si se abandona el
+  /// formulario. Opcionales: sin ninguna, la tarjeta cae de vuelta a las
+  /// fotos de las paradas.
+  late final List<String> _coverPhotoUrls = [
+    ...?widget.initialRoute?.imageUrls,
+  ];
+
+  /// Fotos recién elegidas en este formulario, todavía sin subir a Storage.
+  final List<XFile> _newCoverPhotos = [];
+
+  /// Lo que se muestra en la grilla: las ya subidas primero, luego las
+  /// recién elegidas (mostrando su ruta local hasta que se suban).
+  List<String> get _coverPreviewPaths => [
+    ..._coverPhotoUrls,
+    ..._newCoverPhotos.map((x) => x.path),
+  ];
 
   List<RouteStopModel> _catalog = const [];
   bool _loadingCatalog = true;
@@ -205,17 +219,23 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   }
 
   Future<void> _pickCoverPhotos() async {
-    final remaining = _kMaxCoverPhotos - _coverPhotos.length;
+    final remaining = _kMaxCoverPhotos - _coverPreviewPaths.length;
     if (remaining <= 0) return;
     final picked = await ImagePicker().pickMultiImage(limit: remaining);
     if (picked.isEmpty || !mounted) return;
-    setState(
-      () => _coverPhotos.addAll(picked.take(remaining).map((x) => x.path)),
-    );
+    setState(() => _newCoverPhotos.addAll(picked.take(remaining)));
   }
 
+  /// [index] cae sobre la lista combinada de [_coverPreviewPaths]: primero
+  /// las ya subidas, luego las nuevas.
   void _removeCoverPhoto(int index) {
-    setState(() => _coverPhotos.removeAt(index));
+    setState(() {
+      if (index < _coverPhotoUrls.length) {
+        _coverPhotoUrls.removeAt(index);
+      } else {
+        _newCoverPhotos.removeAt(index - _coverPhotoUrls.length);
+      }
+    });
   }
 
   void _changeDays(int delta) {
@@ -255,6 +275,14 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   Future<void> _save() async {
     setState(() => _isSaving = true);
     try {
+      // Las fotos nuevas suben antes del insert/update: si Storage falla, no
+      // queda una ruta guardada apuntando a una imagen que nunca se subió.
+      final uploadedUrls = [
+        for (final image in _newCoverPhotos)
+          await RouteService().uploadImage(image),
+      ];
+      final imageUrls = [..._coverPhotoUrls, ...uploadedUrls];
+
       final initial = widget.initialRoute;
       if (initial == null) {
         await RouteService().createRoute(
@@ -262,7 +290,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           days: _days,
           isPublic: _isPublic,
           stops: _stops,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
       } else {
         await RouteService().updateRoute(
@@ -270,7 +298,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           title: _titleController.text.trim(),
           days: _days,
           isPublic: _isPublic,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
         await RouteService().replaceStops(initial.id, _stops);
       }
@@ -327,7 +355,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                   showError: _titleTouched && !_titleIsValid,
                   days: _days,
                   isPublic: _isPublic,
-                  coverPhotos: _coverPhotos,
+                  coverPhotos: _coverPreviewPaths,
                   onDaysChanged: _changeDays,
                   onPublicChanged: (value) => setState(() => _isPublic = value),
                   onTitleChanged: () => setState(() {}),
