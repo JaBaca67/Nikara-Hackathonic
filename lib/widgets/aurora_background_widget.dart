@@ -190,7 +190,6 @@ class _AuroraPainter extends CustomPainter {
     );
 
     _logoHalo(canvas, size);
-    _leaves(canvas, size);
     _topography(canvas, size);
   }
 
@@ -210,82 +209,6 @@ class _AuroraPainter extends CustomPainter {
         stops: const [0.0, 0.42, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: radius));
     canvas.drawCircle(center, radius, paint);
-  }
-
-  /// Hojas de marca de agua en las esquinas superiores, como en la referencia.
-  /// Se dibujan con [Path] en vez de con un asset: así el color sale de los
-  /// tokens y el tamaño se adapta al ancho real de la pantalla.
-  void _leaves(Canvas canvas, Size size) {
-    // Nacen fuera del lienzo y entran hacia adentro, como en la referencia: una
-    // hoja completa flotando en el medio se leería como un objeto, no como
-    // textura de fondo.
-    //
-    // La mitad inferior lleva las suyas porque el sheet de Auth se puede bajar
-    // y deja el fondo entero a la vista: con hojas solo arriba, esa mitad se
-    // veía vacía. Van algo más tenues para no competir con el logo.
-    const specs = <({double x, double y, double len, double turn, double a})>[
-      (x: -0.06, y: -0.02, len: 0.52, turn: -0.62, a: 0.13),
-      (x: 0.22, y: -0.05, len: 0.34, turn: -1.20, a: 0.10),
-      (x: 1.04, y: 0.01, len: 0.46, turn: 2.62, a: 0.12),
-      (x: 0.78, y: -0.04, len: 0.30, turn: 2.15, a: 0.09),
-      (x: 0.96, y: 0.26, len: 0.30, turn: 1.90, a: 0.15),
-      (x: -0.05, y: 0.44, len: 0.40, turn: -0.30, a: 0.10),
-      (x: 1.06, y: 0.56, len: 0.44, turn: 2.90, a: 0.11),
-      (x: 0.14, y: 0.74, len: 0.34, turn: -1.55, a: 0.09),
-      (x: 0.90, y: 0.86, len: 0.38, turn: 2.35, a: 0.10),
-      (x: 0.44, y: 1.06, len: 0.42, turn: 3.55, a: 0.09),
-      (x: -0.02, y: 1.02, len: 0.30, turn: 3.95, a: 0.08),
-    ];
-    for (final s in specs) {
-      canvas.save();
-      canvas.translate(size.width * s.x, size.height * s.y);
-      canvas.rotate(s.turn);
-      _leaf(
-        canvas,
-        size.width * s.len,
-        AppColors.oliveText.withValues(alpha: s.a),
-      );
-      canvas.restore();
-    }
-  }
-
-  /// Hoja lanceolada: dos curvas simétricas, nervadura central y venas
-  /// laterales. Las venas se dibujan en negativo (borran parte del relleno) —
-  /// sin ellas la silueta se leía como una mancha, no como una hoja.
-  void _leaf(Canvas canvas, double length, Color color) {
-    final w = length * 0.44;
-    final body = Path()
-      ..moveTo(0, 0)
-      ..quadraticBezierTo(w, length * 0.34, 0, length)
-      ..quadraticBezierTo(-w, length * 0.34, 0, 0)
-      ..close();
-
-    // saveLayer para que el BlendMode.dstOut de las venas recorte solo esta
-    // hoja y no lo que ya está pintado debajo.
-    canvas.saveLayer(body.getBounds().inflate(length * 0.05), Paint());
-    canvas.drawPath(body, Paint()..color = color);
-
-    final vein = Paint()
-      ..blendMode = BlendMode.dstOut
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFFFFFFF)
-      ..strokeWidth = math.max(1.0, length * 0.018);
-    // Nervadura central.
-    canvas.drawLine(Offset(0, length * 0.04), Offset(0, length * 0.96), vein);
-    // Venas laterales, en pares que se abren hacia la punta.
-    for (var i = 1; i <= 4; i++) {
-      final at = 0.16 + i * 0.17;
-      final reach = w * (1 - (at - 0.5).abs()) * 0.78;
-      for (final side in const [1.0, -1.0]) {
-        canvas.drawLine(
-          Offset(0, length * at),
-          Offset(side * reach, length * (at + 0.13)),
-          vein,
-        );
-      }
-    }
-    canvas.restore();
   }
 
   /// Textura topográfica sobre todo el fondo. Va en negro a opacidad muy baja:

@@ -42,11 +42,19 @@ class LocalImage extends StatelessWidget {
             height: double.infinity,
             fit: fit,
             alignment: alignment,
-            // Sin esto el hueco queda en blanco mientras descarga, que sobre
-            // un avatar recortado se lee como un borde mal hecho en vez de
-            // como una carga en curso.
-            loadingBuilder: (context, child, progress) =>
-                progress == null ? child : _placeholder(),
+            // `frameBuilder`, no `loadingBuilder`: este último solo reacciona
+            // a los bytes de descarga, así que en una imagen ya en la caché
+            // HTTP o que llega completa en un solo chunk nunca pasa por
+            // "cargando" — hay un frame en blanco entre que el `Image` se
+            // monta y el primer frame decodificado se pinta. `frameBuilder`
+            // cubre ese hueco porque se dispara según frames decodificados,
+            // no bytes de red. Encontrado al reemplazar el logo de una
+            // fundación ya publicada: el círculo se veía blanco un instante
+            // justo después de guardar, como si no hubiera guardado nada.
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+                wasSynchronouslyLoaded || frame != null
+                ? child
+                : _placeholder(),
             errorBuilder: (context, error, stackTrace) => _fallback(),
           )
         : Image.file(
