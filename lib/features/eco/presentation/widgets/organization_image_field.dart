@@ -61,6 +61,7 @@ class OrganizationImageField extends StatelessWidget {
     required this.previewHeight,
     this.previewWidth,
     this.emptyHint = 'Aún sin imagen',
+    this.isCircular = false,
   });
 
   final OrganizationImageSlot slot;
@@ -71,6 +72,15 @@ class OrganizationImageField extends StatelessWidget {
   final double previewHeight;
   final double? previewWidth;
   final String emptyHint;
+
+  /// El logo dobla como foto de perfil de la fundación, así que su vista
+  /// previa tiene que verse como se va a ver ahí: un círculo centrado, no un
+  /// rectángulo. El banner (`isCircular: false`) sigue siendo una portada
+  /// rectangular. Sin esto la vista previa quedaba estirada al ancho de la
+  /// tarjeta por el `CrossAxisAlignment.stretch` del `Column` — el
+  /// `previewWidth` de 96 nunca ganaba porque un `stretch` fuerza un ancho
+  /// exacto sobre cualquier hijo, aunque el hijo pida uno más chico.
+  final bool isCircular;
 
   Future<void> _pick(BuildContext context) async {
     final picked = await ImagePicker().pickImage(
@@ -85,32 +95,44 @@ class OrganizationImageField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (slot.hasImage)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+    // El ancho fijo se envuelve en `Align` para que un `Column` con
+    // `stretch` (como el del formulario que lo llama) no lo desborde al
+    // ancho completo de la tarjeta — ver el comentario de [isCircular].
+    final width = previewWidth ?? double.infinity;
+    final borderRadius = isCircular
+        ? BorderRadius.circular(previewHeight / 2)
+        : BorderRadius.circular(14);
+    final preview = slot.hasImage
+        ? ClipRRect(
+            borderRadius: borderRadius,
             child: SizedBox(
               height: previewHeight,
-              width: previewWidth,
+              width: width,
               child: LocalImage(path: slot.previewPath),
             ),
           )
-        else
-          Container(
+        : Container(
             height: previewHeight,
-            width: previewWidth,
+            width: width,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: AppColors.settingsBackground,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: borderRadius,
               border: Border.all(
                 color: AppColors.settingsTextDark.withValues(alpha: 0.07),
               ),
             ),
-            child: Text(emptyHint, style: AppTextStyles.wizardCaption),
-          ),
+            child: Text(
+              emptyHint,
+              textAlign: TextAlign.center,
+              style: AppTextStyles.wizardCaption,
+            ),
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        isCircular ? Center(child: preview) : preview,
         const SizedBox(height: 10),
         Row(
           children: [

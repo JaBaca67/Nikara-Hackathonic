@@ -144,119 +144,180 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Mismo esqueleto que `EditOrganizationScreen` (header + secciones con
+    // tarjeta + footer fijo): eran la misma pantalla en espíritu —gestionar
+    // fundaciones— pero esta se había quedado con un `AppBar` plano y
+    // secciones sueltas de antes de que existiera ese patrón. Encontrado en
+    // la auditoría visual del 2026-09-06.
     return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        title: Text(
-          'Fundaciones',
-          style: AppTextStyles.sectionTitle.copyWith(fontSize: 17),
-        ),
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.xl,
-            AppSpacing.sm,
-            AppSpacing.xl,
-            AppSpacing.xxxl,
-          ),
-          children: [
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
-                child: Center(
-                  child: CircularProgressIndicator(color: AppColors.oliveText),
+      backgroundColor: AppColors.settingsBackground,
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              EcoFormHeader(
+                title: 'Fundaciones',
+                subtitle: 'Publica jornadas a nombre de tu organización',
+                onBack: () => Navigator.of(context).maybePop(),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.oliveText,
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_myOrganizations.isNotEmpty) ...[
+                              const EcoSectionIntro(
+                                title: 'Tus fundaciones',
+                                subtitle:
+                                    'Tocá una para ver su perfil, o el ícono '
+                                    'para gestionarla.',
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    for (final organization in _myOrganizations)
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 10,
+                                        ),
+                                        child: _OrganizationRow(
+                                          organization: organization,
+                                          onTap: () =>
+                                              _openOrganization(organization),
+                                          onEdit: () =>
+                                              _editOrganization(organization),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            EcoSectionIntro(
+                              title: _myOrganizations.isEmpty
+                                  ? 'Registrar tu fundación'
+                                  : 'Registrar otra fundación',
+                              subtitle:
+                                  'Toda jornada ambiental se publica a nombre '
+                                  'de una fundación, nunca a título personal: '
+                                  'es lo que le da respaldo a una '
+                                  'convocatoria. En cuanto la revisemos '
+                                  '(máximo 24 horas), vas a poder publicar '
+                                  'jornadas con su logo y su nombre.',
+                            ),
+                            EcoFormCard(
+                              children: [
+                                const EcoFieldLabel('Nombre'),
+                                EcoTextField(
+                                  controller: _nameController,
+                                  hint: 'Ej. Fundación Cocibolca Vive',
+                                  validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                      ? 'Escribe el nombre de la fundación.'
+                                      : null,
+                                ),
+                                const SizedBox(height: 18),
+                                const EcoFieldLabel('Handle'),
+                                EcoTextField(
+                                  controller: _handleController,
+                                  hint: 'cocibolcavive',
+                                  prefixText: '@',
+                                  validator: (v) {
+                                    final normalized =
+                                        OrganizationModel.normalizeHandle(
+                                          v ?? '',
+                                        );
+                                    if (normalized.isEmpty) {
+                                      return 'Escribe un handle (letras, '
+                                          'números, punto o _).';
+                                    }
+                                    if (normalized.length < 3) {
+                                      return 'El handle necesita al menos 3 '
+                                          'caracteres.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 18),
+                                const EcoFieldLabel('Descripción / misión'),
+                                EcoTextField(
+                                  controller: _descriptionController,
+                                  hint:
+                                      'Qué hace la fundación y por qué '
+                                      'importa.',
+                                  maxLines: 4,
+                                ),
+                              ],
+                            ),
+                            const EcoSectionIntro(
+                              title: 'Identidad visual',
+                              subtitle:
+                                  'El logo acompaña cada jornada; el banner '
+                                  'es la portada de su perfil.',
+                            ),
+                            EcoFormCard(
+                              children: [
+                                const EcoFieldLabel('Logo'),
+                                OrganizationImageField(
+                                  slot: _logo,
+                                  onChanged: () => setState(() {}),
+                                  previewHeight: 96,
+                                  previewWidth: 96,
+                                  emptyHint: 'Sin logo · se usan las iniciales',
+                                  isCircular: true,
+                                ),
+                                const SizedBox(height: 18),
+                                const EcoFieldLabel('Banner'),
+                                OrganizationImageField(
+                                  slot: _banner,
+                                  onChanged: () => setState(() {}),
+                                  previewHeight: 120,
+                                  emptyHint: 'Sin banner',
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.md,
                 ),
-              )
-            else if (_myOrganizations.isNotEmpty) ...[
-              Text('Tus fundaciones', style: AppTextStyles.detailSectionTitle),
-              const SizedBox(height: 10),
-              for (final organization in _myOrganizations)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _OrganizationRow(
-                    organization: organization,
-                    onTap: () => _openOrganization(organization),
-                    onEdit: () => _editOrganization(organization),
-                  ),
+                decoration: const BoxDecoration(
+                  color: AppColors.surface100,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.detailBottomBarShadow,
+                      offset: Offset(0, -2),
+                      blurRadius: 14,
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 22),
+                child: EcoPrimaryButton(
+                  label: 'Enviar solicitud',
+                  isBusy: _isSaving,
+                  onPressed: _save,
+                ),
+              ),
             ],
-            Text(
-              _myOrganizations.isEmpty
-                  ? 'Registrar tu fundación'
-                  : 'Registrar otra fundación',
-              style: AppTextStyles.detailSectionTitle,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Toda jornada ambiental se publica a nombre de una fundación, '
-              'nunca a título personal: es lo que le da respaldo a una '
-              'convocatoria. Registra la tuya y, en cuanto la revisemos '
-              '(máximo 24 horas), vas a poder publicar jornadas con su logo '
-              'y su nombre.',
-              style: AppTextStyles.settingsSubtitle,
-            ),
-            const SizedBox(height: 18),
-            const EcoFieldLabel('Nombre de la fundación'),
-            EcoTextField(
-              controller: _nameController,
-              hint: 'Ej. Fundación Cocibolca Vive',
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Escribe el nombre de la fundación.'
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            const EcoFieldLabel('Handle'),
-            EcoTextField(
-              controller: _handleController,
-              hint: 'cocibolcavive',
-              prefixText: '@',
-              validator: (v) {
-                final normalized = OrganizationModel.normalizeHandle(v ?? '');
-                if (normalized.isEmpty) {
-                  return 'Escribe un handle (letras, números, punto o _).';
-                }
-                if (normalized.length < 3) {
-                  return 'El handle necesita al menos 3 caracteres.';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            const EcoFieldLabel('Descripción / misión'),
-            EcoTextField(
-              controller: _descriptionController,
-              hint: 'Qué hace la fundación y por qué importa.',
-              maxLines: 4,
-            ),
-            const SizedBox(height: 16),
-            const EcoFieldLabel('Logo'),
-            OrganizationImageField(
-              slot: _logo,
-              onChanged: () => setState(() {}),
-              previewHeight: 96,
-              previewWidth: 96,
-              emptyHint: 'Sin logo · se usan las iniciales',
-            ),
-            const SizedBox(height: 16),
-            const EcoFieldLabel('Banner'),
-            OrganizationImageField(
-              slot: _banner,
-              onChanged: () => setState(() {}),
-              previewHeight: 120,
-              emptyHint: 'Sin banner',
-            ),
-            const SizedBox(height: 28),
-            EcoPrimaryButton(
-              label: 'Enviar solicitud',
-              isBusy: _isSaving,
-              onPressed: _save,
-            ),
-          ],
+          ),
         ),
       ),
     );

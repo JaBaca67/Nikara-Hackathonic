@@ -145,61 +145,52 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
             ? const Center(
                 child: CircularProgressIndicator(color: AppColors.primary500),
               )
-            : Stack(
-                children: [
-                  RefreshIndicator(
-                    color: AppColors.primary500,
-                    onRefresh: _load,
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.xl,
-                        AppSpacing.lg,
-                        AppSpacing.xl,
-                        _navBarClearance + AppSpacing.xxxl,
-                      ),
-                      children: [
-                        _RoutesHeader(count: _myRoutes.length),
-                        const SizedBox(height: 18),
-                        _TabPills(
-                          selected: _tab,
-                          onSelected: (tab) => setState(() => _tab = tab),
-                        ),
-                        const SizedBox(height: 18),
-                        if (_loadError != null)
-                          _RoutesErrorState(
-                            message: _loadError!,
-                            onRetry: _load,
-                          )
-                        else if (filtered.isEmpty)
-                          _RoutesEmptyState(tab: _tab, onCreate: _openWizard)
-                        else
-                          for (final route in filtered)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: AppSpacing.lg,
-                              ),
-                              child: RouteCard(
-                                route: route,
-                                onTap: () => _openDetail(route),
-                                showCreator: isCommunity,
-                                onCopy: isCommunity
-                                    ? () => _quickCopy(route)
-                                    : null,
-                              ),
-                            ),
-                      ],
-                    ),
+            : RefreshIndicator(
+                color: AppColors.primary500,
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.lg,
+                    AppSpacing.xl,
+                    _navBarClearance + AppSpacing.xxxl,
                   ),
-                  // El "+" solo aparece cuando ya hay rutas propias: en el
-                  // estado vacío la acción vive en el botón central "Crear
-                  // ruta", y dos botones para lo mismo compiten entre sí.
-                  if (_myRoutes.isNotEmpty)
-                    Positioned(
-                      right: 4,
-                      bottom: _navBarClearance,
-                      child: _CreateRouteFab(onTap: _openWizard),
+                  children: [
+                    // El "+" vive en la cabecera, junto al conteo — antes era
+                    // un círculo flotante pegado a la barra de navegación,
+                    // sin relación visual con el listado que abre. Solo
+                    // aparece cuando ya hay rutas propias: en el estado
+                    // vacío la acción vive en el botón central "Crear ruta",
+                    // y dos botones para lo mismo compiten entre sí.
+                    _RoutesHeader(
+                      count: _myRoutes.length,
+                      onCreate: _myRoutes.isNotEmpty ? _openWizard : null,
                     ),
-                ],
+                    const SizedBox(height: 18),
+                    _TabPills(
+                      selected: _tab,
+                      onSelected: (tab) => setState(() => _tab = tab),
+                    ),
+                    const SizedBox(height: 18),
+                    if (_loadError != null)
+                      _RoutesErrorState(message: _loadError!, onRetry: _load)
+                    else if (filtered.isEmpty)
+                      _RoutesEmptyState(tab: _tab, onCreate: _openWizard)
+                    else
+                      for (final route in filtered)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+                          child: RouteCard(
+                            route: route,
+                            onTap: () => _openDetail(route),
+                            showCreator: isCommunity,
+                            onCopy: isCommunity
+                                ? () => _quickCopy(route)
+                                : null,
+                          ),
+                        ),
+                  ],
+                ),
               ),
       ),
     );
@@ -207,25 +198,26 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
 }
 
 class _RoutesHeader extends StatelessWidget {
-  const _RoutesHeader({required this.count});
+  const _RoutesHeader({required this.count, this.onCreate});
 
   final int count;
+
+  /// Null oculta el botón — ver el comentario en el `build` que arma este
+  /// header.
+  final VoidCallback? onCreate;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Expanded(
-          child: Text(
-            'Rutas',
-            style: AppTextStyles.headingXL.copyWith(
-              color: AppColors.settingsTextDark,
-              fontSize: 30,
-            ),
-          ),
-        ),
-        if (count > 0)
+        // Antes usaba `headingXL` a 30px/w700 — visiblemente distinto del
+        // título "Perfil" (`profileScreenTitle`, 24px/w900), aunque las dos
+        // pantallas son el mismo nivel de jerarquía (título de pestaña
+        // principal). Se unifica al mismo estilo para que se lean como parte
+        // de la misma app.
+        Expanded(child: Text('Rutas', style: AppTextStyles.profileScreenTitle)),
+        if (count > 0) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.xs),
             child: Text(
@@ -236,7 +228,51 @@ class _RoutesHeader extends StatelessWidget {
               ),
             ),
           ),
+          if (onCreate != null) ...[
+            const SizedBox(width: 12),
+            _HeaderAddButton(onTap: onCreate!),
+          ],
+        ],
       ],
+    );
+  }
+}
+
+/// Botón "+" de la cabecera — 44x44 para cumplir el mínimo táctil de 48x48
+/// que la auditoría de diseño ya marcó en otros ícono-botón de la app (con
+/// el `hitTestBehavior` por defecto de `GestureDetector` el área tocable real
+/// es un poco mayor al recuadro pintado).
+class _HeaderAddButton extends StatelessWidget {
+  const _HeaderAddButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: const BoxDecoration(
+          color: AppColors.primary500,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.detailPrimaryButtonGlow,
+              offset: Offset(0, 3),
+              blurRadius: 10,
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.add_rounded,
+          size: 24,
+          color: AppColors.settingsTextDark,
+          semanticLabel: 'Crear ruta',
+        ),
+      ),
     );
   }
 }
@@ -408,40 +444,6 @@ class _RoutesEmptyState extends StatelessWidget {
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _CreateRouteFab extends StatelessWidget {
-  const _CreateRouteFab({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 62,
-        height: 62,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: AppColors.primary500,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.detailPrimaryButtonGlow,
-              offset: Offset(0, 6),
-              blurRadius: 18,
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.add_rounded,
-          size: 30,
-          color: AppColors.settingsTextDark,
-        ),
       ),
     );
   }

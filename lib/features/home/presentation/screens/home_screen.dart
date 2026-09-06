@@ -60,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final _businessStorageService = BusinessStorageService();
   final _heroPageController = PageController();
+  final _searchController = TextEditingController();
   List<BusinessModel>? _businesses;
   String? _loadError;
   String? _userName;
@@ -73,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
   String _selectedCategory = _kAllCategories;
+  String _searchQuery = '';
   _SortMode _sortMode = _SortMode.recientes;
 
   /// Se abre recién tras el primer load exitoso (mismo criterio que
@@ -113,7 +115,12 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_unsubscribeBusinessChanges?.call());
     _photoTimer?.cancel();
     _heroPageController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _searchQuery = value.trim());
   }
 
   void _onBusinessesChanged() {
@@ -239,10 +246,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return [_kAllCategories, ...categories];
   }
 
+  /// Búsqueda básica: coincide si el texto aparece en el nombre, la ciudad o
+  /// la categoría, sin distinguir mayúsculas — mismo criterio simple que ya
+  /// usa `MapScreen` para su propia barra de búsqueda.
+  List<BusinessModel> _searchFiltered(List<BusinessModel> businesses) {
+    if (_searchQuery.isEmpty) return businesses;
+    final query = _searchQuery.toLowerCase();
+    return businesses
+        .where(
+          (b) =>
+              b.name.toLowerCase().contains(query) ||
+              b.city.toLowerCase().contains(query) ||
+              b.category.toLowerCase().contains(query),
+        )
+        .toList(growable: false);
+  }
+
   List<BusinessModel> _visibleBusinesses(List<BusinessModel> businesses) {
+    final searched = _searchFiltered(businesses);
     final filtered = _selectedCategory == _kAllCategories
-        ? businesses
-        : businesses.where((b) => b.category == _selectedCategory).toList();
+        ? searched
+        : searched.where((b) => b.category == _selectedCategory).toList();
     if (_sortMode == _SortMode.recientes) {
       return filtered.reversed.toList(growable: false);
     }
@@ -298,6 +322,8 @@ class _HomeScreenState extends State<HomeScreen> {
           SearchHeaderWidget(
             userName: _userName,
             isGuest: GuestSessionService().isGuest || !AuthService().isLoggedIn,
+            controller: _searchController,
+            onSearchChanged: _onSearchChanged,
             notificationCount: _unreadNotifications,
             onNotificationTap: _openNotifications,
             onFilterTap: _openFilterSheet,

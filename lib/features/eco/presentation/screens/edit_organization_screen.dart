@@ -229,6 +229,7 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
                             previewHeight: 96,
                             previewWidth: 96,
                             emptyHint: 'Sin logo · se usan las iniciales',
+                            isCircular: true,
                           ),
                           const SizedBox(height: 18),
                           const EcoFieldLabel('Banner'),

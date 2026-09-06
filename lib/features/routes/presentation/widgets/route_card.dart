@@ -196,10 +196,13 @@ class _CreatorHeader extends StatelessWidget {
   }
 }
 
-/// Collage de la tarjeta: una foto grande a la izquierda y dos apiladas a
-/// la derecha. Los huecos que no tienen foto se rellenan con el placeholder
-/// de [LocalImage] — nunca se repite una imagen para simular más contenido
-/// del que la ruta tiene.
+/// Collage de la tarjeta, adaptado a cuántas fotos hay realmente: con 3 o
+/// más se arma una grande a la izquierda y dos apiladas a la derecha (el
+/// diseño original), pero con 1 o 2 ese layout dejaba huecos rellenos con el
+/// placeholder de [LocalImage] — una sola foto se veía como "una foto más
+/// dos placeholders vacíos" en vez de simplemente una portada completa. Con
+/// 0 fotos (todas las paradas sin foto propia) se muestra igual una única
+/// tile de placeholder en vez de fragmentarlo en tres.
 class RoutePhotoCollage extends StatelessWidget {
   const RoutePhotoCollage({super.key, required this.images, this.height = 190});
 
@@ -210,27 +213,44 @@ class RoutePhotoCollage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: Row(
+    return SizedBox(height: height, child: _layout());
+  }
+
+  Widget _layout() {
+    if (images.length <= 1) {
+      return _CollageTile(path: _imageAt(0), height: height);
+    }
+    if (images.length == 2) {
+      return Row(
         children: [
           Expanded(
-            flex: 55,
             child: _CollageTile(path: _imageAt(0), height: height),
           ),
           const SizedBox(width: 8),
           Expanded(
-            flex: 45,
-            child: Column(
-              children: [
-                Expanded(child: _CollageTile(path: _imageAt(1))),
-                const SizedBox(height: 8),
-                Expanded(child: _CollageTile(path: _imageAt(2))),
-              ],
-            ),
+            child: _CollageTile(path: _imageAt(1), height: height),
           ),
         ],
-      ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          flex: 55,
+          child: _CollageTile(path: _imageAt(0), height: height),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 45,
+          child: Column(
+            children: [
+              Expanded(child: _CollageTile(path: _imageAt(1))),
+              const SizedBox(height: 8),
+              Expanded(child: _CollageTile(path: _imageAt(2))),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
