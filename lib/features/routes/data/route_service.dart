@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 
@@ -38,6 +41,60 @@ class RouteService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  /// Bucket público con las fotos de portada (ver
+  /// supabase/sql/027_routes_photos_storage.sql).
+  static const imageBucket = 'routes';
+
+  /// Sube una foto de portada y devuelve su URL pública — mismo patrón que
+  /// `BusinessStorageService.uploadImage`/`OrganizationService.uploadImage`.
+  /// El wizard la llama una vez por foto nueva, al guardar (no al elegirla),
+  /// para no dejar archivos huérfanos si el usuario abandona el formulario.
+  ///
+  /// Antes `routes.image_urls` guardaba la ruta local de `image_picker` — una
+  /// portada que solo existía en el dispositivo que la subió, inútil para
+  /// una ruta publicada en la pestaña Comunidad.
+  Future<String> uploadImage(XFile image) async {
+    final user = AuthService().currentAuthUser;
+    if (user == null) {
+      throw const RouteServiceException(
+        'Necesitas iniciar sesión para subir una foto.',
+      );
+    }
+    final format = resolveImageUploadFormat(
+      image.name,
+      reportedMimeType: image.mimeType,
+    );
+    final objectPath = '${user.id}/${const Uuid().v4()}.${format.extension}';
+    try {
+      // readAsBytes y no File: en web `XFile.path` es un `blob:`, no una ruta.
+      final bytes = await image.readAsBytes();
+      await _client.storage
+          .from(imageBucket)
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: format.mimeType,
+              upsert: false,
+            ),
+          );
+      return _client.storage.from(imageBucket).getPublicUrl(objectPath);
+    } on StorageException catch (e) {
+      // La ruta se acaba de generar, así que un 404 solo puede ser el bucket.
+      if (e.statusCode == '404') {
+        throw const RouteServiceException(
+          'Falta crear el almacenamiento de rutas. Corre '
+          'supabase/sql/027_routes_photos_storage.sql en Supabase.',
+        );
+      }
+      throw RouteServiceException('No se pudo subir la foto: ${e.message}');
+    } catch (_) {
+      throw const RouteServiceException(
+        'No se pudo subir la foto. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
   /// PostgREST no encuentra la columna `image_urls` porque falta la
   /// migración 012. `createRoute`/`updateRoute` degradan a guardar la ruta
   /// sin fotos de portada propias en vez de fallar por completo — el
@@ -51,7 +108,8 @@ class RouteService {
   // Comunidad. Se pide siempre y no solo en [getPublicRoutes]: es un embed
   // liviano y así una ruta propia recién vuelta a cargar también trae el
   // nombre, sin duplicar la constante de select.
-  static const _select = '*, route_stops(*), profiles(id, full_name)';
+  static const _select =
+      '*, route_stops(*), profiles(id, full_name, avatar_url)';
 
   /// Las rutas de la cuenta con sesión abierta, la más reciente primero.
   /// Lista vacía para un invitado: una ruta necesita `owner_id`.
@@ -407,4 +465,21 @@ class RouteService {
       .cast<Map<String, dynamic>>()
       .map(RouteModel.fromRow)
       .toList(growable: false);
+
+  /// Cambios hechos desde otras cuentas o dispositivos: [revision] solo cubre
+  /// los propios, y la pestaña Comunidad es un feed compartido. Si falta la
+  /// migración 016 no llegan eventos y la pantalla sigue funcionando con sus
+  /// fetches normales.
+  Future<void> Function() subscribeToChanges(VoidCallback onChange) {
+    final channel = _client
+        .channel('public:routes')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'routes',
+          callback: (_) => onChange(),
+        )
+        .subscribe();
+    return () => _client.removeChannel(channel);
+  }
 }

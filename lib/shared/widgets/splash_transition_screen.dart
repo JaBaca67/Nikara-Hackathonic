@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
 import 'package:nikara_app/theme/app_theme.dart';
-import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
 /// Pantalla de transición animada reutilizable (Figma node 95:2, "Precarga"); hoy se usa tras auth, pero sirve para cualquier pausa de marca entre pantallas.
 class SplashTransitionScreen extends StatefulWidget {
@@ -100,8 +100,10 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       // Bloquea el gesto/botón de back mientras dura la transición.
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.secundario6,
-        body: AuroraBackgroundWidget(
+        backgroundColor: AppColors.oliveMidFill,
+        body: AuthSceneBackdrop(
+          // El logo del Splash va centrado, no en la franja de arriba como en Auth.
+          logoFocusY: 0.5,
           child: Center(
             child: Padding(
               // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.

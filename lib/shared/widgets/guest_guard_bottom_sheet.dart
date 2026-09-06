@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Acción restringida que un invitado intentó usar; define el copy de [GuestGuardBottomSheet].
@@ -56,7 +57,12 @@ class GuestGuardBottomSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xxl,
+          AppSpacing.md,
+          AppSpacing.xxl,
+          AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -64,8 +70,8 @@ class GuestGuardBottomSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.cardBorder,
-                borderRadius: BorderRadius.circular(999),
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
             ),
             const SizedBox(height: 20),
@@ -100,12 +106,12 @@ class GuestGuardBottomSheet extends StatelessWidget {
                   gradient: const LinearGradient(
                     colors: [AppColors.primary500, AppColors.primary700],
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     onTap: () {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(

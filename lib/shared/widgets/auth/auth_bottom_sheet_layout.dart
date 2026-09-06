@@ -2,9 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
 import 'package:nikara_app/theme/app_theme.dart';
-import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
 /// Estados de reposo del sheet: 0.10 es seguro porque el handle vive dentro del Scrollable; si vuelve a chocar con el gesto "swipe up" de Android, subir este valor (no reubicar el handle).
 const double _kSheetHiddenSize = 0.10;
@@ -14,10 +14,34 @@ const double _kSheetOpenSize = 0.72;
 const double _kContentFadeSpan = 0.08;
 
 /// Gap fijo entre el logo y el borde superior del sheet cuando este lo alcanza.
-const double _kLogoToSheetGap = 14.0;
+const double _kLogoToSheetGap = 20.0;
 
-/// Aumentado de 150 para que "NÍKARA" se lea prominente y nítido; [FittedBox] en el call site evita cortes en pantallas angostas.
-const double _kLogoHeight = 210.0;
+/// Ancho/alto del asset del eslogan ya recortado a su contenido visible (sin
+/// el padding transparente que traía el export original). Igual que
+/// [_kLogoAspectRatio], fijarlo evita depender del tamaño del PNG en disco.
+const double _kSloganAspectRatio = 2110 / 448;
+
+/// Separación entre el logo y el eslogan "Descubre. Conecta. Vive." cuando
+/// el sheet está minimizado y ambos quedan centrados en pantalla. Negativo a
+/// propósito: el SVG del logo trae bastante espacio vacío bajo la palabra
+/// "NÍKARA" dentro de su propio viewBox, así que un gap positivo (o incluso 0)
+/// deja el eslogan flotando lejos del logo — hay que "morder" ese hueco para
+/// que se lea pegado. Pedido explícito de José: subir el eslogan, no el logo
+/// (que ya está centrado correctamente).
+const double _kLogoToSloganGap = -8.0;
+
+/// Techo de altura del logo. En la práctica casi nunca manda: a los anchos de
+/// teléfono reales el limitante es [_kLogoSidePadding] vía la relación de aspecto.
+const double _kLogoMaxHeight = 210.0;
+
+/// Ancho/alto del asset del logo. Fijarlo permite saber la altura que el logo
+/// va a ocupar *antes* de renderizarlo, que es lo que necesita el cálculo de
+/// posición: usar [_kLogoMaxHeight] ahí dejaba un hueco fantasma de ~87dp
+/// entre el logo y el sheet. Actualizar si se cambia el asset.
+const double _kLogoAspectRatio = 2117 / 677;
+
+/// Sube este valor para achicar el logo: es el que decide su ancho real.
+const double _kLogoSidePadding = 40.0;
 
 /// Shell compartido por las pantallas de Auth (Login + los 3 pasos de Register): fondo "Sunset" animado, logo, y un bottom sheet arrastrable con [child]. La altura de [child] decide el tamaño del sheet — un `AnimatedSwitcher` de contenido variable debe top-align el suyo propio.
 class AuthBottomSheetLayout extends StatefulWidget {
@@ -59,38 +83,76 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
           builder: (context, constraints) {
             final availableHeight = constraints.maxHeight;
             final safeTop = MediaQuery.paddingOf(context).top;
-            final baseCenterTop = (availableHeight - _kLogoHeight) / 2;
+            final logoWidth = math.min(
+              constraints.maxWidth - _kLogoSidePadding * 2,
+              _kLogoMaxHeight * _kLogoAspectRatio,
+            );
+            final logoHeight = logoWidth / _kLogoAspectRatio;
 
             return Stack(
               children: [
-                const Positioned.fill(child: AuroraBackgroundWidget()),
+                const Positioned.fill(child: AuthSceneBackdrop()),
                 AnimatedBuilder(
                   animation: _sheetController,
                   builder: (context, _) {
                     final extent = _extent;
                     final sheetTopY = availableHeight * (1 - extent);
-                    final sheetPushedTop =
-                        sheetTopY - _kLogoToSheetGap - _kLogoHeight;
-                    // Reposa al centro salvo que el sheet lo empuje hacia arriba, con clamp para no pasar el status bar.
-                    final logoTop = math
-                        .min(baseCenterTop, sheetPushedTop)
-                        .clamp(safeTop + 8, availableHeight);
+                    // El logo se centra en la franja libre (borde seguro -> techo
+                    // del sheet), no en la pantalla entera: asi queda a media
+                    // altura de lo que realmente se ve y sigue al sheet cuando
+                    // este baja, en vez de quedar colgando de su borde.
+                    final topLimit = safeTop + 8;
+                    final bandBottom = sheetTopY - _kLogoToSheetGap;
+                    final logoTop =
+                        (topLimit + (bandBottom - topLimit - logoHeight) / 2)
+                            .clamp(topLimit, availableHeight);
+                    final sloganOpacity = ((0.58 - extent) / 0.18).clamp(
+                      0.0,
+                      1.0,
+                    );
+                    final sloganWidth = math.min(
+                      constraints.maxWidth - 44,
+                      logoWidth,
+                    );
+                    final sloganHeight = sloganWidth / _kSloganAspectRatio;
                     // AnimatedPositioned (no Positioned) da un pequeño rebote elástico en vez de seguir el extent del sheet 1:1.
-                    return AnimatedPositioned(
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutBack,
-                      top: logoTop,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28),
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            child: const NikaraLogoSvg(height: _kLogoHeight),
+                    return Stack(
+                      children: [
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutBack,
+                          top: logoTop + logoHeight + _kLogoToSloganGap,
+                          left: 0,
+                          right: 0,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOut,
+                            opacity: sloganOpacity,
+                            child: Center(
+                              child: Image.asset(
+                                'assets/images/descubre_conecta_vive.png',
+                                width: sloganWidth,
+                                height: sloganHeight,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.medium,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 320),
+                          curve: Curves.easeOutBack,
+                          top: logoTop,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: NikaraLogoSvg(
+                              width: logoWidth,
+                              height: logoHeight,
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),

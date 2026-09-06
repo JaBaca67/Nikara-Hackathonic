@@ -2,14 +2,24 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/permission_service.dart';
+import 'package:nikara_app/features/admin/data/admin_service.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Acepta [organization] ya cargada (pantalla de gestión) o solo [organizationId] (feed, que no tiene el objeto completo).
@@ -36,6 +46,8 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   List<EcoActivityModel> _activities = const [];
   bool _isLoading = true;
   String? _loadError;
+  bool _savingReview = false;
+  bool _savingSeal = false;
 
   String get _organizationId =>
       widget.organization?.id ?? widget.organizationId!;
@@ -83,6 +95,191 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
 
   int get _upcoming => _activities.where((a) => !a.isPast).length;
 
+  /// Solo el dueño ve el acceso a gestionarla; para el resto es un perfil
+  /// público de lectura.
+  bool get _isOwner {
+    final organization = _organization;
+    return organization != null &&
+        organization.ownerId.isNotEmpty &&
+        organization.ownerId == AuthService().currentAuthUser?.id;
+  }
+
+  bool get _canReview => PermissionService().can(Permission.verifyOrganization);
+
+  Future<void> _approveOrganization() async {
+    final organization = _organization;
+    if (organization == null) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewOrganization(
+        id: organization.id,
+        status: ReviewStatus.aprobado,
+      );
+      await _notifyOwner(organization, approved: true);
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${organization.name}" quedó publicada.')),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  Future<void> _rejectOrganization() async {
+    final organization = _organization;
+    if (organization == null) return;
+    final reason = await showRejectionReasonDialog(
+      context,
+      subjectName: organization.name.isEmpty
+          ? 'esta fundación'
+          : organization.name,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewOrganization(
+        id: organization.id,
+        status: ReviewStatus.rechazado,
+        reason: reason,
+      );
+      await _notifyOwner(organization, approved: false, reason: reason);
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rechazaste "${organization.name}". Le avisamos a quien la registró.',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  /// Mismo mecanismo que el sello de negocios
+  /// (`admin_business_detail_screen.dart`), pero sobre `organizations` — el
+  /// sello es independiente de aprobar/rechazar, así que solo se ofrece
+  /// sobre una fundación ya aprobada.
+  Future<void> _toggleVerification() async {
+    final organization = _organization;
+    if (organization == null) return;
+    final target = !organization.isVerified;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AdminConfirmDialog(
+        title: target ? 'Dar el sello' : 'Quitar el sello',
+        message: target
+            ? '"${organization.name}" va a mostrarse con el sello de '
+                  'verificado en toda la app. No cambia si está publicada o '
+                  'no. ¿Confirmas?'
+            : '"${organization.name}" deja de mostrar el sello de '
+                  'verificado, pero sigue publicada. ¿Confirmas?',
+        confirmLabel: target ? 'Dar el sello' : 'Quitar el sello',
+        confirmColor: target ? AppColors.oliveText : AppColors.destructive,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _savingSeal = true);
+    try {
+      await AdminService().setOrganizationVerified(
+        id: organization.id,
+        isVerified: target,
+      );
+      if (!mounted) return;
+      setState(() => _organization = null);
+      await _load();
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            target
+                ? '"${organization.name}" ya muestra el sello.'
+                : 'Le quitaste el sello a "${organization.name}".',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      setState(() => _savingSeal = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// El aviso al dueño no puede tumbar la revisión: si falla, se registra y
+  /// se sigue — mismo criterio que `AdminService._notifyReviewed`.
+  Future<void> _notifyOwner(
+    OrganizationModel organization, {
+    required bool approved,
+    String? reason,
+  }) async {
+    if (organization.ownerId.isEmpty) return;
+    try {
+      await NotificationService().notifyOrganizationReviewed(
+        ownerId: organization.ownerId,
+        organizationId: organization.id,
+        organizationName: organization.name,
+        approved: approved,
+        reason: reason,
+      );
+    } on NotificationServiceException catch (e) {
+      debugPrint(
+        '[OrganizationProfileScreen] _notifyOwner: no se pudo avisar — '
+        '${e.message}',
+      );
+    }
+  }
+
+  Future<void> _manage(OrganizationModel organization) async {
+    final stillExists = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EditOrganizationScreen(organization: organization),
+      ),
+    );
+    if (!mounted) return;
+    // `false` = se eliminó desde esa pantalla: este perfil ya no tiene qué
+    // mostrar, así que se cierra en vez de recargar un id inexistente.
+    if (stillExists == false) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() => _organization = null);
+    await _load();
+  }
+
   Future<void> _openActivity(EcoActivityModel activity) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
@@ -94,10 +291,10 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
     final organization = _organization;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.ecoActive),
+              child: CircularProgressIndicator(color: AppColors.oliveText),
             )
           : organization == null
           ? _ErrorState(
@@ -105,19 +302,22 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
               onBack: () => Navigator.of(context).maybePop(),
             )
           : ListView(
-              padding: const EdgeInsets.only(bottom: 32),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
               children: [
                 PublicProfileHeader(
                   name: organization.name,
                   handle: organization.handleTag,
                   bannerPath: organization.bannerUrl,
-                  accent: AppColors.ecoActive,
+                  accent: AppColors.oliveText,
                   verified: organization.isVerified,
                   badgeIcon: Icons.eco_rounded,
                   badgeLabel: organization.isVerified
                       ? 'Fundación Ecológica Verificada'
                       : 'Fundación en revisión',
                   onBack: () => Navigator.of(context).maybePop(),
+                  action: _isOwner
+                      ? _ManageButton(onTap: () => _manage(organization))
+                      : null,
                   avatar: organization.logoUrl == null
                       ? _InitialsAvatar(initials: organization.initials)
                       : LocalImage(
@@ -128,14 +328,51 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 PublicProfileStats(
                   items: [
                     (value: '${_activities.length}', label: 'Jornadas'),
-                    (value: '$_volunteers', label: 'Voluntarios'),
+                    (
+                      value: '$_volunteers',
+                      label: _volunteers == 1 ? 'Voluntario' : 'Voluntarios',
+                    ),
                     (value: '$_upcoming', label: 'Próximas'),
                   ],
                 ),
+                if (_canReview)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      0,
+                    ),
+                    child: AdminInlineReviewCard(
+                      status: organization.reviewStatus,
+                      rejectionReason: organization.rejectionReason,
+                      saving: _savingReview,
+                      onApprove: _approveOrganization,
+                      onReject: _rejectOrganization,
+                    ),
+                  ),
+                // El sello solo tiene sentido sobre una fundación ya
+                // publicada — ver `_toggleVerification`.
+                if (_canReview && organization.reviewStatus.isAprobado)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      0,
+                    ),
+                    child: AdminSealRow(
+                      isVerified: organization.isVerified,
+                      enabled: !_savingSeal,
+                      onChanged: (_) => _toggleVerification(),
+                    ),
+                  ),
                 if (organization.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 22),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xl,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -154,7 +391,9 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 ],
                 const SizedBox(height: 22),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                  ),
                   child: Text(
                     'Próximas jornadas',
                     style: AppTextStyles.detailSectionTitle,
@@ -164,8 +403,8 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                 if (_activities.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 24,
+                      horizontal: AppSpacing.xl,
+                      vertical: AppSpacing.xxl,
                     ),
                     child: Text(
                       'Esta fundación todavía no ha publicado jornadas.',
@@ -189,6 +428,54 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   }
 }
 
+/// Acceso a "Gestionar" desde la cabecera del perfil, en el slot de acción de
+/// [PublicProfileHeader].
+class _ManageButton extends StatelessWidget {
+  const _ManageButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          borderRadius: BorderRadius.circular(AppRadius.pill),
+          border: Border.all(color: AppColors.oliveText.withValues(alpha: 0.4)),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.mapControlShadowSoft,
+              offset: Offset(0, 2),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.tune_rounded,
+              size: 15,
+              color: AppColors.oliveText,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Gestionar',
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 12,
+                color: AppColors.oliveText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _InitialsAvatar extends StatelessWidget {
   const _InitialsAvatar({required this.initials});
 
@@ -201,7 +488,7 @@ class _InitialsAvatar extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         initials,
-        style: AppTextStyles.h6.copyWith(color: AppColors.ecoActive),
+        style: AppTextStyles.h6.copyWith(color: AppColors.oliveText),
       ),
     );
   }
@@ -218,7 +505,7 @@ class _ErrorState extends StatelessWidget {
     return SafeArea(
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

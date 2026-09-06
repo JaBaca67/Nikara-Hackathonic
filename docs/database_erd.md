@@ -1,7 +1,7 @@
 # Modelo Entidad-Relación — Nikara
 
 Resumen del esquema completo de Supabase (Postgres) tras aplicar
-`supabase/sql/001` a `013`. Generado para la fase de diagramación —
+`supabase/sql/001` a `018`. Generado para la fase de diagramación —
 `erDiagram` (Mermaid.js) y DBML (dbdiagram.io) al final del documento.
 
 El 100% de las relaciones de identidad de usuario del esquema apuntan a
@@ -14,7 +14,7 @@ el trigger de `001_profiles_trigger_and_rls.sql`.
 
 > Ninguna migración en `supabase/sql/` se aplica automáticamente: cada una
 > se corre a mano en el SQL Editor del dashboard de Supabase, en orden. Este
-> documento asume que las 13 ya corrieron sobre la misma base de datos.
+> documento asume que las 18 ya corrieron sobre la misma base de datos.
 
 ## Tablas
 
@@ -31,7 +31,7 @@ RLS real habilitada — el resto del esquema valida pertenencia en Dart.
 | `phone` | text | |
 | `role` | text | `turista` \| `emprendedor` \| `admin` \| `auditor` — nunca escribible directo por el cliente (ver `promote_to_emprendedor()`) |
 | `points` | int | default 0, sin flujo que lo escriba aún |
-| `avatar_url` | text, null | agregada en `013` |
+| `avatar_url` | text, null | agregada en `013`; URL pública del bucket `avatars` de Storage. `015` otorga el `grant update` que le faltaba — sin él la columna era inescribible desde el cliente |
 
 ### `businesses`
 Negocios turísticos registrados vía el wizard "Registra tu negocio". Tabla
@@ -49,7 +49,9 @@ y columnas creadas fuera de `supabase/sql/` (dashboard); `003`/`007`/`008`/
 | `address_text` | text | |
 | `location` | geography(Point,4326) | índice GiST (`003`) |
 | `phone` | text | |
-| `instagram_handle` | text | |
+| `instagram_handle` | text | sin arroba |
+| `facebook_handle` | text, null | agregada en `018`; antes solo existía en el cache local del dispositivo |
+| `schedules` | text, null | horarios de atención; agregada en `018`, mismo motivo |
 | `photos` | text[] | URL http(s) o ruta local |
 | `is_verified` | bool | solo lo escribe un auditor, fuera de la app |
 | `created_at` | timestamptz | |
@@ -64,15 +66,16 @@ RLS deshabilitada. (`010_organizations.sql`)
 | `name` | text | |
 | `handle` | text, UNIQUE | sin arroba, minúsculas |
 | `description` | text | |
-| `logo_url` | text, null | |
-| `banner_url` | text, null | |
+| `logo_url` | text, null | URL pública del bucket `organizations` de Storage (`017`) |
+| `banner_url` | text, null | igual que `logo_url` |
 | `owner_id` | uuid FK → `profiles.id` | `on delete cascade` |
 | `is_verified` | bool | default `true` (fase de prueba) |
 | `created_at` | timestamptz | |
 
 ### `eco_activities`
 Jornadas/actividades ambientales. RLS deshabilitada.
-(`009_eco_activities.sql`, `010` agrega `organization_id`)
+(`009_eco_activities.sql`, `010` agrega `organization_id`, `014` agrega
+`image_url`)
 
 | Columna | Tipo | Notas |
 |---|---|---|
@@ -81,7 +84,8 @@ Jornadas/actividades ambientales. RLS deshabilitada.
 | `description` | text | |
 | `category` | text | libre, sin enum |
 | `location` | text | etiqueta corta, no dirección completa |
-| `latitude` / `longitude` | double, null | |
+| `latitude` / `longitude` | double, null | punto elegido en el mapa (`MapLocationPicker`), no solo GPS |
+| `image_url` | text, null | portada única: URL pública del bucket `eco_activities` de Storage (`014`) |
 | `start_time` | timestamptz | |
 | `max_capacity` | int, null | null = sin tope |
 | `organizer_id` | uuid FK → `profiles.id`, null | redirigida desde `auth.users.id` en `013`, `on delete set null` |
@@ -110,7 +114,7 @@ Itinerarios por días. RLS deshabilitada. (`011_routes.sql`, `012` agrega
 | `owner_id` | uuid FK → `profiles.id` | `on delete cascade` |
 | `title` | text | |
 | `days` | int | 1..30 |
-| `is_public` | bool | default `false` |
+| `is_public` | bool | default `false`; `016` garantiza que una ruta pública sea legible por otras cuentas (RLS explícitamente deshabilitada + realtime) |
 | `status` | text | `active` \| `completed` |
 | `cloned_from_route_id` | uuid FK → `routes.id` (self), null | `on delete set null` |
 | `created_at` / `updated_at` | timestamptz | |
@@ -209,6 +213,33 @@ diagrama de abajo como en la base de datos real.
 
 ---
 
+## Supabase Storage (fuera del esquema relacional)
+
+| Bucket | Público | Escribe | Contenido |
+|---|---|---|---|
+| `eco_activities` | sí | usuarios autenticados, en `<user_id>/…` | portadas de jornadas ECO (`014_eco_activity_image.sql`) |
+| `avatars` | sí | solo el dueño, en `<user_id>/…` | fotos de perfil (`015_profile_avatars.sql`) |
+| `organizations` | sí | solo el dueño, en `<user_id>/…` | logo y banner de fundaciones (`017_organization_assets.sql`) |
+
+Las demás imágenes (`businesses.image_paths`, `routes.image_urls`) todavía
+guardan rutas locales de `image_picker`, que solo se ven en el dispositivo que
+las eligió — migrarlas a Storage es el siguiente paso natural, no algo que
+`014`/`015`/`017` ya hayan hecho.
+
+A diferencia del resto del esquema, `storage.objects` sí tiene RLS activa
+(no se puede desactivar desde el dashboard), así que cada migración crea sus
+cuatro políticas: lectura anónima, escritura autenticada, y actualizar/borrar
+solo dentro de la carpeta propia del usuario.
+
+> **Por qué `avatars` importa más de lo que parece:** el avatar vivía en
+> `SharedPreferences` bajo una sola clave global, no por usuario. Con el
+> selector de cuentas eso hacía que al alternar de perfil se le pintara al
+> siguiente el avatar del anterior, y que la foto no existiera para nadie más
+> que el propio dispositivo. `profiles.avatar_url` es ahora la única fuente de
+> verdad.
+
+---
+
 ## Diagrama Mermaid.js (`erDiagram`)
 
 ```mermaid
@@ -275,6 +306,7 @@ erDiagram
         text location
         double latitude "nullable"
         double longitude "nullable"
+        text image_url "nullable"
         timestamptz start_time
         int max_capacity "nullable"
         uuid organizer_id FK "nullable"
@@ -401,6 +433,7 @@ Table eco_activities {
   location text
   latitude float [null]
   longitude float [null]
+  image_url text [null, note: "portada, URL publica de Storage"]
   start_time timestamptz
   max_capacity int [null]
   organizer_id uuid [ref: > profiles.id, null, note: "on delete set null"]

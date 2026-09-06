@@ -1,3 +1,6 @@
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
+
 /// Estados 1/2/3 de "fases-pantalla-eco"; derivado siempre desde [EcoActivityModel.status], nunca almacenado.
 enum EcoActivityStatus {
   /// Estado 1 — próxima, sin unirse. "Unirme" (dorado).
@@ -13,6 +16,60 @@ enum EcoActivityStatus {
 /// `eco_activities.category` sigue siendo texto libre (igual que `businesses.category`); este set es solo el curado que ofrece la UI, para no requerir migración por cada categoría nueva.
 const List<String> kEcoCategories = ['Reforestación', 'Fauna', 'Limpieza'];
 
+/// Una persona inscrita en una jornada. `full_name`/`avatar_url` vienen del
+/// embed anidado `eco_participants -> profiles`, así que la lista de
+/// participantes se dibuja con su foto real y enlaza a su perfil público sin
+/// una consulta por persona.
+class EcoParticipant {
+  const EcoParticipant({
+    required this.userId,
+    required this.joinedAt,
+    this.fullName,
+    this.avatarUrl,
+    this.isStaff = false,
+  });
+
+  final String userId;
+  final DateTime joinedAt;
+
+  /// Nulo si `profiles` no fue legible (invitado) o falta la migración 013.
+  final String? fullName;
+  final String? avatarUrl;
+
+  /// `true` si `profiles.role` es `admin`. Una cuenta del equipo puede
+  /// unirse a una jornada como cualquier turista, pero su identidad no debe
+  /// quedar a la vista de otros usuarios en una pantalla pública (ver
+  /// CLAUDE.md > seguridad) — [EcoActivityModel.visibleParticipants] filtra
+  /// por esto antes de dibujar avatares/nombres.
+  final bool isStaff;
+
+  String get displayName {
+    final name = fullName?.trim();
+    return (name == null || name.isEmpty) ? 'Voluntario' : name;
+  }
+
+  String get initials {
+    final parts = displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty);
+    final letters = parts.map((p) => p[0]).take(2).join().toUpperCase();
+    return letters.isEmpty ? '?' : letters;
+  }
+
+  factory EcoParticipant.fromRow(Map<String, dynamic> row) {
+    final profile = row['profiles'] as Map<String, dynamic>?;
+    final role = profile?['role'] as String?;
+    return EcoParticipant(
+      userId: row['user_id'] as String,
+      joinedAt: DateTime.parse(row['joined_at'] as String),
+      fullName: profile?['full_name'] as String?,
+      avatarUrl: profile?['avatar_url'] as String?,
+      isStaff: role == 'admin',
+    );
+  }
+}
+
 /// Fila de `eco_activities` más [participantCount]/[isJoinedByCurrentUser], calculados por [EcoService] desde el embed `eco_participants` en vez de un round-trip aparte.
 class EcoActivityModel {
   const EcoActivityModel({
@@ -23,6 +80,7 @@ class EcoActivityModel {
     required this.location,
     this.latitude,
     this.longitude,
+    this.imageUrl,
     required this.startTime,
     this.maxCapacity,
     this.organizerId,
@@ -35,8 +93,13 @@ class EcoActivityModel {
     this.organizationVerified = false,
     this.requirements = const [],
     required this.createdAt,
+    this.participants = const [],
     this.participantCount = 0,
     this.isJoinedByCurrentUser = false,
+    this.reviewStatus = ReviewStatus.pendiente,
+    this.rejectionReason,
+    this.reviewedAt,
+    this.reviewedBy,
   });
 
   final String id;
@@ -48,6 +111,13 @@ class EcoActivityModel {
   final String location;
   final double? latitude;
   final double? longitude;
+
+  /// Portada única de la jornada: URL pública del bucket `eco_activities` de
+  /// Supabase Storage (ver supabase/sql/014_eco_activity_image.sql). La usan
+  /// por igual la tarjeta del feed, la tarjeta hero y la portada del detalle;
+  /// nula = se cae al ícono de la categoría.
+  final String? imageUrl;
+
   final DateTime startTime;
 
   /// Null significa "sin cupo límite" — [spotsAvailable]/[isFull] lo leen como siempre-abierto.
@@ -70,8 +140,37 @@ class EcoActivityModel {
   final List<String> requirements;
   final DateTime createdAt;
 
+  /// Inscritos con su nombre y foto, en orden de inscripción. Vacía cuando la
+  /// consulta corrió sin el embed anidado de `profiles`; [participantCount] es
+  /// siempre confiable aunque esta lo esté.
+  final List<EcoParticipant> participants;
+
   final int participantCount;
   final bool isJoinedByCurrentUser;
+
+  /// [participants] sin las cuentas admin/auditor — lo que se dibuja en la
+  /// pila de avatares y en la pestaña "Participantes". [participantCount] y
+  /// [isJoinedByCurrentUser] se calculan de la lista **completa**, no de
+  /// esta: una cuenta del equipo que se une sigue contando para el cupo y
+  /// sigue viendo "Abandonar actividad" en su propia sesión, solo no
+  /// aparece con su nombre/foto real para los demás usuarios.
+  List<EcoParticipant> get visibleParticipants =>
+      participants.where((p) => !p.isStaff).toList(growable: false);
+
+  /// Estado de revisión (`eco_activities.status`, migración 019).
+  ///
+  /// Se llama `reviewStatus` y no `status` porque [status] ya existe con otro
+  /// significado en este modelo: la fase de participación que ve el turista
+  /// (disponible/unido/finalizada). Son dos ejes independientes — una jornada
+  /// puede estar `pendiente` de revisión y a la vez `available` en el tiempo.
+  final ReviewStatus reviewStatus;
+
+  /// Motivo del rechazo; solo con valor cuando [reviewStatus] es
+  /// [ReviewStatus.rechazado].
+  final String? rejectionReason;
+
+  final DateTime? reviewedAt;
+  final String? reviewedBy;
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
@@ -123,6 +222,18 @@ class EcoActivityModel {
     return '@$handle';
   }
 
+  /// Compara [query] contra título, categoría, ubicación y organizador —
+  /// mismo buscador que [AdminBusinessSummary.matchesQuery], sin tildes en
+  /// ningún lado (ver [normalizeForSearch]).
+  bool matchesQuery(String query) {
+    final q = normalizeForSearch(query.trim());
+    if (q.isEmpty) return true;
+    return normalizeForSearch(title).contains(q) ||
+        normalizeForSearch(category).contains(q) ||
+        normalizeForSearch(location).contains(q) ||
+        normalizeForSearch(organizerDisplayName).contains(q);
+  }
+
   String get organizerInitials {
     final parts = organizerDisplayName
         .trim()
@@ -145,6 +256,7 @@ class EcoActivityModel {
       location: location,
       latitude: latitude,
       longitude: longitude,
+      imageUrl: imageUrl,
       startTime: startTime,
       maxCapacity: maxCapacity,
       organizerId: organizerId,
@@ -157,8 +269,13 @@ class EcoActivityModel {
       organizationVerified: organizationVerified,
       requirements: requirements,
       createdAt: createdAt,
+      participants: participants,
       participantCount: participantCount,
       isJoinedByCurrentUser: isJoined,
+      reviewStatus: reviewStatus,
+      rejectionReason: rejectionReason,
+      reviewedAt: reviewedAt,
+      reviewedBy: reviewedBy,
     );
   }
 
@@ -167,8 +284,11 @@ class EcoActivityModel {
     String? currentUserId,
   }) {
     // Embed to-many: lista de {user_id, joined_at}, usada para derivar ambos campos sin un round-trip aparte.
-    final participants = (row['eco_participants'] as List<dynamic>? ?? [])
+    final participantRows = (row['eco_participants'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
+    final participants = participantRows
+        .map(EcoParticipant.fromRow)
+        .toList(growable: false);
     // Embed to-one: mapa si la jornada tiene organization_id, null si no, ausente si la consulta corrió sin el embed.
     final organization = row['organizations'] as Map<String, dynamic>?;
     return EcoActivityModel(
@@ -179,6 +299,8 @@ class EcoActivityModel {
       location: row['location'] as String? ?? '',
       latitude: (row['latitude'] as num?)?.toDouble(),
       longitude: (row['longitude'] as num?)?.toDouble(),
+      // Ausente (no solo nula) mientras no haya corrido la migración 014.
+      imageUrl: row['image_url'] as String?,
       startTime: DateTime.parse(row['start_time'] as String),
       maxCapacity: (row['max_capacity'] as num?)?.toInt(),
       organizerId: row['organizer_id'] as String?,
@@ -193,10 +315,15 @@ class EcoActivityModel {
       requirements:
           (row['requirements'] as List<dynamic>?)?.cast<String>() ?? const [],
       createdAt: DateTime.parse(row['created_at'] as String),
+      participants: participants,
       participantCount: participants.length,
       isJoinedByCurrentUser:
           currentUserId != null &&
-          participants.any((p) => p['user_id'] == currentUserId),
+          participants.any((p) => p.userId == currentUserId),
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
     );
   }
 }

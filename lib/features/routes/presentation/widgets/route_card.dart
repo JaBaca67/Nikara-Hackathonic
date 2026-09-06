@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/user_avatar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Tarjeta de una ruta en `RoutesMainScreen` — collage de fotos de portada
@@ -31,10 +34,10 @@ class RouteCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           boxShadow: const [
             BoxShadow(
               color: AppColors.mapControlShadowSoft,
@@ -99,45 +102,60 @@ class RouteCard extends StatelessWidget {
   }
 }
 
-/// Cabecera "de {creador}" de una tarjeta de la pestaña Comunidad — avatar
-/// con iniciales (`profiles` no tiene foto real, ver
-/// `RouteModel.creatorInitials`), nombre y el botón rápido "Copiar ruta".
+/// Cabecera "de {creador}" de una tarjeta de la pestaña Comunidad: foto real
+/// del creador, su nombre —ambos enlazan a su perfil público— y el botón
+/// rápido "Copiar ruta".
 class _CreatorHeader extends StatelessWidget {
   const _CreatorHeader({required this.route, required this.onCopy});
 
   final RouteModel route;
   final VoidCallback? onCopy;
 
+  void _openCreator(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicUserProfileScreen(
+          userId: route.ownerId,
+          fallbackName: route.creatorName,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.warmChipBackground,
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            route.creatorInitials,
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 12,
-              color: AppColors.settingsTextDark,
-            ),
+        // GestureDetector propio, igual que el de "Copiar ruta": abrir el
+        // perfil del creador no debe abrir además el detalle de la ruta.
+        GestureDetector(
+          onTap: route.ownerId.isEmpty ? null : () => _openCreator(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              UserAvatar(
+                avatarUrl: route.creatorAvatarUrl,
+                initials: route.creatorInitials,
+                size: 32,
+                background: AppColors.warmChipBackground,
+                foreground: AppColors.settingsTextDark,
+              ),
+              const SizedBox(width: 10),
+            ],
           ),
         ),
-        const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            route.creatorDisplayName,
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 13,
-              color: AppColors.settingsTextMuted,
+          child: GestureDetector(
+            onTap: route.ownerId.isEmpty ? null : () => _openCreator(context),
+            child: Text(
+              route.creatorDisplayName,
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 13,
+                color: AppColors.settingsTextMuted,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
         if (onCopy != null) ...[
@@ -152,13 +170,14 @@ class _CreatorHeader extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: AppColors.settingsBackground,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.copy_rounded,
+                    semanticLabel: 'Copiar ruta',
                     size: 13,
                     color: AppColors.settingsTextDark,
                   ),
@@ -177,10 +196,13 @@ class _CreatorHeader extends StatelessWidget {
   }
 }
 
-/// Collage de la tarjeta: una foto grande a la izquierda y dos apiladas a
-/// la derecha. Los huecos que no tienen foto se rellenan con el placeholder
-/// de [LocalImage] — nunca se repite una imagen para simular más contenido
-/// del que la ruta tiene.
+/// Collage de la tarjeta, adaptado a cuántas fotos hay realmente: con 3 o
+/// más se arma una grande a la izquierda y dos apiladas a la derecha (el
+/// diseño original), pero con 1 o 2 ese layout dejaba huecos rellenos con el
+/// placeholder de [LocalImage] — una sola foto se veía como "una foto más
+/// dos placeholders vacíos" en vez de simplemente una portada completa. Con
+/// 0 fotos (todas las paradas sin foto propia) se muestra igual una única
+/// tile de placeholder en vez de fragmentarlo en tres.
 class RoutePhotoCollage extends StatelessWidget {
   const RoutePhotoCollage({super.key, required this.images, this.height = 190});
 
@@ -191,27 +213,44 @@ class RoutePhotoCollage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: Row(
+    return SizedBox(height: height, child: _layout());
+  }
+
+  Widget _layout() {
+    if (images.length <= 1) {
+      return _CollageTile(path: _imageAt(0), height: height);
+    }
+    if (images.length == 2) {
+      return Row(
         children: [
           Expanded(
-            flex: 55,
             child: _CollageTile(path: _imageAt(0), height: height),
           ),
           const SizedBox(width: 8),
           Expanded(
-            flex: 45,
-            child: Column(
-              children: [
-                Expanded(child: _CollageTile(path: _imageAt(1))),
-                const SizedBox(height: 8),
-                Expanded(child: _CollageTile(path: _imageAt(2))),
-              ],
-            ),
+            child: _CollageTile(path: _imageAt(1), height: height),
           ),
         ],
-      ),
+      );
+    }
+    return Row(
+      children: [
+        Expanded(
+          flex: 55,
+          child: _CollageTile(path: _imageAt(0), height: height),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 45,
+          child: Column(
+            children: [
+              Expanded(child: _CollageTile(path: _imageAt(1))),
+              const SizedBox(height: 8),
+              Expanded(child: _CollageTile(path: _imageAt(2))),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -225,7 +264,7 @@ class _CollageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: SizedBox(
         height: height,
         width: double.infinity,
@@ -289,7 +328,7 @@ class RouteCategoryChip extends StatelessWidget {
         color: isEco
             ? AppColors.detailActivityIconBg
             : AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         compact ? category.label.toUpperCase() : category.label,
@@ -298,7 +337,7 @@ class RouteCategoryChip extends StatelessWidget {
         style: AppTextStyles.mapRowTitle.copyWith(
           fontSize: compact ? 9.5 : 12,
           letterSpacing: compact ? 0.3 : 0,
-          color: isEco ? AppColors.ecoActive : AppColors.settingsTextDark,
+          color: isEco ? AppColors.oliveText : AppColors.settingsTextDark,
         ),
       ),
     );

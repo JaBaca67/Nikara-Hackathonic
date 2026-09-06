@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 String _timeOfDayGreeting() {
@@ -9,7 +10,7 @@ String _timeOfDayGreeting() {
   return 'Buenas noches';
 }
 
-/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0, ya que no hay feed real de notificaciones aún.
+/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0. El conteo lo alimenta `NotificationService.unreadCount()` desde Inicio — este widget no consulta nada por su cuenta.
 class SearchHeaderWidget extends StatelessWidget {
   const SearchHeaderWidget({
     super.key,
@@ -40,7 +41,15 @@ class SearchHeaderWidget extends StatelessWidget {
         : '${_timeOfDayGreeting()}, $name';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      // PROVISIONAL (2026-08-27): el header llega hasta y=0 (ver docstring de
+      // home_screen.dart) — este padding.top reemplaza al SafeArea que antes
+      // envolvía todo el body, así el saludo no queda debajo de la hora/batería.
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        MediaQuery.of(context).padding.top + AppSpacing.sm,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface100,
         border: Border(bottom: BorderSide(color: AppColors.profileDivider)),
@@ -109,7 +118,7 @@ class _SearchField extends StatelessWidget {
       height: 46,
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: TextField(
@@ -120,7 +129,7 @@ class _SearchField extends StatelessWidget {
         ),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
           hintText: 'Buscar lagunas, tours, restaurantes...',
           hintStyle: AppTextStyles.homeSearchHint,
           prefixIcon: const Icon(
@@ -148,9 +157,9 @@ class _FilterButton extends StatelessWidget {
       label: 'Filtros y orden',
       child: Material(
         color: AppColors.primary500,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: onTap,
           child: const SizedBox(
             width: 46,

@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/map_location_picker.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const List<String> _kCategoryPresets = [
@@ -256,97 +262,150 @@ String _departmentForCity(String city) {
   return _kDepartments.first;
 }
 
-const LatLng _kDefaultMapCenter = LatLng(12.1363, -86.2513);
-
-final LatLngBounds _kMapBounds = LatLngBounds(
-  southwest: const LatLng(7.0, -92.0),
-  northeast: const LatLng(18.5, -77.0),
-);
-
 /// [weekdays] queda vacío en entradas de texto libre porque no se puede mapear texto arbitrario a días reales de forma confiable.
+/// Una franja horaria — cualquier combinación de días de la semana, no solo
+/// los 2 presets fijos que existían antes ("Lunes a viernes"/"Sábado y
+/// domingo"). [weekdays] (1=lunes .. 7=domingo) es la única fuente de verdad;
+/// [daysLabel] siempre se calcula a partir de él, nunca se guarda como texto
+/// suelto — así no puede desincronizarse de los días reales, que era la raíz
+/// del bug encontrado en la auditoría del 2026-09-05: un horario con 2
+/// franjas se guardaba en una sola línea (`sanitizeText` colapsaba el `\n`),
+/// y al no reconocerse como estructurado, todo el texto pasaba a ser una
+/// única "etiqueta de día" con una hora inventada (08:00–17:00) que se
+/// reescribía encima cada vez que alguien volvía a guardar. Ahora, si el
+/// texto guardado no calza con el formato estructurado (`tryParseStructured`
+/// devuelve `null`), la pantalla lo trata como texto libre y lo conserva
+/// literal — nunca lo fuerza a un formato que no le corresponde.
 class _ScheduleEntry {
   _ScheduleEntry({
-    required this.daysLabel,
     required this.weekdays,
     required this.start,
     required this.end,
   });
 
-  String daysLabel;
   Set<int> weekdays;
   TimeOfDay start;
   TimeOfDay end;
 
+  static const Map<int, String> _dayAbbrev = {
+    1: 'L',
+    2: 'M',
+    3: 'M',
+    4: 'J',
+    5: 'V',
+    6: 'S',
+    7: 'D',
+  };
+
+  static const Map<int, String> _dayNames = {
+    1: 'Lunes',
+    2: 'Martes',
+    3: 'Miércoles',
+    4: 'Jueves',
+    5: 'Viernes',
+    6: 'Sábado',
+    7: 'Domingo',
+  };
+
+  /// Compat con datos guardados antes del 2026-09-05, cuando el día se
+  /// guardaba como una de estas 3 etiquetas fijas en vez de números.
+  static const Map<String, Set<int>> _legacyDayLabels = {
+    'Lunes a viernes': {1, 2, 3, 4, 5},
+    'Sábado y domingo': {6, 7},
+    'Todos los días': {1, 2, 3, 4, 5, 6, 7},
+  };
+
   static _ScheduleEntry weekdays9to6() => _ScheduleEntry(
-    daysLabel: 'Lunes a viernes',
     weekdays: {1, 2, 3, 4, 5},
     start: const TimeOfDay(hour: 7, minute: 0),
     end: const TimeOfDay(hour: 18, minute: 0),
   );
 
   static _ScheduleEntry weekend() => _ScheduleEntry(
-    daysLabel: 'Sábado y domingo',
     weekdays: {6, 7},
     start: const TimeOfDay(hour: 6, minute: 0),
     end: const TimeOfDay(hour: 19, minute: 0),
   );
-
-  static const Map<String, Set<int>> _knownDayLabels = {
-    'Lunes a viernes': {1, 2, 3, 4, 5},
-    'Sábado y domingo': {6, 7},
-    'Todos los días': {1, 2, 3, 4, 5, 6, 7},
-  };
 
   static String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   String get hoursLabel => '${_fmt(start)}–${_fmt(end)}';
 
-  String toLine() => '$daysLabel: $hoursLabel';
+  /// Etiqueta legible: colapsa un rango contiguo ("Lunes a Viernes"), nombra
+  /// "Todos los días" para los 7, o lista abreviaturas para combinaciones
+  /// sueltas ("L, X, V") — nunca texto libre inventado.
+  String get daysLabel {
+    if (weekdays.isEmpty) return 'Elige los días';
+    if (weekdays.length == 7) return 'Todos los días';
+    final sorted = weekdays.toList()..sort();
+    final isContiguous = List.generate(
+      sorted.length,
+      (i) => sorted[i] == sorted.first + i,
+    ).every((ok) => ok);
+    if (isContiguous && sorted.length > 1) {
+      return '${_dayNames[sorted.first]} a ${_dayNames[sorted.last]}';
+    }
+    if (sorted.length == 1) return _dayNames[sorted.first]!;
+    return sorted.map((d) => _dayAbbrev[d]).join(', ');
+  }
+
+  String toLine() {
+    final days = (weekdays.toList()..sort()).join(',');
+    return '$days: $hoursLabel';
+  }
+
+  static final _hoursPattern = RegExp(r'^(\d{1,2}):(\d{2})–(\d{1,2}):(\d{2})$');
 
   static _ScheduleEntry? _parseLine(String line) {
     final parts = line.split(': ');
     if (parts.length != 2) return null;
-    final hours = RegExp(
-      r'^(\d{1,2}):(\d{2})–(\d{1,2}):(\d{2})$',
-    ).firstMatch(parts[1]);
+    final hours = _hoursPattern.firstMatch(parts[1]);
     if (hours == null) return null;
-    return _ScheduleEntry(
-      daysLabel: parts[0],
-      weekdays: _knownDayLabels[parts[0]] ?? {},
-      start: TimeOfDay(
-        hour: int.parse(hours.group(1)!),
-        minute: int.parse(hours.group(2)!),
-      ),
-      end: TimeOfDay(
-        hour: int.parse(hours.group(3)!),
-        minute: int.parse(hours.group(4)!),
-      ),
+    final start = TimeOfDay(
+      hour: int.parse(hours.group(1)!),
+      minute: int.parse(hours.group(2)!),
     );
+    final end = TimeOfDay(
+      hour: int.parse(hours.group(3)!),
+      minute: int.parse(hours.group(4)!),
+    );
+    // Formato actual: días como números separados por coma ("1,2,3,4,5").
+    if (RegExp(r'^\d(,\d)*$').hasMatch(parts[0])) {
+      final weekdays = parts[0].split(',').map(int.parse).toSet();
+      if (weekdays.any((d) => d < 1 || d > 7)) return null;
+      return _ScheduleEntry(weekdays: weekdays, start: start, end: end);
+    }
+    // Formato legado: una de las 3 etiquetas fijas de antes del 2026-09-05.
+    final legacyDays = _legacyDayLabels[parts[0]];
+    if (legacyDays != null) {
+      return _ScheduleEntry(weekdays: legacyDays, start: start, end: end);
+    }
+    return null;
   }
 
-  /// Preserva el texto crudo como entrada libre si el formato no matchea, para no perder el horario de negocios guardados antes de este picker estructurado.
-  static List<_ScheduleEntry> parse(String raw) {
+  /// `null` = el texto no calza con ningún formato estructurado reconocido
+  /// (típicamente horario en prosa libre, como "Lunes a Domingo de 6:00 AM a
+  /// 6:00 PM"). La pantalla que llama a esto es responsable de tratarlo como
+  /// texto libre en ese caso — **nunca** hay que forzarlo a una entrada
+  /// estructurada con una hora inventada, que es exactamente el bug que esto
+  /// reemplaza.
+  static List<_ScheduleEntry>? tryParseStructured(String raw) {
     final text = raw.trim();
     if (text.isEmpty) return [weekdays9to6(), weekend()];
     final lines = text
         .split('\n')
         .map((l) => l.trim())
-        .where((l) => l.isNotEmpty);
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return [weekdays9to6(), weekend()];
     final parsed = <_ScheduleEntry>[];
     for (final line in lines) {
       final entry = _parseLine(line);
-      if (entry != null) parsed.add(entry);
+      if (entry == null) return null;
+      parsed.add(entry);
     }
-    if (parsed.isNotEmpty) return parsed;
-    return [
-      _ScheduleEntry(
-        daysLabel: text,
-        weekdays: const {},
-        start: const TimeOfDay(hour: 8, minute: 0),
-        end: const TimeOfDay(hour: 17, minute: 0),
-      ),
-    ];
+    return parsed;
   }
 
   static String format(List<_ScheduleEntry> entries) =>
@@ -393,25 +452,41 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   // --- Paso 1 (4a): Datos generales y contacto ---
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _accessDetailsController = TextEditingController();
+  final _otherNotesController = TextEditingController();
   String _category = _kCategoryPresets.first;
   String _countryCode = _kCountryCodes.first;
   final _phoneController = TextEditingController();
   final _instagramController = TextEditingController();
   final _facebookController = TextEditingController();
-  late List<_ScheduleEntry> _schedule = _ScheduleEntry.parse('');
+  final _tiktokController = TextEditingController();
+  late List<_ScheduleEntry> _schedule = _ScheduleEntry.tryParseStructured('')!;
+  // `true` cuando el horario guardado no calza con el editor estructurado
+  // (típicamente prosa libre escrita a mano, como los 6 negocios reales de
+  // antes del 2026-09-05) — en ese caso se edita como texto plano y se
+  // guarda literal, nunca se fuerza al formato de franjas.
+  bool _scheduleIsFreeform = false;
+  final _freeformScheduleController = TextEditingController();
 
   // --- Paso 2 (4b): Ubicación y pin en el mapa ---
   late String _department = _kDepartments.first;
   late String _city = _kMunicipalitiesByDepartment[_department]!.first;
   final _addressController = TextEditingController();
   GoogleMapController? _mapController;
-  LatLng _mapCenter = _kDefaultMapCenter;
+  LatLng _mapCenter = kNikaraMapCenter;
   LatLng? _confirmedLocation;
   bool _locatingUser = false;
 
   // --- Paso 3 (4c): Galería y atributos ECO ---
   final List<XFile> _images = [];
   final List<String> _existingImagePaths = [];
+  // PROVISIONAL: logo propio de la cara de negocio (Fase B, ver bóveda
+  // "Identidad del negocio - logo propio y anfitrion opcional"). `_logoImage`
+  // es el recién elegido en este wizard (sin subir todavía, igual que
+  // `_images`); `_existingLogoUrl` es lo que ya estaba guardado.
+  XFile? _logoImage;
+  String? _existingLogoUrl;
+  bool _showHost = true;
   bool _ecoSealRequested = false;
   final Set<String> _ecoPractices = {};
   final Set<String> _selectedActivities = {};
@@ -424,17 +499,27 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     ..._images.map((x) => x.path),
   ];
 
+  /// Lo que realmente se guarda en `businesses.schedules` — texto libre tal
+  /// cual si el horario original no era estructurado, o el formato de franjas
+  /// si sí lo es. Nunca se reformatea un texto libre a través del editor
+  /// estructurado (esa reescritura silenciosa era el bug).
+  String get _scheduleValue => _scheduleIsFreeform
+      ? _freeformScheduleController.text.trim()
+      : _ScheduleEntry.format(_schedule);
+
   @override
   void initState() {
     super.initState();
     final business = widget.existingBusiness;
     if (business == null) {
-      _schedule = _ScheduleEntry.parse('');
+      _schedule = _ScheduleEntry.tryParseStructured('')!;
       _locateUser();
       return;
     }
     _nameController.text = business.name;
     _descriptionController.text = business.description;
+    _accessDetailsController.text = business.accessDetails;
+    _otherNotesController.text = business.otherNotes;
     _category = business.category.isEmpty
         ? _kCategoryPresets.first
         : business.category;
@@ -448,13 +533,23 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _phoneController.text = phoneParts.$2;
     _instagramController.text = business.instagramLink;
     _facebookController.text = business.facebookLink;
-    _schedule = _ScheduleEntry.parse(business.schedules);
+    _tiktokController.text = business.tiktokLink;
+    final structured = _ScheduleEntry.tryParseStructured(business.schedules);
+    if (structured == null) {
+      _scheduleIsFreeform = true;
+      _freeformScheduleController.text = business.schedules;
+      _schedule = [_ScheduleEntry.weekdays9to6(), _ScheduleEntry.weekend()];
+    } else {
+      _schedule = structured;
+    }
     if (business.latitude != null && business.longitude != null) {
       final existingLocation = LatLng(business.latitude!, business.longitude!);
       _mapCenter = existingLocation;
       _confirmedLocation = existingLocation;
     }
     _existingImagePaths.addAll(business.localImagePaths);
+    _existingLogoUrl = business.logoUrl;
+    _showHost = business.showHost;
     _ecoSealRequested = business.ecoSealRequested;
     _ecoPractices.addAll(business.ecoPractices);
     _selectedActivities.addAll(business.activities);
@@ -477,10 +572,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _pageController.dispose();
     _nameController.dispose();
     _descriptionController.dispose();
+    _accessDetailsController.dispose();
+    _otherNotesController.dispose();
     _phoneController.dispose();
     _instagramController.dispose();
     _facebookController.dispose();
+    _tiktokController.dispose();
     _addressController.dispose();
+    _freeformScheduleController.dispose();
     _customActivityController.dispose();
     _mapController?.dispose();
     super.dispose();
@@ -609,6 +708,23 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     setState(() => _images.addAll(picked));
   }
 
+  Future<void> _pickLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _logoImage = picked;
+      _existingLogoUrl = null;
+    });
+  }
+
+  void _removeLogo() {
+    setState(() {
+      _logoImage = null;
+      _existingLogoUrl = null;
+    });
+  }
+
   /// El índice 0 siempre es la portada.
   void _removeImageAt(int index) {
     setState(() {
@@ -656,14 +772,17 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
       instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
       facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
-      tiktokLink: existing?.tiktokLink ?? '',
-      allowsReservations: false,
+      tiktokLink: _tiktokController.text.trim().replaceFirst('@', ''),
       amenities: _selectedAmenities.toList(),
       activities: _selectedActivities.toList(),
       ecoSealRequested: _ecoSealRequested,
       ecoPractices: _ecoPractices.toList(),
       hostName: existing?.hostName ?? '',
-      schedules: _ScheduleEntry.format(_schedule),
+      logoUrl: _logoImage?.path ?? _existingLogoUrl,
+      showHost: _showHost,
+      schedules: _scheduleValue,
+      accessDetails: _accessDetailsController.text.trim(),
+      otherNotes: _otherNotesController.text.trim(),
       localImagePaths: _allPhotoPaths,
       reviews: existing?.reviews ?? const [],
       isVerified: existing?.isVerified ?? false,
@@ -710,46 +829,75 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       return;
     }
 
-    final business = BusinessModel(
-      id: existing?.id ?? const Uuid().v4(),
-      name: _nameController.text.trim(),
-      category: _category,
-      description: _descriptionController.text.trim(),
-      city: _city,
-      locationText: _addressController.text.trim(),
-      latitude: location.latitude,
-      longitude: location.longitude,
-      contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
-      instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
-      facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
-      tiktokLink: existing?.tiktokLink ?? '',
-      socialMediaLink: existing?.socialMediaLink ?? '',
-      allowsReservations: existing?.allowsReservations ?? false,
-      price: existing?.price,
-      amenities: _selectedAmenities.toList(),
-      activities: _selectedActivities.toList(),
-      ecoSealRequested: _ecoSealRequested,
-      ecoPractices: _ecoPractices.toList(),
-      hostName: hostName,
-      ownerId: ownerId,
-      schedules: _ScheduleEntry.format(_schedule),
-      accessDetails: existing?.accessDetails ?? '',
-      otherNotes: existing?.otherNotes ?? '',
-      localImagePaths: _allPhotoPaths,
-      reviews: existing?.reviews ?? const [],
-      isVerified: existing?.isVerified ?? false,
-    );
-
-    debugPrint(
-      '[RegisterBusinessWizard] _finish(): about to save "${business.name}" '
-      '(${_isEditing ? 'update' : 'create'}) with confirmedLocation='
-      '(lat=${location.latitude}, lng=${location.longitude}), '
-      'mapCenter=(lat=${_mapCenter.latitude}, lng=${_mapCenter.longitude})',
-    );
-
     try {
+      // Se sube recién acá, no al elegir la foto: si el usuario abandona el
+      // formulario a mitad de camino, no queda un archivo huérfano en
+      // Storage. Las que ya venían de un negocio existente (URL de Storage o,
+      // en negocios viejos, path local de otro dispositivo) se dejan tal
+      // cual — solo lo recién elegido en este wizard necesita subirse.
+      final uploadedNewPhotos = <String>[
+        for (final image in _images) await _storageService.uploadImage(image),
+      ];
+      final photoPaths = [..._existingImagePaths, ...uploadedNewPhotos];
+      final logoImage = _logoImage;
+      final logoUrl = logoImage == null
+          ? _existingLogoUrl
+          : await _storageService.uploadImage(logoImage);
+
+      final business = BusinessModel(
+        id: existing?.id ?? const Uuid().v4(),
+        name: _nameController.text.trim(),
+        category: _category,
+        description: _descriptionController.text.trim(),
+        city: _city,
+        locationText: _addressController.text.trim(),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        contactPhone: '$_countryCode ${_phoneController.text.trim()}'.trim(),
+        instagramLink: _instagramController.text.trim().replaceFirst('@', ''),
+        facebookLink: _facebookController.text.trim().replaceFirst('@', ''),
+        tiktokLink: _tiktokController.text.trim().replaceFirst('@', ''),
+        amenities: _selectedAmenities.toList(),
+        activities: _selectedActivities.toList(),
+        ecoSealRequested: _ecoSealRequested,
+        ecoPractices: _ecoPractices.toList(),
+        hostName: hostName,
+        logoUrl: logoUrl,
+        showHost: _showHost,
+        ownerId: ownerId,
+        schedules: _scheduleValue,
+        accessDetails: _accessDetailsController.text.trim(),
+        otherNotes: _otherNotesController.text.trim(),
+        localImagePaths: photoPaths,
+        reviews: existing?.reviews ?? const [],
+        isVerified: existing?.isVerified ?? false,
+      );
+
+      debugPrint(
+        '[RegisterBusinessWizard] _finish(): about to save "${business.name}" '
+        '(${_isEditing ? 'update' : 'create'}) with confirmedLocation='
+        '(lat=${location.latitude}, lng=${location.longitude}), '
+        'mapCenter=(lat=${_mapCenter.latitude}, lng=${_mapCenter.longitude})',
+      );
+
       if (existing != null) {
         await _storageService.updateBusiness(business);
+        // Editar y guardar por sí solo no lo devolvía a la cola de revisión
+        // — ver `_RejectionBanner`. Sin este paso, el ciclo rechazar →
+        // corregir → reenviar quedaba roto en la mitad.
+        if (existing.reviewStatus.isRechazado) {
+          try {
+            await _storageService.resubmitBusiness(existing.id);
+          } on BusinessServiceException catch (e) {
+            if (!mounted) return;
+            setState(() => _isSaving = false);
+            _snack(
+              'Guardamos tus cambios, pero no pudimos reenviarlo a '
+              'revisión: ${e.message}',
+            );
+            return;
+          }
+        }
         if (!mounted) return;
         Navigator.of(context).pop(business);
         return;
@@ -808,11 +956,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   Widget _card({required List<Widget> children, EdgeInsets? padding}) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: padding ?? const EdgeInsets.all(16),
+      padding: padding ?? const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         border: Border.all(color: AppColors.mapControlBorder),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailCardGlow,
@@ -843,16 +991,19 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   Widget _buildStep1() {
+    final existing = widget.existingBusiness;
     return Column(
       children: [
         _header('Paso 1 de 4 · borrador guardado'),
         _WizardStepper(step: 0),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (existing != null && existing.reviewStatus.isRechazado)
+                  _RejectionBanner(reason: existing.rejectionReason),
                 _sectionIntro(
                   'Datos generales',
                   'Cuéntanos qué ofreces y cómo te contactan.',
@@ -921,6 +1072,28 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       maxLines: 4,
                       maxLength: 160,
                     ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'ACCESO PARA VISITANTES (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 7),
+                    _WizardTextField(
+                      controller: _accessDetailsController,
+                      hint: 'Parqueo, senderos, accesibilidad...',
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'OTROS ASPECTOS A DESTACAR (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 7),
+                    _WizardTextField(
+                      controller: _otherNotesController,
+                      hint: 'Cualquier otra cosa que quieras contar',
+                      maxLines: 3,
+                    ),
                   ],
                 ),
                 _card(
@@ -939,8 +1112,18 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         Expanded(
                           child: _WizardTextField(
                             controller: _phoneController,
-                            hint: '8123 4567',
+                            hint: '8123-4567',
                             keyboardType: TextInputType.phone,
+                            // Mismo formateador que el celular en el registro
+                            // de cuenta (register_screen.dart) — un mismo
+                            // dato no debería verse distinto según qué
+                            // formulario lo pida.
+                            inputFormatters: _countryCode == '+505'
+                                ? const [NicaraguaPhoneInputFormatter()]
+                                : [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(12),
+                                  ],
                           ),
                         ),
                       ],
@@ -952,7 +1135,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         const Icon(
                           Icons.info_outline,
                           size: 14,
-                          color: AppColors.accent300,
+                          color: AppColors.oliveText,
                         ),
                         const SizedBox(width: 6),
                         Expanded(
@@ -984,6 +1167,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       controller: _facebookController,
                       hint: 'facebook.com/tunegocio',
                     ),
+                    const SizedBox(height: 8),
+                    _SocialField(
+                      icon: Icons.music_note_rounded,
+                      iconBg: AppColors.neutral900.withValues(alpha: 0.1),
+                      iconColor: AppColors.neutral900,
+                      controller: _tiktokController,
+                      hint: '@tunegocio',
+                    ),
                   ],
                 ),
                 _card(
@@ -999,62 +1190,119 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _OpenNowPill(entries: _schedule),
+                        if (!_scheduleIsFreeform)
+                          _OpenNowPill(entries: _schedule),
                       ],
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      'Con esto Níkara calcula el estado que ven los viajeros en tiempo real.',
+                      _scheduleIsFreeform
+                          ? 'Este horario está escrito como texto libre — Níkara no '
+                                'puede calcular "abierto ahora" con esto.'
+                          : 'Con esto Níkara calcula el estado que ven los viajeros en tiempo real.',
                       style: AppTextStyles.wizardCaption,
                     ),
                     const SizedBox(height: 12),
-                    Column(
-                      children: [
-                        for (var i = 0; i < _schedule.length; i++) ...[
-                          _ScheduleRow(
-                            entry: _schedule[i],
-                            onChanged: (updated) =>
-                                setState(() => _schedule[i] = updated),
-                            onRemove: _schedule.length > 1
-                                ? () => setState(() => _schedule.removeAt(i))
-                                : null,
+                    if (_scheduleIsFreeform)
+                      TextField(
+                        controller: _freeformScheduleController,
+                        maxLines: 3,
+                        style: AppTextStyles.wizardFieldValue,
+                        decoration: InputDecoration(
+                          hintText: 'Ej: Lunes a domingo de 8:00 AM a 6:00 PM',
+                          filled: true,
+                          fillColor: AppColors.settingsBackground,
+                          contentPadding: const EdgeInsets.all(12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide(
+                              color: AppColors.settingsTextDark.withValues(
+                                alpha: 0.07,
+                              ),
+                            ),
                           ),
-                          if (i != _schedule.length - 1)
-                            const SizedBox(height: 8),
+                        ),
+                      )
+                    else
+                      Column(
+                        children: [
+                          for (var i = 0; i < _schedule.length; i++) ...[
+                            _ScheduleRow(
+                              entry: _schedule[i],
+                              onChanged: (updated) =>
+                                  setState(() => _schedule[i] = updated),
+                              onRemove: _schedule.length > 1
+                                  ? () => setState(() => _schedule.removeAt(i))
+                                  : null,
+                            ),
+                            if (i != _schedule.length - 1)
+                              const SizedBox(height: 8),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                     const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: () => setState(
-                        () => _schedule.add(
-                          _ScheduleEntry(
-                            daysLabel: 'Otro día',
-                            weekdays: const {},
-                            start: const TimeOfDay(hour: 8, minute: 0),
-                            end: const TimeOfDay(hour: 17, minute: 0),
+                    if (!_scheduleIsFreeform)
+                      GestureDetector(
+                        onTap: () => setState(
+                          () => _schedule.add(
+                            _ScheduleEntry(
+                              weekdays: const {},
+                              start: const TimeOfDay(hour: 8, minute: 0),
+                              end: const TimeOfDay(hour: 17, minute: 0),
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.add,
+                                size: 16,
+                                color: AppColors.oliveText,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Agregar otra franja',
+                                  style: AppTextStyles.detailInlineLink,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        if (_scheduleIsFreeform) {
+                          // Texto libre -> estructurado: si lo que hay
+                          // escrito ahora sí calza con el formato de franjas,
+                          // se aprovecha; si no, arranca de los valores por
+                          // defecto en vez de perder el texto en silencio.
+                          final parsed = _ScheduleEntry.tryParseStructured(
+                            _freeformScheduleController.text,
+                          );
+                          _schedule =
+                              parsed ??
+                              [
+                                _ScheduleEntry.weekdays9to6(),
+                                _ScheduleEntry.weekend(),
+                              ];
+                        } else {
+                          _freeformScheduleController.text =
+                              _ScheduleEntry.format(_schedule);
+                        }
+                        _scheduleIsFreeform = !_scheduleIsFreeform;
+                      }),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.add,
-                              size: 16,
-                              color: AppColors.accent300,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                'Agregar un día distinto',
-                                style: AppTextStyles.detailInlineLink,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          _scheduleIsFreeform
+                              ? 'Usar el editor de franjas'
+                              : 'Escribir el horario como texto libre',
+                          style: AppTextStyles.detailInlineLink,
                         ),
                       ),
                     ),
@@ -1082,7 +1330,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 1),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1165,7 +1413,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                               border: Border.all(
                                 color: AppColors.mapControlBorder,
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.pill,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1196,7 +1446,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    _MapLocationPicker(
+                    MapLocationPicker(
                       initialCenter: _mapCenter,
                       onMapCreated: (controller) => _mapController = controller,
                       onCameraMove: (center) => _mapCenter = center,
@@ -1213,7 +1463,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         const Icon(
                           Icons.touch_app,
                           size: 15,
-                          color: AppColors.accent300,
+                          color: AppColors.oliveText,
                         ),
                         const SizedBox(width: 7),
                         Expanded(
@@ -1236,7 +1486,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           border: Border.all(
                             color: AppColors.primary500.withValues(alpha: 0.45),
                           ),
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -1268,14 +1518,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.detailActivityIconBg,
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                         ),
                         child: Row(
                           children: [
                             const Icon(
                               Icons.check_circle,
                               size: 16,
-                              color: AppColors.accent300,
+                              color: AppColors.oliveText,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -1287,7 +1537,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     .copyWith(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.accent300,
+                                      color: AppColors.oliveText,
                                     ),
                               ),
                             ),
@@ -1313,6 +1563,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   Widget _buildStep3() {
     final photos = _allPhotoPaths;
+    final logoPath = _logoImage?.path ?? _existingLogoUrl;
     final customActivities = _selectedActivities.where(
       (a) => !_kActivityPresets.contains(a),
     );
@@ -1322,7 +1573,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 2),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1344,7 +1595,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           height: 158,
                           decoration: BoxDecoration(
                             color: AppColors.wizardUploadZoneBg,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             border: Border.all(
                               color: AppColors.primary500.withValues(
                                 alpha: 0.6,
@@ -1384,7 +1635,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       )
                     else
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         child: SizedBox(
                           height: 158,
                           width: double.infinity,
@@ -1395,14 +1646,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.only(top: AppSpacing.lg),
                           child: Text(
                             'GALERÍA',
                             style: AppTextStyles.wizardFieldLabel,
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.only(top: 16),
+                          padding: const EdgeInsets.only(top: AppSpacing.lg),
                           child: Text(
                             '${photos.length} de 10',
                             style: AppTextStyles.wizardCaption.copyWith(
@@ -1479,7 +1730,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: AppColors.detailCoverCounterBg,
-                                      borderRadius: BorderRadius.circular(999),
+                                      borderRadius: BorderRadius.circular(
+                                        AppRadius.pill,
+                                      ),
                                     ),
                                     child: Text(
                                       'Portada',
@@ -1505,6 +1758,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                     ),
                                     child: const Icon(
                                       Icons.close,
+                                      semanticLabel: 'Quitar foto',
                                       size: 12,
                                       color: AppColors.surface100,
                                     ),
@@ -1523,8 +1777,111 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     ),
                   ],
                 ),
+                // PROVISIONAL (Fase B, 2026-08-27): logo propio + anfitrión
+                // opcional, ver bóveda "Identidad del negocio - logo propio y
+                // anfitrion opcional". Cambiar esto después de publicado no
+                // reabre la revisión: es presentación, no algo que se verificó.
                 _card(
-                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Text(
+                      'Identidad de tu negocio',
+                      style: AppTextStyles.wizardCardTitle,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Cómo te van a reconocer los viajeros, separado de la galería.',
+                      style: AppTextStyles.wizardCaption,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'LOGO (OPCIONAL)',
+                      style: AppTextStyles.wizardFieldLabel,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: _pickLogo,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.md),
+                            child: SizedBox(
+                              width: 64,
+                              height: 64,
+                              child: logoPath == null
+                                  ? Container(
+                                      color: AppColors.wizardUploadZoneBg,
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.add_photo_alternate_outlined,
+                                        color: AppColors.primary500,
+                                      ),
+                                    )
+                                  : LocalImage(path: logoPath),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Tu avatar dentro de la app. Sin logo, mostramos '
+                            'tus iniciales.',
+                            style: AppTextStyles.wizardCaption,
+                          ),
+                        ),
+                        if (logoPath != null)
+                          GestureDetector(
+                            onTap: _removeLogo,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: AppColors.removeButtonBackground,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                semanticLabel: 'Quitar logo',
+                                size: 13,
+                                color: AppColors.surface100,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Mostrarme como anfitrión',
+                                style: AppTextStyles.wizardCardTitle,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Tu perfil y tu foto aparecen en el detalle '
+                                'público de este negocio.',
+                                style: AppTextStyles.wizardCaption,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _showHost,
+                          onChanged: (v) => setState(() => _showHost = v),
+                          activeThumbColor: AppColors.surface100,
+                          activeTrackColor: AppColors.primary500,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                _card(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   children: [
                     Row(
                       children: [
@@ -1538,7 +1895,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                           child: const Icon(
                             Icons.eco,
-                            color: AppColors.accent300,
+                            color: AppColors.oliveText,
                           ),
                         ),
                         const SizedBox(width: 11),
@@ -1563,7 +1920,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           onChanged: (v) =>
                               setState(() => _ecoSealRequested = v),
                           activeThumbColor: AppColors.surface100,
-                          activeTrackColor: AppColors.accent300,
+                          activeTrackColor: AppColors.oliveText,
                         ),
                       ],
                     ),
@@ -1586,7 +1943,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
                                     color: _ecoPractices.contains(practice)
-                                        ? AppColors.accent300
+                                        ? AppColors.oliveText
                                         : null,
                                     border: _ecoPractices.contains(practice)
                                         ? null
@@ -1630,7 +1987,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           ),
                           decoration: BoxDecoration(
                             color: AppColors.settingsBackground,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1739,6 +2096,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             ),
                             child: const Icon(
                               Icons.add,
+                              semanticLabel: 'Agregar actividad',
                               size: 22,
                               color: AppColors.settingsTextDark,
                             ),
@@ -1813,7 +2171,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardStepper(step: 3),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1822,7 +2180,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                   'Revisa tu tarjeta antes de enviarla a publicación.',
                 ),
                 _card(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
@@ -1924,7 +2282,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.settingsBackground,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1939,9 +2297,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             child: Text(
                               draft.isVerified
                                   ? 'Tu negocio ya muestra el sello de verificado en su perfil.'
-                                  : 'Tu negocio se publica de inmediato y queda visible para '
-                                        'todos; el sello de verificado se agrega después de una '
-                                        'revisión manual del equipo de Níkara.',
+                                  : 'El equipo de Níkara revisa tu negocio antes de publicarlo, '
+                                        'en un máximo de 24 horas. Te avisamos cuando quede '
+                                        'visible para todos.',
                               style: AppTextStyles.wizardCaption.copyWith(
                                 color: AppColors.detailMutedRow,
                               ),
@@ -1959,7 +2317,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         _WizardFooter(
           primaryLabel: _isSaving
               ? 'Guardando...'
-              : (_isEditing ? 'Guardar cambios' : 'Publicar'),
+              : (_isEditing ? 'Guardar cambios' : 'Enviar solicitud'),
           primaryIcon: _isEditing ? Icons.save_outlined : Icons.send,
           onPrimary: _isSaving ? null : _finish,
           secondaryLabel: 'Vista previa',
@@ -1967,6 +2325,64 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           onSecondary: _openPreview,
         ),
       ],
+    );
+  }
+}
+
+/// Motivo del rechazo, visible al dueño al editar — antes invisible: la
+/// notificación de rechazo llevaba a `BusinessDetailScreen` (solo lectura,
+/// sin este motivo) y guardar ahí nunca devolvía el negocio a la cola de
+/// revisión. Encontrado y corregido en la auditoría del 2026-09-04.
+class _RejectionBanner extends StatelessWidget {
+  const _RejectionBanner({required this.reason});
+
+  final String? reason;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = reason?.trim() ?? '';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.gpp_maybe_rounded, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Este negocio necesita ajustes',
+                  style: AppTextStyles.wizardFieldLabel.copyWith(
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  trimmed.isEmpty
+                      ? 'El equipo de Níkara lo rechazó sin especificar un '
+                            'motivo.'
+                      : trimmed,
+                  style: AppTextStyles.wizardCaption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Corrige lo que haga falta y guarda: vuelve a la cola de '
+                  'revisión automáticamente.',
+                  style: AppTextStyles.wizardCaption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1988,22 +2404,7 @@ class _WizardHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onBack,
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.profileDivider,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                color: AppColors.settingsTextDark,
-              ),
-            ),
-          ),
+          CircleBackButton(onTap: onBack),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2027,11 +2428,14 @@ class _WizardHeader extends StatelessWidget {
           GestureDetector(
             onTap: onBack,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
                 border: Border.all(color: AppColors.mapControlBorder),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text('Salir', style: AppTextStyles.detailPillAction),
             ),
@@ -2047,17 +2451,17 @@ class _WizardStepper extends StatelessWidget {
 
   final int step;
 
-  static const _labels = ['Datos', 'Ubicación', 'Galería', 'Publicar'];
+  static const _labels = ['Datos', 'Ubicación', 'Galería', 'Enviar'];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         border: Border.all(color: AppColors.mapControlBorder),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.detailCardGlow,
@@ -2075,7 +2479,9 @@ class _WizardStepper extends StatelessWidget {
                   Expanded(
                     child: Container(
                       height: 2,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.xs,
+                      ),
                       color: i <= step
                           ? AppColors.primary500
                           : AppColors.profileDivider,
@@ -2158,6 +2564,7 @@ class _WizardTextField extends StatelessWidget {
     this.maxLength,
     this.keyboardType,
     this.onSubmitted,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -2166,6 +2573,7 @@ class _WizardTextField extends StatelessWidget {
   final int? maxLength;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -2174,6 +2582,7 @@ class _WizardTextField extends StatelessWidget {
       maxLines: maxLines,
       maxLength: maxLength,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       style: AppTextStyles.wizardFieldValue,
       onSubmitted: onSubmitted,
       decoration: InputDecoration(
@@ -2237,7 +2646,7 @@ class _WizardDropdown extends StatelessWidget {
           ),
           style: AppTextStyles.wizardFieldValue,
           dropdownColor: AppColors.surface100,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           items: [
             for (final item in items)
               DropdownMenuItem(
@@ -2264,7 +2673,7 @@ class _CountryCodeField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
         borderRadius: BorderRadius.circular(14),
@@ -2316,7 +2725,7 @@ class _SocialField extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
         borderRadius: BorderRadius.circular(14),
@@ -2372,13 +2781,11 @@ class _ScheduleRow extends StatelessWidget {
     onChanged(
       isStart
           ? (_ScheduleEntry(
-              daysLabel: entry.daysLabel,
               weekdays: entry.weekdays,
               start: picked,
               end: entry.end,
             ))
           : (_ScheduleEntry(
-              daysLabel: entry.daysLabel,
               weekdays: entry.weekdays,
               start: entry.start,
               end: picked,
@@ -2386,72 +2793,44 @@ class _ScheduleRow extends StatelessWidget {
     );
   }
 
-  Future<void> _pickDays(BuildContext context) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface100,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final label in _ScheduleEntry._knownDayLabels.keys)
-              ListTile(
-                title: Text(label),
-                onTap: () => Navigator.of(context).pop(label),
-              ),
-            ListTile(
-              title: const Text('Escribir otro texto'),
-              onTap: () => Navigator.of(context).pop(''),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (choice == null) return;
-    if (choice.isEmpty) return;
+  void _toggleDay(int day) {
+    final updated = Set<int>.from(entry.weekdays);
+    if (!updated.remove(day)) updated.add(day);
     onChanged(
-      _ScheduleEntry(
-        daysLabel: choice,
-        weekdays: _ScheduleEntry._knownDayLabels[choice] ?? const {},
-        start: entry.start,
-        end: entry.end,
-      ),
+      _ScheduleEntry(weekdays: updated, start: entry.start, end: entry.end),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Column (no Row) para que la etiqueta de día libre y los chips de hora no compitan por el ancho y desborden.
+    // Column (no Row) para que los chips de día y los de hora no compitan por el ancho y desborden.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
-          onTap: () => _pickDays(context),
-          child: Container(
-            width: double.infinity,
-            height: 40,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppColors.settingsBackground,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.settingsTextDark.withValues(alpha: 0.07),
+        // Selector de días libre — reemplaza al picker de 2 etiquetas fijas
+        // ("Lunes a viernes"/"Sábado y domingo"): cualquier negocio real con
+        // un patrón distinto (ej. cerrado los martes, o lunes a sábado en una
+        // sola franja) ya no tiene que forzar su horario a esas 2 opciones.
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (var day = 1; day <= 7; day++)
+              _DayChip(
+                label: _ScheduleEntry._dayAbbrev[day]!,
+                selected: entry.weekdays.contains(day),
+                onTap: () => _toggleDay(day),
               ),
-            ),
-            child: Text(
-              entry.daysLabel,
-              style: AppTextStyles.wizardFieldValue.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          entry.daysLabel,
+          style: AppTextStyles.wizardCaption.copyWith(
+            fontWeight: FontWeight.w600,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 6),
         Row(
@@ -2461,7 +2840,7 @@ class _ScheduleRow extends StatelessWidget {
               child: _timeChip(_ScheduleEntry._fmt(entry.start)),
             ),
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.xs),
               child: Text(
                 '–',
                 style: TextStyle(color: AppColors.settingsTextMuted),
@@ -2475,6 +2854,7 @@ class _ScheduleRow extends StatelessWidget {
             if (onRemove != null)
               IconButton(
                 onPressed: onRemove,
+                tooltip: 'Quitar este horario',
                 icon: const Icon(
                   Icons.close,
                   size: 16,
@@ -2513,6 +2893,51 @@ class _ScheduleRow extends StatelessWidget {
   }
 }
 
+/// Un día de la semana como chip individual — toggle, no radio: una franja
+/// puede cubrir cualquier combinación, no solo un rango contiguo.
+class _DayChip extends StatelessWidget {
+  const _DayChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.oliveFill : AppColors.settingsBackground,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? AppColors.oliveFill
+                : AppColors.settingsTextDark.withValues(alpha: 0.12),
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.wizardFieldValue.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            color: selected
+                ? AppColors.textPrimary
+                : AppColors.settingsTextMuted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _OpenNowPill extends StatelessWidget {
   const _OpenNowPill({required this.entries});
 
@@ -2527,7 +2952,7 @@ class _OpenNowPill extends StatelessWidget {
         color: open
             ? AppColors.detailActivityIconBg
             : AppColors.segmentedTrackBg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2536,7 +2961,7 @@ class _OpenNowPill extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: open ? AppColors.accent300 : AppColors.settingsTextMuted,
+              color: open ? AppColors.oliveText : AppColors.settingsTextMuted,
               shape: BoxShape.circle,
             ),
           ),
@@ -2544,7 +2969,7 @@ class _OpenNowPill extends StatelessWidget {
           Text(
             open ? 'ABIERTO AHORA' : 'CERRADO AHORA',
             style: AppTextStyles.detailEcoBadge.copyWith(
-              color: open ? AppColors.accent300 : AppColors.settingsTextMuted,
+              color: open ? AppColors.oliveText : AppColors.settingsTextMuted,
             ),
           ),
         ],
@@ -2578,7 +3003,7 @@ class _WizardChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.settingsBackground,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: selected
               ? null
               : Border.all(color: AppColors.mapControlBorder),
@@ -2667,7 +3092,7 @@ class _WizardFooter extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.settingsBackground,
                 border: Border.all(color: AppColors.mapControlBorder),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -2699,7 +3124,7 @@ class _WizardFooter extends StatelessWidget {
                   color: onPrimary == null
                       ? AppColors.primary500.withValues(alpha: 0.5)
                       : AppColors.primary500,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   boxShadow: onPrimary == null
                       ? null
                       : const [
@@ -2738,135 +3163,6 @@ class _WizardFooter extends StatelessWidget {
 }
 
 /// [onCameraMove] mantiene sincronizado `_mapCenter` del padre porque `google_maps_flutter` no expone un getter síncrono de centro actual.
-class _MapLocationPicker extends StatelessWidget {
-  const _MapLocationPicker({
-    required this.initialCenter,
-    required this.onMapCreated,
-    required this.onCameraMove,
-    required this.onTap,
-    required this.onZoomIn,
-    required this.onZoomOut,
-  });
-
-  final LatLng initialCenter;
-  final ValueChanged<GoogleMapController> onMapCreated;
-  final ValueChanged<LatLng> onCameraMove;
-  final ValueChanged<LatLng> onTap;
-  final VoidCallback onZoomIn;
-  final VoidCallback onZoomOut;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        height: 190,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: initialCenter,
-                zoom: 15,
-              ),
-              onMapCreated: onMapCreated,
-              onCameraMove: (position) => onCameraMove(position.target),
-              onTap: onTap,
-              minMaxZoomPreference: const MinMaxZoomPreference(6, 18),
-              cameraTargetBounds: CameraTargetBounds(_kMapBounds),
-              zoomControlsEnabled: false,
-              mapToolbarEnabled: false,
-              myLocationButtonEnabled: false,
-              compassEnabled: false,
-            ),
-            IgnorePointer(
-              child: Center(
-                child: Transform.translate(
-                  offset: const Offset(0, -22),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary500,
-                          shape: BoxShape.circle,
-                          border: Border.fromBorderSide(
-                            BorderSide(color: AppColors.surface100, width: 3),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.wizardPhotoShadow,
-                              offset: Offset(0, 6),
-                              blurRadius: 14,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.location_on,
-                          size: 22,
-                          color: AppColors.settingsTextDark,
-                        ),
-                      ),
-                      Container(
-                        width: 8,
-                        height: 8,
-                        margin: const EdgeInsets.only(top: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.settingsTextDark.withValues(
-                            alpha: 0.22,
-                          ),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              left: 10,
-              bottom: 10,
-              child: Column(
-                children: [
-                  _mapButton(Icons.add, onZoomIn),
-                  const SizedBox(height: 6),
-                  _mapButton(Icons.remove, onZoomOut),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mapButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.mapCardShadow,
-              offset: Offset(0, 2),
-              blurRadius: 8,
-            ),
-          ],
-        ),
-        child: Icon(icon, size: 17, color: AppColors.settingsTextDark),
-      ),
-    );
-  }
-}
-
 /// Refleja el layout real de la tarjeta de Home/Mapa, no es solo decorativa.
 class _WizardPreviewCard extends StatelessWidget {
   const _WizardPreviewCard({required this.business, required this.photos});
@@ -2881,11 +3177,11 @@ class _WizardPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(color: AppColors.mapControlBorder),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2906,7 +3202,7 @@ class _WizardPreviewCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.tagGold600,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                       ),
                       child: Text(
                         business.category,
@@ -2918,32 +3214,12 @@ class _WizardPreviewCard extends StatelessWidget {
                     ),
                   ),
                   if (_isEco)
-                    Positioned(
-                      right: 10,
-                      top: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.ecoGreen500,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'ECO',
-                          style: AppTextStyles.detailEcoBadge.copyWith(
-                            color: AppColors.surface100,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ),
-                    ),
+                    Positioned(right: 10, top: 10, child: const EcoBadge()),
                 ],
               ),
             ),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpacing.md),
               color: AppColors.surface100,
               child: Row(
                 children: [
@@ -2992,7 +3268,7 @@ class _WizardPreviewCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.settingsBackground,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Text(
                       'Ver perfil',
@@ -3056,7 +3332,7 @@ class _ChecklistRow extends StatelessWidget {
               child: Icon(
                 done ? Icons.check : Icons.priority_high,
                 size: 15,
-                color: done ? AppColors.accent300 : AppColors.settingsTextDark,
+                color: done ? AppColors.oliveText : AppColors.settingsTextDark,
               ),
             ),
             const SizedBox(width: 10),
@@ -3106,7 +3382,12 @@ class _ActivityIconPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.md,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3144,14 +3425,14 @@ class _ActivityIconPickerSheet extends StatelessWidget {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: AppColors.settingsBackground,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                             border: Border.all(
                               color: AppColors.mapControlBorder,
                             ),
                           ),
                           child: Icon(
                             activityIconLibrary[key],
-                            color: AppColors.accent300,
+                            color: AppColors.oliveText,
                           ),
                         ),
                         const SizedBox(height: 5),

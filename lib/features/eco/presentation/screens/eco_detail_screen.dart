@@ -2,17 +2,26 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/services/permission_service.dart';
+import 'package:nikara_app/features/admin/data/admin_service.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_participant_avatars.dart';
 import 'package:nikara_app/features/eco/utils/eco_format.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Reutiliza la estructura de `BusinessDetailScreen`/`detail_sections.dart`; recibe el [EcoActivityModel] completo y se refresca al montarse por si quedó desactualizado.
@@ -33,14 +42,117 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   bool _showFullDescription = false;
   bool _isSubmitting = false;
 
-  List<({String userId, DateTime joinedAt})>? _participants;
-  Map<String, String> _participantNames = const {};
+  List<EcoParticipant>? _participants;
   bool _loadingParticipants = false;
+
+  bool _savingReview = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_refresh());
+  }
+
+  bool get _canReview => PermissionService().can(Permission.reviewSubmissions);
+
+  Future<void> _approveActivity() async {
+    final organizerId = _activity.organizerId;
+    final title = _activity.title;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewEcoActivity(
+        id: _activity.id,
+        status: ReviewStatus.aprobado,
+      );
+      await _notifyOrganizer(organizerId, title, approved: true);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('"$title" quedó publicada.')));
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  Future<void> _rejectActivity() async {
+    final organizerId = _activity.organizerId;
+    final title = _activity.title;
+    final reason = await showRejectionReasonDialog(
+      context,
+      subjectName: title.isEmpty ? 'esta jornada' : title,
+    );
+    if (reason == null || !mounted) return;
+    setState(() => _savingReview = true);
+    try {
+      await AdminService().reviewEcoActivity(
+        id: _activity.id,
+        status: ReviewStatus.rechazado,
+        reason: reason,
+      );
+      await _notifyOrganizer(
+        organizerId,
+        title,
+        approved: false,
+        reason: reason,
+      );
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rechazaste "$title". Le avisamos a quien la organiza.',
+          ),
+        ),
+      );
+    } on AdminServiceException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } on PermissionDeniedException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _savingReview = false);
+    }
+  }
+
+  /// El aviso a quien organiza no puede tumbar la revisión: si falla, se
+  /// registra y se sigue — mismo criterio que
+  /// `AdminService._notifyReviewed` para negocios.
+  Future<void> _notifyOrganizer(
+    String? organizerId,
+    String title, {
+    required bool approved,
+    String? reason,
+  }) async {
+    if (organizerId == null || organizerId.isEmpty) return;
+    try {
+      await NotificationService().notifyEcoActivityReviewed(
+        organizerId: organizerId,
+        activityId: _activity.id,
+        activityTitle: title,
+        approved: approved,
+        reason: reason,
+      );
+    } on NotificationServiceException catch (e) {
+      debugPrint(
+        '[EcoDetailScreen] _notifyOrganizer: no se pudo avisar — ${e.message}',
+      );
+    }
   }
 
   Future<void> _refresh() async {
@@ -54,6 +166,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
 
   Future<void> _toggleJoin() async {
     if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
+    if (!mounted) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
+    if (!mounted) return;
     final joining = !_activity.isJoinedByCurrentUser;
     setState(() {
       _isSubmitting = true;
@@ -90,20 +205,12 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     setState(() => _loadingParticipants = true);
     try {
       final participants = await EcoService().getParticipants(_activity.id);
-      final names = <String, String>{};
-      await Future.wait(
-        participants.map((p) async {
-          final profile = await AuthService().getProfileById(p.userId);
-          if (profile != null) names[p.userId] = profile.fullName;
-        }),
-      );
       if (!mounted) return;
       setState(() {
         _participants = participants;
-        _participantNames = names;
         _loadingParticipants = false;
       });
-    } on Exception {
+    } on EcoServiceException {
       if (!mounted) return;
       setState(() => _loadingParticipants = false);
     }
@@ -149,12 +256,12 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
         value: activity.spotsAvailable == null
             ? 'Abierto'
             : '${activity.spotsAvailable} disponibles',
-        valueColor: AppColors.ecoActive,
+        valueColor: AppColors.oliveText,
       ),
       EcoActivityStatus.joined => const DetailQuickInfoItem(
         label: 'Tu estado',
         value: 'Participando',
-        valueColor: AppColors.ecoActive,
+        valueColor: AppColors.oliveText,
       ),
       EcoActivityStatus.completed => const DetailQuickInfoItem(
         label: 'Estado',
@@ -176,7 +283,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DetailCoverImage(
-              photos: const [],
+              // Portada única (`eco_activities.image_url`): la lista lleva a lo
+              // sumo un elemento, así que el carrusel de DetailCoverImage nunca
+              // muestra flechas aquí.
+              photos: [?activity.imageUrl],
               height: _coverHeight,
               fallbackIcon: ecoCategoryIcon(activity.category),
               onBack: () => Navigator.of(context).maybePop(),
@@ -185,18 +295,20 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                 DetailCoverIconButton(
                   icon: Icons.add_road_rounded,
                   onTap: _addToRoute,
+                  label: 'Agregar a una ruta',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: Icons.ios_share,
                   onTap: _showComingSoon,
+                  label: 'Compartir jornada',
                 ),
               ],
             ),
             Transform.translate(
               offset: const Offset(0, -18),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: DetailQuickInfoCard(
                   items: [
                     DetailQuickInfoItem(
@@ -208,6 +320,22 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                 ),
               ),
             ),
+            if (_canReview)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  0,
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                ),
+                child: AdminInlineReviewCard(
+                  status: activity.reviewStatus,
+                  rejectionReason: activity.rejectionReason,
+                  saving: _savingReview,
+                  onApprove: _approveActivity,
+                  onReject: _rejectActivity,
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               child: Column(
@@ -223,7 +351,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                    ),
                     child: _tab == 0
                         ? _InformationTab(
                             activity: activity,
@@ -236,7 +366,6 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                           )
                         : _ParticipantsTab(
                             participants: _participants,
-                            names: _participantNames,
                             isLoading: _loadingParticipants,
                           ),
                   ),
@@ -270,7 +399,7 @@ class _CoverCaption extends StatelessWidget {
           DetailCoverTagPill(
             label: activity.category.toUpperCase(),
             background: AppColors.surface100,
-            foreground: AppColors.ecoActive,
+            foreground: AppColors.oliveText,
           ),
         const SizedBox(height: 10),
         Text(
@@ -326,7 +455,7 @@ class _InformationTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sections = <Widget>[
-      _ParticipantsPreview(count: activity.participantCount),
+      _ParticipantsPreview(activity: activity),
       _DescriptionSection(
         activity: activity,
         expanded: showFullDescription,
@@ -343,9 +472,9 @@ class _InformationTab extends StatelessWidget {
               (activity.isFromOrganization
                   ? 'Organiza actividades ambientales'
                   : 'Toca para ver su perfil'),
-          captionColor: AppColors.ecoActive,
+          captionColor: AppColors.oliveText,
           verified: activity.organizerIsVerified,
-          accent: AppColors.ecoActive,
+          accent: AppColors.oliveText,
           onTap: () => openEcoOrganizerProfile(context, activity),
         ),
       ),
@@ -359,7 +488,7 @@ class _InformationTab extends StatelessWidget {
                 DetailIconRow(
                   icon: ecoRequirementIcon(requirement),
                   label: requirement,
-                  iconColor: AppColors.ecoActive,
+                  iconColor: AppColors.oliveText,
                   iconBackground: AppColors.detailActivityIconBg,
                 ),
                 if (requirement != activity.requirements.last)
@@ -376,7 +505,7 @@ class _InformationTab extends StatelessWidget {
               : activity.location,
           caption: 'Se abrirá en el mapa de Níkara',
           onTap: onDirections,
-          pinColor: AppColors.ecoActive,
+          pinColor: AppColors.oliveText,
           pinIconColor: AppColors.surface100,
         ),
       ),
@@ -395,19 +524,102 @@ class _InformationTab extends StatelessWidget {
 }
 
 class _ParticipantsPreview extends StatelessWidget {
-  const _ParticipantsPreview({required this.count});
+  const _ParticipantsPreview({required this.activity});
 
-  final int count;
+  final EcoActivityModel activity;
 
   @override
   Widget build(BuildContext context) {
-    if (count <= 0) {
+    if (activity.participantCount <= 0) {
       return Text(
         'Nadie se ha unido todavía — ¡sé la primera persona!',
         style: AppTextStyles.settingsSubtitle,
       );
     }
-    return EcoParticipantAvatars(count: count);
+    return EcoParticipantAvatars(
+      count: activity.participantCount,
+      participants: activity.visibleParticipants,
+    );
+  }
+}
+
+/// Fila de participante con foto real y enlace a su perfil público.
+class _ParticipantRow extends StatelessWidget {
+  const _ParticipantRow({required this.participant, required this.onTap});
+
+  final EcoParticipant participant;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarUrl = participant.avatarUrl;
+    final hasPhoto = avatarUrl != null && avatarUrl.isNotEmpty;
+
+    return Material(
+      color: AppColors.surface100,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.detailActivityIconBg,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: hasPhoto
+                    ? LocalImage(path: avatarUrl, fallbackIcon: Icons.person)
+                    : Center(
+                        child: Text(
+                          participant.initials,
+                          style: AppTextStyles.mapRowTitle.copyWith(
+                            fontSize: 14,
+                            color: AppColors.oliveText,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      participant.displayName,
+                      style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Se unió el ${formatEcoDateTimeShort(participant.joinedAt)}',
+                      style: AppTextStyles.settingsSubtitle.copyWith(
+                        fontSize: 11.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.neutral400,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -447,13 +659,13 @@ class _DescriptionSection extends StatelessWidget {
                 Text(
                   expanded ? 'Mostrar menos' : 'Mostrar más',
                   style: AppTextStyles.detailInlineLink.copyWith(
-                    color: AppColors.ecoActive,
+                    color: AppColors.oliveText,
                   ),
                 ),
                 Icon(
                   expanded ? Icons.expand_less : Icons.expand_more,
                   size: 15,
-                  color: AppColors.ecoActive,
+                  color: AppColors.oliveText,
                 ),
               ],
             ),
@@ -465,21 +677,16 @@ class _DescriptionSection extends StatelessWidget {
 }
 
 class _ParticipantsTab extends StatelessWidget {
-  const _ParticipantsTab({
-    required this.participants,
-    required this.names,
-    required this.isLoading,
-  });
+  const _ParticipantsTab({required this.participants, required this.isLoading});
 
-  final List<({String userId, DateTime joinedAt})>? participants;
-  final Map<String, String> names;
+  final List<EcoParticipant>? participants;
   final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
         child: Center(
           child: CircularProgressIndicator(color: AppColors.primary500),
         ),
@@ -488,7 +695,7 @@ class _ParticipantsTab extends StatelessWidget {
     final list = participants ?? const [];
     if (list.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
         child: Text(
           'Nadie se ha unido todavía — ¡sé la primera persona!',
           textAlign: TextAlign.center,
@@ -504,11 +711,9 @@ class _ParticipantsTab extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final participant in list) ...[
-            DetailIconRow(
-              icon: Icons.person,
-              label: names[participant.userId] ?? 'Voluntario',
-              iconColor: AppColors.ecoActive,
-              iconBackground: AppColors.detailActivityIconBg,
+            _ParticipantRow(
+              participant: participant,
+              onTap: () => openParticipantProfile(context, participant),
             ),
             if (participant != list.last) const SizedBox(height: 8),
           ],
@@ -545,7 +750,7 @@ class _EcoActionBar extends StatelessWidget {
               backgroundColor: AppColors.segmentedTrackBg,
               foregroundColor: AppColors.settingsTextMuted,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               textStyle: AppTextStyles.detailBottomBarPrimary,
             ),
@@ -553,21 +758,21 @@ class _EcoActionBar extends StatelessWidget {
           EcoActivityStatus.joined => OutlinedButton(
             onPressed: isSubmitting ? null : onTap,
             style: OutlinedButton.styleFrom(
-              backgroundColor: AppColors.complementario1,
-              foregroundColor: AppColors.settingsDanger,
-              side: const BorderSide(color: AppColors.complementario2),
+              backgroundColor: AppColors.coralPaleFill,
+              foregroundColor: AppColors.destructive,
+              side: const BorderSide(color: AppColors.coralPaleBorder),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               textStyle: AppTextStyles.detailBottomBarSecondary,
             ),
             child: isSubmitting
-                ? const _ButtonSpinner(color: AppColors.settingsDanger)
+                ? const _ButtonSpinner(color: AppColors.destructive)
                 : const Text('Abandonar actividad'),
           ),
           EcoActivityStatus.available => DecoratedBox(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.detailPrimaryButtonGlow,
@@ -582,7 +787,7 @@ class _EcoActionBar extends StatelessWidget {
                 backgroundColor: AppColors.primary500,
                 foregroundColor: AppColors.settingsTextDark,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.detailBottomBarPrimary,
               ),

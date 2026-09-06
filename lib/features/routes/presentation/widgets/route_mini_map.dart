@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Mini-mapa del detalle de una ruta: un marcador numerado por parada, en
@@ -102,7 +103,7 @@ class _RouteMiniMapState extends State<RouteMiniMap> {
         ..color = AppColors.mapControlShadowSoft
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-    canvas.drawCircle(center, radius, Paint()..color = AppColors.ecoActive);
+    canvas.drawCircle(center, radius, Paint()..color = AppColors.oliveText);
     canvas.drawCircle(
       center,
       radius,
@@ -116,8 +117,10 @@ class _RouteMiniMapState extends State<RouteMiniMap> {
     final textPainter = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: label,
+        // Sin fontFamily: ver la nota equivalente en MapScreen — el bitmap
+        // del pin se pinta en un canvas de dart:ui, fuera del alcance de
+        // google_fonts.
         style: TextStyle(
-          fontFamily: 'Leelawadee',
           fontWeight: FontWeight.w700,
           fontSize: label.length > 1 ? 12 : 14,
           color: AppColors.surface100,
@@ -176,7 +179,7 @@ class _RouteMiniMapState extends State<RouteMiniMap> {
   Widget build(BuildContext context) {
     final stops = _mappable;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AppRadius.lg),
       child: SizedBox(
         height: widget.height,
         width: double.infinity,
@@ -197,7 +200,7 @@ class _RouteMiniMapState extends State<RouteMiniMap> {
                         for (final stop in stops)
                           LatLng(stop.latitude!, stop.longitude!),
                       ],
-                      color: AppColors.ecoActive,
+                      color: AppColors.oliveText,
                       width: 4,
                       // Guiones: el trayecto entre paradas es el orden del
                       // itinerario, no una ruta manejable calculada — la
@@ -230,7 +233,7 @@ class _EmptyMiniMap extends StatelessWidget {
     return Container(
       color: AppColors.detailMapBg,
       alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

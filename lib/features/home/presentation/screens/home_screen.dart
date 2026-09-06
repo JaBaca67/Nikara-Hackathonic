@@ -2,19 +2,29 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
+import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todos';
@@ -50,16 +60,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final _businessStorageService = BusinessStorageService();
   final _heroPageController = PageController();
+  final _searchController = TextEditingController();
   List<BusinessModel>? _businesses;
   String? _loadError;
   String? _userName;
+  UserRole _role = UserRole.turista;
   Position? _userPosition;
+
+  /// No leídas del usuario actual; 0 para invitados (no tienen bandeja).
+  int _unreadNotifications = 0;
 
   Timer? _photoTimer;
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
   String _selectedCategory = _kAllCategories;
+  String _searchQuery = '';
   _SortMode _sortMode = _SortMode.recientes;
+
+  /// Se abre recién tras el primer load exitoso (mismo criterio que
+  /// `MapScreen`), para no mantener un socket realtime en pantallas que
+  /// nunca llegaron a cargar. Antes de esto, un negocio registrado desde
+  /// otra cuenta/dispositivo solo aparecía en Inicio si esta pantalla se
+  /// reconstruía por otra razón (ej. editar el propio negocio).
+  Future<void> Function()? _unsubscribeBusinessChanges;
 
   /// Hasta 5 negocios, los más recientes primero.
   List<BusinessModel> get _heroBusinesses {
@@ -75,17 +98,29 @@ class _HomeScreenState extends State<HomeScreen> {
     // MainLayout, así que sin este listener un negocio editado no se
     // refleja aquí hasta reiniciar la app.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
+    // Mismo motivo que el listener de negocios: Home no se reconstruye al
+    // volver del detalle de una jornada o del panel de admin, así que el
+    // badge quedaría desactualizado tras cualquier escritura en la tabla.
+    NotificationService.revision.addListener(_onNotificationsChanged);
     _loadBusinesses();
     _loadUserName();
     _loadPosition();
+    _loadUnreadNotifications();
   }
 
   @override
   void dispose() {
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
+    NotificationService.revision.removeListener(_onNotificationsChanged);
+    unawaited(_unsubscribeBusinessChanges?.call());
     _photoTimer?.cancel();
     _heroPageController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _searchQuery = value.trim());
   }
 
   void _onBusinessesChanged() {
@@ -93,11 +128,56 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadBusinesses();
   }
 
+  void _onNotificationsChanged() {
+    if (!mounted) return;
+    _loadUnreadNotifications();
+  }
+
+  /// El badge es informativo: si la consulta falla, Inicio sigue usable con el
+  /// contador en 0. El error no se traga en silencio (queda en el log de
+  /// depuración) pero tampoco interrumpe la pantalla con un SnackBar, que
+  /// sería ruido para algo que el usuario ni pidió.
+  Future<void> _loadUnreadNotifications() async {
+    if (GuestSessionService().isGuest || !AuthService().isLoggedIn) {
+      if (mounted && _unreadNotifications != 0) {
+        setState(() => _unreadNotifications = 0);
+      }
+      return;
+    }
+    try {
+      final count = await NotificationService().unreadCount();
+      if (!mounted) return;
+      setState(() => _unreadNotifications = count);
+    } on NotificationServiceException catch (e) {
+      debugPrint('No se pudo leer el contador de notificaciones: ${e.message}');
+      if (!mounted) return;
+      setState(() => _unreadNotifications = 0);
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+    // La pantalla marca como leídas las que se tocaron; al volver el badge
+    // tiene que reflejarlo aunque el usuario no haya escrito nada más.
+    await _loadUnreadNotifications();
+  }
+
   Future<void> _loadUserName() async {
     if (GuestSessionService().isGuest || !AuthService().isLoggedIn) return;
     final profile = await AuthService().getCurrentProfile();
     if (!mounted || profile == null) return;
-    setState(() => _userName = profile.firstName);
+    setState(() {
+      _userName = profile.firstName;
+      _role = profile.role;
+    });
+  }
+
+  void _openAdminPanel() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AdminShellScreen()));
   }
 
   Future<void> _loadPosition() async {
@@ -117,6 +197,8 @@ class _HomeScreenState extends State<HomeScreen> {
         _heroPhotoIndex = 0;
       });
       _restartPhotoTimer();
+      _unsubscribeBusinessChanges ??= _businessStorageService
+          .subscribeToBusinessChanges(_onBusinessesChanged);
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);
@@ -153,18 +235,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openBusinessDetail(BusinessModel business) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: business),
-      ),
-    );
+    pushSharedAxis(context, BusinessDetailScreen(business: business));
   }
 
-  void _openWizard() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RegisterBusinessWizard()));
-  }
+  void _openWizard() => openBusinessRegistrationFlow(context);
 
   List<String> _availableCategories(List<BusinessModel> businesses) {
     final categories = businesses.map((b) => b.category).toSet().toList()
@@ -172,10 +246,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return [_kAllCategories, ...categories];
   }
 
+  /// Búsqueda básica: coincide si el texto aparece en el nombre, la ciudad o
+  /// la categoría, sin distinguir mayúsculas — mismo criterio simple que ya
+  /// usa `MapScreen` para su propia barra de búsqueda.
+  List<BusinessModel> _searchFiltered(List<BusinessModel> businesses) {
+    if (_searchQuery.isEmpty) return businesses;
+    final query = _searchQuery.toLowerCase();
+    return businesses
+        .where(
+          (b) =>
+              b.name.toLowerCase().contains(query) ||
+              b.city.toLowerCase().contains(query) ||
+              b.category.toLowerCase().contains(query),
+        )
+        .toList(growable: false);
+  }
+
   List<BusinessModel> _visibleBusinesses(List<BusinessModel> businesses) {
+    final searched = _searchFiltered(businesses);
     final filtered = _selectedCategory == _kAllCategories
-        ? businesses
-        : businesses.where((b) => b.category == _selectedCategory).toList();
+        ? searched
+        : searched.where((b) => b.category == _selectedCategory).toList();
     if (_sortMode == _SortMode.recientes) {
       return filtered.reversed.toList(growable: false);
     }
@@ -217,36 +308,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final businesses = _businesses;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            SearchHeaderWidget(
-              userName: _userName,
-              isGuest:
-                  GuestSessionService().isGuest || !AuthService().isLoggedIn,
-              notificationCount: 0,
-              onFilterTap: _openFilterSheet,
-            ),
-            Expanded(
-              child: _loadError != null
-                  ? _LoadErrorState(
-                      message: _loadError!,
-                      onRetry: _loadBusinesses,
-                    )
-                  : businesses == null
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary500,
-                      ),
-                    )
-                  : businesses.isEmpty
-                  ? _EmptyState(onRegister: _openWizard)
-                  : _buildFeed(businesses),
-            ),
-          ],
-        ),
+      backgroundColor: AppColors.background,
+      // PROVISIONAL (2026-08-27): antes había un SafeArea(top: true) envolviendo
+      // todo el body, así que la barra de estado del teléfono se pintaba con
+      // AppColors.background (beige) y quedaba una costura de color contra
+      // SearchHeaderWidget, que es surface100 (blanco) — un tono distinto justo
+      // debajo. Igual que en map_screen, el elemento visual real (acá el header
+      // blanco) llega hasta y=0 y absorbe la barra de estado en vez de dejar que
+      // el Scaffold pinte una franja aparte; el padding de MediaQuery empuja el
+      // contenido del header, no un SafeArea que recorta todo el body.
+      body: Column(
+        children: [
+          SearchHeaderWidget(
+            userName: _userName,
+            isGuest: GuestSessionService().isGuest || !AuthService().isLoggedIn,
+            controller: _searchController,
+            onSearchChanged: _onSearchChanged,
+            notificationCount: _unreadNotifications,
+            onNotificationTap: _openNotifications,
+            onFilterTap: _openFilterSheet,
+          ),
+          Expanded(
+            child: _loadError != null
+                ? _LoadErrorState(
+                    message: _loadError!,
+                    onRetry: _loadBusinesses,
+                  )
+                : businesses == null
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary500,
+                    ),
+                  )
+                : businesses.isEmpty
+                ? _EmptyState(onRegister: _openWizard)
+                : _buildFeed(businesses),
+          ),
+        ],
       ),
     );
   }
@@ -259,52 +357,128 @@ class _HomeScreenState extends State<HomeScreen> {
     final categories = _availableCategories(businesses);
     final visible = _visibleBusinesses(businesses);
 
-    return SingleChildScrollView(
-      physics: const ClampingScrollPhysics(),
-      // Margen extra porque MainLayout usa extendBody: true y la barra de
-      // navegación flotante se superpone al final del scroll.
-      padding: const EdgeInsets.only(bottom: 110),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (heroBusinesses.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: _HeroCarousel(
-                  controller: _heroPageController,
-                  businesses: heroBusinesses,
-                  activeIndex: heroIndex,
-                  photoIndex: _heroPhotoIndex,
-                  onPageChanged: _onHeroPageChanged,
-                  onSelectPhoto: _selectHeroPhoto,
-                  onTapDetail: _openBusinessDetail,
+    // El realtime de `_unsubscribeBusinessChanges` cubre negocios de otras
+    // cuentas; este gesto es el reload explícito que pidió el usuario para
+    // forzar un refresh manual sin esperar al socket.
+    return RefreshIndicator(
+      onRefresh: _loadBusinesses,
+      color: AppColors.primary500,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: ClampingScrollPhysics(),
+        ),
+        // Margen extra porque MainLayout usa extendBody: true y la barra de
+        // navegación flotante se superpone al final del scroll.
+        padding: const EdgeInsets.only(bottom: 110),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_role.canAccessAdminPanel)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
+              ),
+            if (heroBusinesses.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: _HeroCarousel(
+                    controller: _heroPageController,
+                    businesses: heroBusinesses,
+                    activeIndex: heroIndex,
+                    photoIndex: _heroPhotoIndex,
+                    onPageChanged: _onHeroPageChanged,
+                    onSelectPhoto: _selectHeroPhoto,
+                    onTapDetail: _openBusinessDetail,
+                  ),
                 ),
               ),
+            const SizedBox(height: 16),
+            _CategoryChipsRow(
+              categories: categories,
+              selected: _selectedCategory,
+              onSelect: (category) =>
+                  setState(() => _selectedCategory = category),
             ),
-          const SizedBox(height: 16),
-          _CategoryChipsRow(
-            categories: categories,
-            selected: _selectedCategory,
-            onSelect: (category) =>
-                setState(() => _selectedCategory = category),
-          ),
-          _DestacadosSection(
-            businesses: visible,
-            userPosition: _userPosition,
-            onTap: _openBusinessDetail,
-            onSeeAll: _selectedCategory == _kAllCategories
-                ? null
-                : () => setState(() => _selectedCategory = _kAllCategories),
-          ),
-          if (_userPosition case final position?)
-            _CercaDeTiSection(
-              businesses: businesses,
-              userPosition: position,
+            _DestacadosSection(
+              businesses: visible,
+              userPosition: _userPosition,
               onTap: _openBusinessDetail,
+              onSeeAll: _selectedCategory == _kAllCategories
+                  ? null
+                  : () => setState(() => _selectedCategory = _kAllCategories),
             ),
-        ],
+            if (_userPosition case final position?)
+              _CercaDeTiSection(
+                businesses: businesses,
+                userPosition: position,
+                onTap: _openBusinessDetail,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta de acceso al panel de revisión, visible solo para admin/auditor.
+/// Reusa el acento Olive del propio encabezado de [AdminShellScreen] para que
+/// se lea como la misma identidad, no como un tercer acento de marca nuevo.
+class _AdminAccessBanner extends StatelessWidget {
+  const _AdminAccessBanner({required this.role, required this.onTap});
+
+  final UserRole role;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.oliveFill,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.shield_outlined,
+                size: 22,
+                color: AppColors.textPrimary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Panel de ${role.label}',
+                      style: AppTextStyles.homeCardTitle.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Revisar negocios y actividades pendientes',
+                      style: AppTextStyles.homeCardLocation.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right,
+                size: 20,
+                color: AppColors.textPrimary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -319,7 +493,12 @@ class _SortSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.md,
+          AppSpacing.xl,
+          AppSpacing.xl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,7 +565,7 @@ class _CategoryChipsRow extends StatelessWidget {
       height: 36,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         physics: const ClampingScrollPhysics(),
         itemCount: categories.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
@@ -401,7 +580,7 @@ class _CategoryChipsRow extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: isSelected ? AppColors.primary500 : AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: isSelected
                     ? null
                     : Border.all(
@@ -542,7 +721,7 @@ class _HeroCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
               decoration: BoxDecoration(
                 color: AppColors.tagGold600,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 business.category,
@@ -553,36 +732,10 @@ class _HeroCard extends StatelessWidget {
             ),
           ),
           if (isEco)
-            Positioned(
-              right: 14,
-              top: 14,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.ecoGreen500,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.eco,
-                      size: 12,
-                      color: AppColors.surface100,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'ECO',
-                      style: AppTextStyles.homeHeroPill.copyWith(
-                        color: AppColors.surface100,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const Positioned(
+              right: AppSpacing.lg - 2,
+              top: AppSpacing.lg - 2,
+              child: EcoBadge(size: EcoBadgeSize.large),
             ),
           Positioned(
             left: 16,
@@ -644,7 +797,9 @@ class _HeroCard extends StatelessWidget {
                                     ),
                                   ),
                                   child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.xs,
+                                    ),
                                     child: LocalImage(
                                       path: photos[index],
                                       fallbackIconSize: 14,
@@ -662,7 +817,7 @@ class _HeroCard extends StatelessWidget {
                     GestureDetector(
                       onTap: onTap,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                           child: Container(
@@ -674,7 +829,9 @@ class _HeroCard extends StatelessWidget {
                               color: AppColors.surface100.withValues(
                                 alpha: 0.18,
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                AppRadius.pill,
+                              ),
                               border: Border.all(
                                 color: AppColors.surface100.withValues(
                                   alpha: 0.42,
@@ -721,7 +878,7 @@ class _DestacadosSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Row(
               children: [
                 Expanded(
@@ -741,7 +898,7 @@ class _DestacadosSection extends StatelessWidget {
           const SizedBox(height: 8),
           if (businesses.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Text(
                 'Ningún negocio coincide con esta categoría.',
                 style: AppTextStyles.bodyText2.copyWith(
@@ -754,7 +911,7 @@ class _DestacadosSection extends StatelessWidget {
               height: 220,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 physics: const ClampingScrollPhysics(),
                 itemCount: businesses.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
@@ -805,6 +962,9 @@ class _DestacadoCard extends StatelessWidget {
           child: Ink(
             width: width,
             decoration: BoxDecoration(
+              // Sin este relleno el `boxShadow` dorado de abajo se pinta sobre
+              // el Material en vez de detrás y tiñe la tarjeta de crema.
+              color: AppColors.surface100,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
@@ -834,26 +994,7 @@ class _DestacadoCard extends StatelessWidget {
                           fallbackIcon: Icons.storefront_outlined,
                         ),
                         if (isEco)
-                          Positioned(
-                            left: 8,
-                            top: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.ecoGreen500,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'ECO',
-                                style: AppTextStyles.homeMiniBadge.copyWith(
-                                  color: AppColors.surface100,
-                                ),
-                              ),
-                            ),
-                          ),
+                          Positioned(left: 8, top: 8, child: const EcoBadge()),
                         Positioned(
                           right: 8,
                           top: 8,
@@ -933,27 +1074,41 @@ class _CercaDeTiSection extends StatelessWidget {
     if (nearest.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: AppSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text('Cerca de ti', style: AppTextStyles.homeSectionTitle),
           ),
           const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Column(
               children: [
-                for (final business in nearest)
+                for (final (index, business) in nearest.indexed)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: _NearbyRow(
-                      business: business,
-                      locationLabel: _cityWithDistance(userPosition, business),
-                      onTap: () => onTap(business),
-                    ),
+                    child:
+                        _NearbyRow(
+                              business: business,
+                              locationLabel: _cityWithDistance(
+                                userPosition,
+                                business,
+                              ),
+                              onTap: () => onTap(business),
+                            )
+                            .animate(delay: AppMotion.microDuration * index)
+                            .fadeIn(
+                              duration: AppMotion.standardDuration,
+                              curve: AppMotion.enter,
+                            )
+                            .slideY(
+                              begin: 0.08,
+                              duration: AppMotion.standardDuration,
+                              curve: AppMotion.enter,
+                            ),
                   ),
               ],
             ),
@@ -994,6 +1149,9 @@ class _NearbyRow extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
+              // Mismo motivo que en la tarjeta de "Destacados": el relleno
+              // manda la sombra dorada detrás de la tarjeta, no encima.
+              color: AppColors.surface100,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.mapControlBorder),
               boxShadow: const [
@@ -1043,22 +1201,7 @@ class _NearbyRow extends StatelessWidget {
                           ),
                           if (isEco) ...[
                             const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.ecoGreen500,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'ECO',
-                                style: AppTextStyles.homeMiniBadge.copyWith(
-                                  color: AppColors.surface100,
-                                ),
-                              ),
-                            ),
+                            const EcoBadge(),
                           ],
                         ],
                       ),
@@ -1096,7 +1239,17 @@ class _FavoriteButton extends StatelessWidget {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
               return;
             }
-            await FavoritesService().toggleFavorite(businessId);
+            if (!context.mounted) return;
+            if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) {
+              return;
+            }
+            if (!context.mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await FavoritesService().toggleFavorite(businessId);
+            } on FavoritesServiceException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+            }
           },
           child: Container(
             width: size,
@@ -1129,7 +1282,10 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxxl,
+          vertical: AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1175,7 +1331,7 @@ class _EmptyState extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   textStyle: AppTextStyles.buttonLg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
               ),
@@ -1198,7 +1354,10 @@ class _LoadErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xxxl,
+          vertical: AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1207,13 +1366,13 @@ class _LoadErrorState extends StatelessWidget {
               height: 96,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.settingsDanger.withValues(alpha: 0.12),
+                color: AppColors.destructive.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.wifi_off_rounded,
                 size: 44,
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
             ),
             const SizedBox(height: 20),
@@ -1243,7 +1402,7 @@ class _LoadErrorState extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   textStyle: AppTextStyles.buttonLg,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
               ),

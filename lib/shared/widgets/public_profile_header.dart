@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Cabecera de perfil público, compartida por `OrganizationProfileScreen` y `PublicUserProfileScreen` para que ambos se lean como la misma pantalla con distinto contenido.
@@ -173,10 +174,10 @@ class _AvatarWithBadge extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               color: AppColors.surface100,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.surface100, width: 3),
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.mapControlShadowSoft,
@@ -185,8 +186,13 @@ class _AvatarWithBadge extends StatelessWidget {
                 ),
               ],
             ),
-            clipBehavior: Clip.antiAlias,
-            child: avatar,
+            // El recorte va dentro del padding y no sobre el borde: así el
+            // marco blanco es un anillo parejo y la foto llena su cuadrado,
+            // en vez de dejar franjas cuando no es cuadrada.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(25),
+              child: SizedBox.expand(child: avatar),
+            ),
           ),
           if (badgeIcon != null)
             Positioned(
@@ -227,7 +233,7 @@ class _CredentialPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -289,7 +295,7 @@ class PublicProfileStats extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: Row(

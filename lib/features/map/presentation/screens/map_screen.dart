@@ -13,12 +13,18 @@ import 'package:nikara_app/features/business/data/business_storage_service.dart'
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Centro por defecto si falla la geolocalización (permiso denegado,
@@ -34,6 +40,10 @@ final LatLngBounds _kMapBounds = LatLngBounds(
 );
 
 const String _kAllCategories = 'Todos';
+
+/// Chip propio para las jornadas ECO: no sale de `businesses.category` como
+/// los demás, porque no son negocios sino filas de `eco_activities`.
+const String _kEcoCategory = 'Jornadas ECO';
 
 /// Margen extra sobre el viewport visible al consultar negocios (ver
 /// [_MapScreenState._loadBusinessesInViewport]/[_MapScreenState._paddedBounds]).
@@ -100,6 +110,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   String? _selectedBusinessId;
   Position? _userPosition;
   List<BusinessModel> _businesses = const [];
+
+  /// Jornadas con coordenadas, para pintarlas junto a los negocios.
+  List<EcoActivityModel> _ecoActivities = const [];
+  BitmapDescriptor? _ecoPinIcon;
 
   /// Solicitud pendiente de centrar el mapa en un negocio — de
   /// [MapScreen.initialFocus] o [MapFocusController], aplicada por
@@ -240,6 +254,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // incrementa esto al guardar) para que volver de "Registra tu negocio"
     // muestre el pin nuevo sin reabrir el mapa.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
+    // Mismo motivo para las jornadas: publicar o editar una desde este
+    // dispositivo debe reflejarse en sus pines sin reabrir el mapa.
+    EcoService.revision.addListener(_onEcoActivitiesChanged);
     // La suscripción realtime para cambios hechos en otro lugar se abre
     // tras la primera carga exitosa — ver _loadAllBusinessesAndFitCamera.
     _searchController.addListener(() {
@@ -262,6 +279,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     MapFocusController().pendingRoute.removeListener(_onRouteRequested);
     MapFocusController().navigationActive.value = false;
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
+    EcoService.revision.removeListener(_onEcoActivitiesChanged);
     _realtimeReloadDebounce?.cancel();
     unawaited(_unsubscribeBusinessChanges?.call() ?? Future<void>.value());
     _searchController.dispose();
@@ -330,7 +348,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       latitude: request.latitude,
       longitude: request.longitude,
       contactPhone: '',
-      allowsReservations: false,
       hostName: '',
     );
   }
@@ -373,7 +390,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       ? _kCarouselCompactHeight
       : _kCarouselExpandedHeight;
 
+  /// Con el chip de jornadas activo el mapa muestra solo esas: los negocios
+  /// se ocultan para que el filtro signifique lo mismo que los demás chips.
   List<BusinessModel> get _filteredBusinesses {
+    if (_selectedCategory == _kEcoCategory) return const [];
     return _businesses
         .where((b) {
           final matchesCategory =
@@ -384,6 +404,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               b.name.toLowerCase().contains(_searchQuery.toLowerCase());
           return matchesCategory && matchesSearch;
         })
+        .toList(growable: false);
+  }
+
+  List<EcoActivityModel> get _filteredEcoActivities {
+    if (_selectedCategory != _kAllCategories &&
+        _selectedCategory != _kEcoCategory) {
+      return const [];
+    }
+    if (_searchQuery.isEmpty) return _ecoActivities;
+    final query = _searchQuery.toLowerCase();
+    return _ecoActivities
+        .where((a) => a.title.toLowerCase().contains(query))
         .toList(growable: false);
   }
 
@@ -417,6 +449,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _buildVehicleBitmap(devicePixelRatio: dpr),
       for (final key in clusterKeys)
         _buildClusterBitmap(count: key, devicePixelRatio: dpr),
+      _buildPinBitmap(
+        selected: false,
+        category: MapPinCategory.eco,
+        devicePixelRatio: dpr,
+        ecoActivity: true,
+      ),
     ]);
     if (!mounted) return;
     setState(() {
@@ -431,6 +469,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       for (var i = 0; i < clusterKeys.length; i++) {
         _clusterIcons[clusterKeys[i]] = results[clusterStart + i];
       }
+      _ecoPinIcon = results[clusterStart + clusterKeys.length];
     });
   }
 
@@ -490,8 +529,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final textPainter = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: label,
+        // Sin fontFamily: este TextPainter dibuja sobre un canvas de
+        // dart:ui para generar el bitmap del pin, donde google_fonts no puede
+        // resolver una familia — se usa la del sistema, como cualquier otro
+        // texto pintado a mano.
         style: TextStyle(
-          fontFamily: 'Leelawadee',
           fontWeight: FontWeight.w700,
           fontSize: label.length > 1 ? 13 : 15,
           color: AppColors.settingsTextDark,
@@ -592,9 +634,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     required bool selected,
     required MapPinCategory category,
     required double devicePixelRatio,
+    bool ecoActivity = false,
   }) async {
-    final icon = mapPinIcon(category);
-    final accentColor = mapPinColor(category);
+    final icon = ecoActivity ? Icons.eco_rounded : mapPinIcon(category);
+    final accentColor = ecoActivity
+        ? AppColors.oliveText
+        : mapPinColor(category);
     final logicalWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
     final logicalHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
     final width = (logicalWidth * devicePixelRatio).round();
@@ -637,7 +682,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     canvas.drawCircle(
       center,
       radius,
-      Paint()..color = selected ? AppColors.primary500 : AppColors.surface100,
+      Paint()
+        // El pin de jornada va relleno de verde con glifo claro, al revés que
+        // los de negocio (claros con anillo de color): así se distingue de un
+        // vistazo qué es un negocio y qué una actividad.
+        ..color = selected
+            ? AppColors.primary500
+            : (ecoActivity ? AppColors.oliveText : AppColors.surface100),
     );
     canvas.drawCircle(
       center,
@@ -647,7 +698,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         // relleno dorado ya comunica "seleccionado"); el no seleccionado usa
         // el color de acento de su categoría para ser legible sin depender
         // del glifo.
-        ..color = selected ? AppColors.surface100 : accentColor
+        ..color = selected || ecoActivity ? AppColors.surface100 : accentColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5,
     );
@@ -659,7 +710,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           fontSize: selected ? 20 : 16,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
-          color: selected ? AppColors.settingsTextDark : accentColor,
+          color: selected
+              ? AppColors.settingsTextDark
+              : (ecoActivity ? AppColors.surface100 : accentColor),
         ),
       )
       ..layout();
@@ -714,6 +767,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _onEcoActivitiesChanged() => unawaited(_loadEcoActivities());
+
+  /// Jornadas próximas con coordenadas. Falla suave: el mapa de negocios no
+  /// debe quedar inutilizable porque el feed ECO no respondió.
+  Future<void> _loadEcoActivities() async {
+    try {
+      final activities = await EcoService().getUpcomingActivities();
+      if (!mounted) return;
+      setState(() {
+        _ecoActivities = activities
+            .where((a) => a.hasCoordinates)
+            .toList(growable: false);
+      });
+    } on EcoServiceException {
+      // Se queda sin pines de jornada hasta la próxima carga.
+    }
+  }
+
   Future<void> _loadCategories() async {
     try {
       final categories = await _businessStorageService.getAllCategories();
@@ -727,6 +798,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _onMapCreated(GoogleMapController controller) async {
     _mapController = controller;
+    unawaited(_loadEcoActivities());
     await _loadAllBusinessesAndFitCamera();
   }
 
@@ -1123,6 +1195,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final origin = _tripOrigin;
     final route = _navigationRoute;
     if (origin == null || route == null) return;
+    // El preview ("Cómo llegar") sí está permitido desde cualquier cara: lo
+    // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
+    if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
+    if (!mounted) return;
 
     final initialBearing = route.points.length > 1
         ? Geolocator.bearingBetween(
@@ -1546,6 +1622,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       }
     }
 
+    // Solo fuera de viaje: durante preview/navegación la pantalla se reduce
+    // al destino y su ruta, y un pin extra sería ruido.
+    final ecoIcon = _ecoPinIcon;
+    if (!_isNavigating && !_isPreviewingTrip && ecoIcon != null) {
+      for (final activity in _filteredEcoActivities) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('__eco__${activity.id}'),
+            position: LatLng(activity.latitude!, activity.longitude!),
+            icon: ecoIcon,
+            anchor: const Offset(0.5, 0.5),
+            onTap: () => _onEcoMarkerTapped(activity),
+          ),
+        );
+      }
+    }
+
     final vehiclePos = _vehicleDisplayPosition;
     final vehicleIcon = _vehicleIcon;
     if (_isNavigating && vehiclePos != null && vehicleIcon != null) {
@@ -1564,6 +1657,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return markers;
   }
 
+  Future<void> _onEcoMarkerTapped(EcoActivityModel activity) async {
+    await _animateCameraTo(LatLng(activity.latitude!, activity.longitude!));
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
+    );
+    if (!mounted) return;
+    // Pudo haberse unido/salido, o el organizador pudo editarla.
+    await _loadEcoActivities();
+  }
+
   /// Encuadra la cámara a los bordes exactos de los miembros del cluster
   /// (en vez de un zoom fijo) para que se resuelva en un solo tap sin
   /// importar qué tan dispersos estén.
@@ -1580,10 +1684,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredBusinesses;
-    final categories = [_kAllCategories, ..._categories];
+    final categories = [
+      _kAllCategories,
+      if (_ecoActivities.isNotEmpty) _kEcoCategory,
+      ..._categories,
+    ];
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       extendBody: true,
       body: Stack(
         fit: StackFit.expand,
@@ -1736,6 +1844,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   _CircleIconButton(
                     icon: Icons.close_rounded,
                     onTap: _cancelTripPreview,
+                    label: 'Cancelar vista previa del viaje',
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1759,13 +1868,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Padding(
-                        padding: EdgeInsets.only(left: 12, bottom: 8),
+                        padding: EdgeInsets.only(
+                          left: AppSpacing.md,
+                          bottom: AppSpacing.sm,
+                        ),
                         child: _CarouselHeaderLabel(),
                       ),
                       AnimatedContainer(
@@ -1981,32 +2093,43 @@ IconData _travelModeIcon(TravelMode mode) => switch (mode) {
 };
 
 class _CircleIconButton extends StatelessWidget {
-  const _CircleIconButton({required this.icon, required this.onTap});
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.label,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Descripción para lectores de pantalla — el botón no tiene texto visible.
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.mapControlBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.mapControlShadowStrong,
-              offset: Offset(0, 4),
-              blurRadius: 14,
-            ),
-          ],
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.mapControlBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.mapControlShadowStrong,
+                offset: Offset(0, 4),
+                blurRadius: 14,
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 18, color: AppColors.settingsTextDark),
         ),
-        child: Icon(icon, size: 18, color: AppColors.settingsTextDark),
       ),
     );
   }
@@ -2026,10 +2149,10 @@ class _TripModeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2086,7 +2209,7 @@ class _TripModeButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2133,10 +2256,10 @@ class _TripPreviewPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2185,7 +2308,7 @@ class _TripPreviewPanel extends StatelessWidget {
                 foregroundColor: AppColors.settingsTextDark,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 14),
               ),
@@ -2247,7 +2370,7 @@ class _ManeuverBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.primary500,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.mapCardShadow,
@@ -2377,7 +2500,7 @@ class _NavigationPanel extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2400,7 +2523,7 @@ class _NavigationPanel extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.primary500,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2479,14 +2602,14 @@ class _NavigationPanel extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       // Alerta suave, no un bloque rojo sólido: fondo coral
                       // pálido con el tinte destructivo canónico del texto/ícono.
-                      backgroundColor: AppColors.complementario1,
-                      foregroundColor: AppColors.settingsDanger,
+                      backgroundColor: AppColors.coralPaleFill,
+                      foregroundColor: AppColors.destructive,
                       elevation: 0,
                       padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                         side: const BorderSide(
-                          color: AppColors.complementario2,
+                          color: AppColors.coralPaleBorder,
                         ),
                       ),
                       textStyle: AppTextStyles.mapRowTitle.copyWith(
@@ -2564,7 +2687,7 @@ class _CarouselHeaderLabel extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: Border.all(color: AppColors.mapControlBorder),
           boxShadow: const [
             BoxShadow(
@@ -2612,7 +2735,7 @@ class _MapSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -2711,12 +2834,12 @@ class _CategoryChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 8),
+        margin: const EdgeInsets.only(right: AppSpacing.sm),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.surface100,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: selected
               ? null
               : Border.all(color: AppColors.mapControlBorder),
@@ -2757,17 +2880,17 @@ class _MapErrorOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AppColors.backgroundCream,
+      color: AppColors.background,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
                 Icons.wifi_off_rounded,
                 size: 40,
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
               const SizedBox(height: 12),
               Text(
@@ -2813,10 +2936,13 @@ class _EmptyBusinessesBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2871,7 +2997,7 @@ class _PinDetailSheetChrome extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: 10),
               decoration: BoxDecoration(
                 color: AppColors.profileDivider,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
             ),
             child,
@@ -3011,12 +3137,7 @@ class _BusinessCarouselCard extends StatelessWidget {
                           textColor: AppColors.settingsTextMuted,
                           bordered: true,
                         ),
-                      if (isEco)
-                        _MapTag(
-                          label: 'ECO',
-                          background: AppColors.ecoGreen500,
-                          textColor: AppColors.surface100,
-                        ),
+                      if (isEco) const EcoBadge(),
                       if (rating > 0)
                         _MapTag(
                           label: '★ ${rating.toStringAsFixed(1)}',
@@ -3036,11 +3157,7 @@ class _BusinessCarouselCard extends StatelessWidget {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: isEco
-                          ? _MapTag(
-                              label: 'ECO',
-                              background: AppColors.ecoGreen500,
-                              textColor: AppColors.surface100,
-                            )
+                          ? const EcoBadge()
                           : rating > 0
                           ? _MapTag(
                               label: '★ ${rating.toStringAsFixed(1)}',
@@ -3061,7 +3178,7 @@ class _BusinessCarouselCard extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(22),
@@ -3110,7 +3227,9 @@ class _BusinessCarouselCard extends StatelessWidget {
                                   elevation: 0,
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
                                   ),
                                   textStyle: AppTextStyles.mapRowTitle.copyWith(
                                     fontSize: 12,
@@ -3136,7 +3255,9 @@ class _BusinessCarouselCard extends StatelessWidget {
                                   elevation: 0,
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
                                   ),
                                   textStyle: AppTextStyles.mapRowTitle.copyWith(
                                     fontSize: 12,
@@ -3181,7 +3302,7 @@ class _MapTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: bordered ? Border.all(color: AppColors.mapControlBorder) : null,
       ),
       child: Text(
@@ -3216,7 +3337,17 @@ class _FavoriteToggle extends StatelessWidget {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
               return;
             }
-            await FavoritesService().toggleFavorite(businessId);
+            if (!context.mounted) return;
+            if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) {
+              return;
+            }
+            if (!context.mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await FavoritesService().toggleFavorite(businessId);
+            } on FavoritesServiceException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+            }
           },
           child: Container(
             width: 30,

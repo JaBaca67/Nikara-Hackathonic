@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:nikara_app/theme/app_colors.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 
 export 'package:nikara_app/theme/app_colors.dart';
 
@@ -9,7 +10,7 @@ export 'package:nikara_app/theme/app_colors.dart';
 abstract class AppTextStyles {
   /// Figma "HL4".
   static TextStyle get heading => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 24,
     height: 36 / 24,
     fontWeight: FontWeight.w700,
@@ -30,37 +31,22 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  static TextStyle get inputLabel => GoogleFonts.nunito(
-    color: AppColors.neutral600,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.5,
-  );
-
   static TextStyle get inputText => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 14,
     height: 20 / 14,
     fontWeight: FontWeight.w400,
   );
 
   static TextStyle get link => GoogleFonts.nunito(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w700,
   );
 
-  static TextStyle get registerPrompt => GoogleFonts.nunito(
-    color: AppColors.neutral600,
-    fontSize: 16,
-    height: 20 / 16,
-    fontWeight: FontWeight.w400,
-  );
-
   static TextStyle get registerLink => GoogleFonts.nunito(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 15,
     height: 24 / 15,
     fontWeight: FontWeight.w700,
@@ -70,7 +56,7 @@ abstract class AppTextStyles {
 
   /// Figma "HL3" — wordmark "Níkara".
   static TextStyle get headingXL => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 32,
     height: 48 / 32,
     fontWeight: FontWeight.w700,
@@ -78,7 +64,7 @@ abstract class AppTextStyles {
 
   /// Títulos de sección ("Más visitados").
   static TextStyle get sectionTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 16,
     height: 24 / 16,
     fontWeight: FontWeight.w800,
@@ -93,86 +79,9 @@ abstract class AppTextStyles {
   );
 
   static TextStyle get cardTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 11,
     height: 13.75 / 11,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get cardLocation => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral700,
-    fontSize: 9,
-    height: 13.5 / 9,
-    fontWeight: FontWeight.w400,
-  );
-
-  static TextStyle get cardPrice => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral800,
-    fontSize: 14,
-    height: 1.0,
-    fontWeight: FontWeight.w900,
-  );
-
-  static TextStyle get cardPriceSuffix => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral700,
-    fontSize: 9,
-    height: 1.0,
-    fontWeight: FontWeight.w400,
-  );
-
-  static TextStyle get cardRating => GoogleFonts.leagueSpartan(
-    color: AppColors.surface100,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get tagPill => GoogleFonts.leagueSpartan(
-    color: AppColors.surface100,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w900,
-  );
-
-  static TextStyle get regionTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get seeMore => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral700,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get heroTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.surface100,
-    fontSize: 20,
-    height: 30 / 20,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get heroLocation => GoogleFonts.nunito(
-    color: AppColors.surface100,
-    fontSize: 12,
-    height: 18 / 12,
-    fontWeight: FontWeight.w400,
-  );
-
-  static TextStyle get heroPrice => GoogleFonts.leagueSpartan(
-    color: AppColors.surface100,
-    fontSize: 20,
-    height: 1.0,
-    fontWeight: FontWeight.w900,
-  );
-
-  static TextStyle get ctaPill => GoogleFonts.leagueSpartan(
-    color: AppColors.surface100,
-    fontSize: 11,
-    height: 16.5 / 11,
     fontWeight: FontWeight.w700,
   );
 
@@ -191,22 +100,6 @@ abstract class AppTextStyles {
     fontSize: 20,
     height: 30 / 20,
     fontWeight: FontWeight.w700,
-  );
-
-  /// Figma "Subtitulo 1" — "lv 4/12".
-  static TextStyle get profileLevel => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 16,
-    height: 24 / 16,
-    fontWeight: FontWeight.w600,
-  );
-
-  /// "León, Nicaragua".
-  static TextStyle get profileLocation => GoogleFonts.nunito(
-    color: AppColors.profileMuted,
-    fontSize: 12,
-    height: 18 / 12,
-    fontWeight: FontWeight.w400,
   );
 
   /// Título del header "Perfil".
@@ -273,14 +166,6 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  /// Precio en tarjeta favorita ("C$480").
-  static TextStyle get favoriteCardPrice => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 13,
-    height: 19.5 / 13,
-    fontWeight: FontWeight.w800,
-  );
-
   /// Título de tarjeta de badge en la grilla.
   static TextStyle get badgeCardTitle => GoogleFonts.leagueSpartan(
     color: AppColors.settingsTextDark,
@@ -295,54 +180,6 @@ abstract class AppTextStyles {
     fontSize: 8,
     height: 12 / 8,
     fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get listCardTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 19.25 / 14,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get listCardCaption => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral500,
-    fontSize: 11,
-    height: 16.5 / 11,
-    fontWeight: FontWeight.w400,
-  );
-
-  static TextStyle get listCardPrice => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get listCardPriceSuffix => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral500,
-    fontSize: 10,
-    height: 14.286 / 10,
-    fontWeight: FontWeight.w400,
-  );
-
-  static TextStyle get badgeTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 10,
-    height: 12.5 / 10,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get badgeStatus => GoogleFonts.leagueSpartan(
-    fontSize: 9,
-    height: 13.5 / 9,
-    fontWeight: FontWeight.w600,
-  );
-
-  static TextStyle get sectionSubLabel => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral500,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w400,
   );
 
   // --- Pantalla Ajustes (Figma nodo 361:323) ---
@@ -392,23 +229,8 @@ abstract class AppTextStyles {
 
   // --- Pantalla Mapa (Figma nodo 167:1849) ---
 
-  static TextStyle get headerTitleMd => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 18,
-    height: 22.5 / 18,
-    fontWeight: FontWeight.w900,
-  );
-
-  static TextStyle get mapListLabel => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral500,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w900,
-    letterSpacing: 1,
-  );
-
   static TextStyle get mapRowTitle => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w700,
@@ -421,34 +243,13 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w400,
   );
 
-  static TextStyle get mapRowRating => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w700,
-  );
-
-  static TextStyle get mapRowPrice => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w900,
-  );
-
   // --- Feedback de formularios (auditoría de tipografía) ---
 
-  /// Texto de error de validación inline, [AppColors.formError].
+  /// Texto de error de validación inline, [AppColors.error].
   static TextStyle get errorText => GoogleFonts.nunito(
-    color: AppColors.formError,
+    color: AppColors.error,
     fontSize: 11,
     fontWeight: FontWeight.w600,
-  );
-
-  /// Texto de ayuda/hint bajo un campo (no es error).
-  static TextStyle get helperText => GoogleFonts.nunito(
-    color: AppColors.neutral600,
-    fontSize: 11,
-    fontWeight: FontWeight.w400,
   );
 
   // --- Links de texto ---
@@ -458,7 +259,7 @@ abstract class AppTextStyles {
 
   /// League Spartan Bold 12 — link más pequeño.
   static TextStyle get linkSm => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 12,
     height: 16 / 12,
     fontWeight: FontWeight.w700,
@@ -466,17 +267,9 @@ abstract class AppTextStyles {
 
   /// League Spartan Bold 14 — link por defecto.
   static TextStyle get linkMd => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 14,
     height: 20 / 14,
-    fontWeight: FontWeight.w700,
-  );
-
-  /// League Spartan Bold 15 — link más prominente.
-  static TextStyle get linkLg => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
-    fontSize: 15,
-    height: 20 / 15,
     fontWeight: FontWeight.w700,
   );
 
@@ -529,26 +322,10 @@ abstract class AppTextStyles {
 
   /// "Crea una cuenta".
   static TextStyle get registerHeading => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral1100,
+    color: AppColors.textPrimary,
     fontSize: 22,
     height: 28 / 22,
     fontWeight: FontWeight.w700,
-  );
-
-  /// Dígito dentro del círculo indicador de paso.
-  static TextStyle get stepIndicatorNumber => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 14,
-    height: 20 / 14,
-    fontWeight: FontWeight.w400,
-  );
-
-  /// Caption del indicador de paso ("Datos Personales").
-  static TextStyle get stepIndicatorCaption => GoogleFonts.nunito(
-    color: AppColors.neutral1100,
-    fontSize: 12,
-    height: 16 / 12,
-    fontWeight: FontWeight.w400,
   );
 
   // --- Escala tipográfica base (Figma nodo 134:25, "Tipografias") ---
@@ -692,22 +469,6 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Label de fila dentro de una tarjeta de detalle (amenidad/actividad).
-  static TextStyle get detailRowText => GoogleFonts.leagueSpartan(
-    color: AppColors.textInk,
-    fontSize: 14,
-    height: 19.25 / 14,
-    fontWeight: FontWeight.w400,
-  );
-
-  /// Chip pequeño "Eco" dentro de una fila de amenidad.
-  static TextStyle get ecoTagChip => GoogleFonts.leagueSpartan(
-    color: AppColors.ecoForest,
-    fontSize: 10,
-    height: 15 / 10,
-    fontWeight: FontWeight.w700,
-  );
-
   /// Nombre del autor de una reseña.
   static TextStyle get reviewAuthor => GoogleFonts.leagueSpartan(
     color: AppColors.textInk,
@@ -740,22 +501,6 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w900,
   );
 
-  /// Label del botón "Reservar Ahora — C$350".
-  static TextStyle get reserveButtonLabel => GoogleFonts.leagueSpartan(
-    color: AppColors.textInk,
-    fontSize: 16,
-    height: 24 / 16,
-    fontWeight: FontWeight.w700,
-  );
-
-  /// Caption "Cancela gratis hasta 48 horas antes".
-  static TextStyle get reserveCaption => GoogleFonts.leagueSpartan(
-    color: AppColors.neutral600,
-    fontSize: 11,
-    height: 16.5 / 11,
-    fontWeight: FontWeight.w400,
-  );
-
   // --- Rediseño de detalle de negocio ---
 
   /// Párrafo de descripción.
@@ -768,7 +513,7 @@ abstract class AppTextStyles {
 
   /// Link de expandir inline ("Mostrar más" / "Ver las N actividades").
   static TextStyle get detailInlineLink => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 11.5,
     height: 15 / 11.5,
     fontWeight: FontWeight.w700,
@@ -784,7 +529,7 @@ abstract class AppTextStyles {
 
   /// Badge "ECO" en una fila de actividad.
   static TextStyle get detailEcoBadge => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 9.5,
     height: 12 / 9.5,
     fontWeight: FontWeight.w800,
@@ -808,7 +553,7 @@ abstract class AppTextStyles {
 
   /// Badge "VERIFICADO" en la fila del anfitrión.
   static TextStyle get detailVerifiedBadge => GoogleFonts.leagueSpartan(
-    color: AppColors.accent300,
+    color: AppColors.oliveText,
     fontSize: 9,
     height: 11 / 9,
     fontWeight: FontWeight.w800,
@@ -1064,12 +809,16 @@ abstract class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: AppColors.backgroundCream,
+      scaffoldBackgroundColor: AppColors.background,
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary500,
         primary: AppColors.primary500,
-        secondary: AppColors.accent300,
-        surface: AppColors.backgroundCream,
+        secondary: AppColors.oliveText,
+        // `surface` es lo que se apoya ENCIMA del fondo (Card, Dialog,
+        // BottomSheet, cualquier Material sin color propio), no el fondo de
+        // pantalla. Apuntaba a `background` y eso pintaba de beige toda
+        // superficie que no fijara su color a mano.
+        surface: AppColors.surface100,
       ),
       // Se llena cada slot (no solo los 3 que la app usa vía
       // Theme.of(context).textTheme) para que cualquier widget que caiga en
@@ -1080,43 +829,43 @@ abstract class AppTheme {
       textTheme: TextTheme(
         // Encabezados y títulos — League Spartan.
         displayLarge: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 57,
           fontWeight: FontWeight.w700,
         ),
         displayMedium: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 45,
           fontWeight: FontWeight.w700,
         ),
         displaySmall: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 36,
           fontWeight: FontWeight.w700,
         ),
         headlineLarge: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 32,
           fontWeight: FontWeight.w700,
         ),
         headlineMedium: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 28,
           fontWeight: FontWeight.w700,
         ),
         headlineSmall: AppTextStyles.heading,
         titleLarge: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 22,
           fontWeight: FontWeight.w600,
         ),
         titleMedium: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
         titleSmall: GoogleFonts.leagueSpartan(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
@@ -1134,14 +883,38 @@ abstract class AppTheme {
         ),
         labelLarge: AppTextStyles.buttonLarge,
         labelMedium: GoogleFonts.nunito(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
         labelSmall: GoogleFonts.nunito(
-          color: AppColors.neutral1100,
+          color: AppColors.textPrimary,
           fontSize: 11,
           fontWeight: FontWeight.w600,
+        ),
+      ),
+      // Por defecto Material pinta el SnackBar pegado al borde inferior, sin
+      // radio y con el gris casi negro de fábrica — se lee desconectado del
+      // resto de la UI. `floating` + radio + superficie de marca lo acercan
+      // al resto de tarjetas de la app; ver AppSnackbar para variantes con
+      // color/ícono de estado (éxito/error/info) sobre esta misma base.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surface,
+        contentTextStyle: GoogleFonts.nunito(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        actionTextColor: AppColors.oliveText,
+        elevation: 3,
+        insetPadding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.lg,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          side: const BorderSide(color: AppColors.border),
         ),
       ),
     );

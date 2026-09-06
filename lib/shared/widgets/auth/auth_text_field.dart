@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Input estandarizado de Auth; gestiona su propio toggle de visibilidad de contraseña sin plumbing externo.
@@ -59,7 +60,7 @@ class _AuthTextFieldState extends State<AuthTextField> {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: AppColors.settingsBackground,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(
               color: AppColors.authMuted.withValues(alpha: 0.35),
             ),
@@ -103,6 +104,9 @@ class _AuthTextFieldState extends State<AuthTextField> {
                     _obscureText ? Icons.visibility_off : Icons.visibility,
                     size: 18,
                     color: AppColors.authMuted,
+                    semanticLabel: _obscureText
+                        ? 'Mostrar contraseña'
+                        : 'Ocultar contraseña',
                   ),
                 ),
             ],

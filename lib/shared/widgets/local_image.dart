@@ -11,12 +11,17 @@ class LocalImage extends StatelessWidget {
     super.key,
     required this.path,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.fallbackIcon = Icons.image_outlined,
     this.fallbackIconSize = 28,
   });
 
   final String? path;
   final BoxFit fit;
+
+  /// Qué parte se conserva al recortar con [BoxFit.cover]. Las fotos de perfil
+  /// usan un encuadre más alto que el centro, donde suele estar la cara.
+  final Alignment alignment;
   final IconData fallbackIcon;
   final double fallbackIconSize;
 
@@ -36,6 +41,20 @@ class LocalImage extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             fit: fit,
+            alignment: alignment,
+            // `frameBuilder`, no `loadingBuilder`: este último solo reacciona
+            // a los bytes de descarga, así que en una imagen ya en la caché
+            // HTTP o que llega completa en un solo chunk nunca pasa por
+            // "cargando" — hay un frame en blanco entre que el `Image` se
+            // monta y el primer frame decodificado se pinta. `frameBuilder`
+            // cubre ese hueco porque se dispara según frames decodificados,
+            // no bytes de red. Encontrado al reemplazar el logo de una
+            // fundación ya publicada: el círculo se veía blanco un instante
+            // justo después de guardar, como si no hubiera guardado nada.
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+                wasSynchronouslyLoaded || frame != null
+                ? child
+                : _placeholder(),
             errorBuilder: (context, error, stackTrace) => _fallback(),
           )
         : Image.file(
@@ -43,8 +62,17 @@ class LocalImage extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             fit: fit,
+            alignment: alignment,
             errorBuilder: (context, error, stackTrace) => _fallback(),
           );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: AppColors.placeholderTan,
+    );
   }
 
   Widget _fallback() {

@@ -6,19 +6,24 @@ import 'package:uuid/uuid.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de detalle de [BusinessModel], sin precio ni CTA de reserva — mismo pivote "discovery-first" ya aplicado al rediseño del Mapa.
@@ -36,13 +41,16 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
 
   final _favoritesService = FavoritesService();
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
   final _businessStorageService = BusinessStorageService();
 
   int _tab = 0;
   bool _isFavorite = false;
   UserModel? _currentProfile;
-  String? _currentAvatarPath;
+
+  /// Perfil del dueño real del negocio, sea o no la sesión actual. Antes solo
+  /// se resolvía cuando el dueño era el usuario logueado, así que al cambiar
+  /// de cuenta el anfitrión aparecía como texto libre y sin perfil que abrir.
+  UserModel? _ownerProfile;
   Position? _userPosition;
 
   /// Se actualiza in-place al enviar una reseña para reflejar el cambio sin salir y reentrar a la pantalla.
@@ -72,12 +80,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _loadCurrentUser() async {
-    final profile = await _authService.getCurrentProfile();
-    final avatarPath = await _extrasService.getAvatarPath();
+    UserModel? profile;
+    UserModel? owner;
+    try {
+      profile = await _authService.getCurrentProfile();
+      final ownerId = _business.ownerId;
+      if (ownerId.isEmpty) {
+        owner = null;
+      } else if (ownerId == profile?.id) {
+        // Mismo perfil: se evita el segundo round-trip.
+        owner = profile;
+      } else {
+        owner = await _authService.getProfileById(ownerId);
+      }
+    } on AuthServiceException {
+      // RLS solo deja leer `profiles` a cuentas autenticadas: en modo
+      // invitado el bloque cae al `hostName` de texto libre, como antes.
+    }
     if (!mounted) return;
     setState(() {
       _currentProfile = profile;
-      _currentAvatarPath = avatarPath;
+      _ownerProfile = owner;
     });
   }
 
@@ -88,24 +111,49 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     setState(() => _userPosition = position);
   }
 
+  /// El propio dueño va a su ProfileScreen (editable); cualquier otro
+  /// visitante va al perfil público de esa persona. Antes esto abría siempre
+  /// ProfileScreen, así que tocar "Anfitrión" en un negocio ajeno te llevaba a
+  /// tu propio perfil.
   void _openOwnerProfile() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+    final ownerId = _business.ownerId;
+    if (ownerId.isEmpty) return;
+    if (ownerId == _currentProfile?.id) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicUserProfileScreen(
+          userId: ownerId,
+          fallbackName: _business.hostName,
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleFavorite() async {
     if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
     if (!mounted) return;
-    final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
+    if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) return;
     if (!mounted) return;
-    setState(() => _isFavorite = nowFavorite);
+    // Desde que los favoritos viven en `user_favorites`, guardar puede fallar
+    // por red. El corazón no se mueve si eso pasa: pintarlo lleno haría creer
+    // que el negocio quedó guardado cuando no se escribió ninguna fila.
+    try {
+      final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
+      if (!mounted) return;
+      setState(() => _isFavorite = nowFavorite);
+    } on FavoritesServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+    }
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+    AppSnackbar.showInfo(context, 'Próximamente');
   }
 
   Future<void> _addToRoute() async {
@@ -113,6 +161,8 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _openWriteReview() async {
+    if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
+    if (!mounted) return;
     final draft = await showModalBottomSheet<_ReviewDraft>(
       context: context,
       isScrollControlled: true,
@@ -139,7 +189,16 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       mediaPaths: draft.mediaPaths,
     );
 
-    await _businessStorageService.addReview(_business, review);
+    // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
+    // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
+    // mostrarla igual haría creer que quedó publicada para todos.
+    try {
+      await _businessStorageService.addReview(_business, review);
+    } on ReviewServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _businessState = _businessState.copyWith(
@@ -147,9 +206,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       );
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('¡Gracias por tu reseña! +20 puntos')),
-    );
+    AppSnackbar.showSuccess(context, '¡Gracias por tu reseña! +20 puntos');
   }
 
   /// Enfoca el mapa propio de Níkara (no Google Maps externo) porque el mapa in-app ya traza ruta real y sigue el viaje.
@@ -157,10 +214,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     final lat = _business.latitude;
     final lng = _business.longitude;
     if (lat == null || lng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Este negocio todavía no tiene ubicación en el mapa.'),
-        ),
+      AppSnackbar.showInfo(
+        context,
+        'Este negocio todavía no tiene ubicación en el mapa.',
       );
       return;
     }
@@ -193,23 +249,28 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                 DetailCoverIconButton(
                   icon: Icons.add_road_rounded,
                   onTap: _addToRoute,
+                  label: 'Agregar a una ruta',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
                   onTap: _toggleFavorite,
+                  label: _isFavorite
+                      ? 'Quitar de favoritos'
+                      : 'Agregar a favoritos',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: Icons.ios_share,
                   onTap: _showComingSoon,
+                  label: 'Compartir negocio',
                 ),
               ],
             ),
             Transform.translate(
               offset: const Offset(0, -18),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: _QuickInfoCard(
                   business: _business,
                   distanceKm: _distanceKm,
@@ -228,12 +289,14 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                    ),
                     child: _tab == 0
                         ? _InformationTab(
                             business: _business,
                             currentProfile: _currentProfile,
-                            currentAvatarPath: _currentAvatarPath,
+                            ownerProfile: _ownerProfile,
                             onOwnerTap: _openOwnerProfile,
                             onDirections: _openDirections,
                             onReport: _showComingSoon,
@@ -343,7 +406,7 @@ class _QuickInfoCard extends StatelessWidget {
           value: _todayValue,
           valueColor: business.schedules.trim().isEmpty
               ? AppColors.settingsTextMuted
-              : AppColors.accent300,
+              : AppColors.oliveText,
         ),
       ],
     );
@@ -355,7 +418,7 @@ class _InformationTab extends StatefulWidget {
   const _InformationTab({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onOwnerTap,
     required this.onDirections,
     required this.onReport,
@@ -363,7 +426,7 @@ class _InformationTab extends StatefulWidget {
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onOwnerTap;
   final VoidCallback onDirections;
   final VoidCallback onReport;
@@ -394,8 +457,6 @@ class _InformationTabState extends State<_InformationTab> {
         SocialContact.facebook(business.facebookLink),
       if (business.tiktokLink.isNotEmpty)
         SocialContact.tiktok(business.tiktokLink),
-      if (business.socialMediaLink.isNotEmpty)
-        SocialContact.link(business.socialMediaLink),
     ];
 
     final sections = <Widget>[
@@ -410,12 +471,13 @@ class _InformationTabState extends State<_InformationTab> {
         ),
       if (business.amenities.isNotEmpty)
         _ServicesSection(amenities: business.amenities),
-      _HostSection(
-        business: business,
-        currentProfile: widget.currentProfile,
-        currentAvatarPath: widget.currentAvatarPath,
-        onTap: widget.onOwnerTap,
-      ),
+      if (business.showHost)
+        _HostSection(
+          business: business,
+          currentProfile: widget.currentProfile,
+          ownerProfile: widget.ownerProfile,
+          onTap: widget.onOwnerTap,
+        ),
       _ScheduleSection(business: business),
       if (contacts.isNotEmpty) _ContactSection(contacts: contacts),
       _DirectionsSection(business: business, onTap: widget.onDirections),
@@ -474,7 +536,7 @@ class _DescriptionSection extends StatelessWidget {
               const Icon(
                 Icons.expand_more,
                 size: 15,
-                color: AppColors.accent300,
+                color: AppColors.oliveText,
               ),
             ],
           ),
@@ -494,7 +556,12 @@ class _FullDescriptionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,6 +585,7 @@ class _FullDescriptionSheet extends StatelessWidget {
                     ),
                     child: const Icon(
                       Icons.close,
+                      semanticLabel: 'Cerrar',
                       size: 18,
                       color: AppColors.settingsTextDark,
                     ),
@@ -620,7 +688,7 @@ class _ActivitiesSection extends StatelessWidget {
                   Icon(
                     expanded ? Icons.expand_less : Icons.chevron_right,
                     size: 15,
-                    color: AppColors.accent300,
+                    color: AppColors.oliveText,
                   ),
                 ],
               ),
@@ -649,20 +717,11 @@ class _ActivityRow extends StatelessWidget {
     return DetailIconRow(
       icon: activityIcon(label),
       label: activityLabel(label),
-      iconColor: isEco ? AppColors.accent300 : AppColors.settingsTextMuted,
+      iconColor: isEco ? AppColors.oliveText : AppColors.settingsTextMuted,
       iconBackground: isEco
           ? AppColors.detailActivityIconBg
           : AppColors.settingsBackground,
-      trailing: isEco
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.detailActivityIconBg,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text('ECO', style: AppTextStyles.detailEcoBadge),
-            )
-          : null,
+      trailing: isEco ? const EcoBadge() : null,
     );
   }
 }
@@ -685,7 +744,7 @@ class _ServicesSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(color: AppColors.mapControlBorder),
               ),
               child: Row(
@@ -728,7 +787,7 @@ class _ScheduleSection extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         child: Row(
@@ -769,36 +828,58 @@ class _ContactSection extends StatelessWidget {
   }
 }
 
-/// Al ser la app local por dispositivo (sin sesión compartida), solo se resuelve a un perfil real cuando [BusinessModel.ownerId] coincide con la sesión actual; el resto cae al [BusinessModel.hostName] de texto libre.
+/// El anfitrión se resuelve contra `profiles` por [BusinessModel.ownerId], sin
+/// importar qué cuenta esté activa; [BusinessModel.hostName] queda solo como
+/// respaldo para negocios sin `owner_id` (los sembrados) o cuando `profiles` no
+/// es legible (modo invitado).
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onTap,
   });
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onTap;
 
-  bool get _isLinkedToCurrentUser =>
+  bool get _isOwnBusiness =>
       business.ownerId.isNotEmpty &&
       currentProfile != null &&
       business.ownerId == currentProfile!.id;
 
+  /// Una cuenta admin puede registrar y operar negocios como cualquier otra
+  /// (ver CLAUDE.md > seguridad): lo que no debe pasar es que su identidad
+  /// real quede a la vista de otros usuarios en una pantalla pública. Esto
+  /// solo oculta el nombre/foto que se **dibujan** — la fila en
+  /// `businesses.owner_id` sigue siendo la real (así el propio dueño puede
+  /// seguir editando su negocio), así que sigue siendo legible por cualquiera
+  /// que consulte la REST API directo con la anon key mientras RLS esté
+  /// deshabilitada. El propio dueño admin sigue viendo su nombre real al
+  /// entrar a su propio negocio; solo se enmascara para otros usuarios.
+  bool get _maskOwnerIdentity {
+    if (_isOwnBusiness) return false;
+    return ownerProfile?.role == UserRole.admin;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLinked = _isLinkedToCurrentUser;
+    final owner = ownerProfile;
+    final maskIdentity = _maskOwnerIdentity;
     return DetailSection(
       title: 'Anfitrión',
       child: _HostRow(
         hostName: business.hostName,
-        linkedName: isLinked ? currentProfile!.fullName : null,
-        linkedAvatarPath: isLinked ? currentAvatarPath : null,
+        linkedName: maskIdentity ? null : owner?.fullName,
+        linkedAvatarUrl: maskIdentity ? null : owner?.avatarUrl,
+        isOwnBusiness: _isOwnBusiness,
         hasWhatsapp: business.contactPhone.isNotEmpty,
-        onTap: isLinked ? onTap : null,
+        // Hay perfil que abrir siempre que exista owner_id: el propio va a
+        // ProfileScreen, el ajeno al perfil público. Enmascarado = tampoco
+        // hay a dónde llevar el toque.
+        onTap: business.ownerId.isEmpty || maskIdentity ? null : onTap,
       ),
     );
   }
@@ -809,14 +890,16 @@ class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
     required this.linkedName,
-    required this.linkedAvatarPath,
+    required this.linkedAvatarUrl,
+    required this.isOwnBusiness,
     required this.hasWhatsapp,
     required this.onTap,
   });
 
   final String hostName;
   final String? linkedName;
-  final String? linkedAvatarPath;
+  final String? linkedAvatarUrl;
+  final bool isOwnBusiness;
   final bool hasWhatsapp;
   final VoidCallback? onTap;
 
@@ -826,7 +909,7 @@ class _HostRow extends StatelessWidget {
     final displayName = linkedName != null && linkedName.trim().isNotEmpty
         ? linkedName
         : (hostName.isEmpty ? 'Anfitrión Níkara' : hostName);
-    final avatarPath = linkedAvatarPath;
+    final avatarPath = linkedAvatarUrl;
     final initial = displayName.trim().isEmpty
         ? '?'
         : displayName.trim()[0].toUpperCase();
@@ -835,7 +918,7 @@ class _HostRow extends StatelessWidget {
       avatar: avatarPath != null && avatarPath.isNotEmpty
           ? LocalImage(path: avatarPath)
           : Container(
-              color: AppColors.accent300,
+              color: AppColors.oliveText,
               alignment: Alignment.center,
               child: Text(
                 initial,
@@ -844,12 +927,12 @@ class _HostRow extends StatelessWidget {
             ),
       name: displayName,
       verified: true,
-      caption: hasWhatsapp || onTap != null
-          ? (onTap != null
-                ? 'Toca para ver el perfil'
-                : 'Disponible por WhatsApp')
-          : null,
-      captionColor: onTap != null ? AppColors.accent300 : null,
+      caption: onTap != null
+          ? (isOwnBusiness
+                ? 'Tu negocio · toca para ver tu perfil'
+                : 'Toca para ver el perfil')
+          : (hasWhatsapp ? 'Disponible por WhatsApp' : null),
+      captionColor: onTap != null ? AppColors.oliveText : null,
       onTap: onTap,
     );
   }
@@ -919,7 +1002,7 @@ class _ReviewsTab extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,
               side: const BorderSide(color: AppColors.primary500),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -974,7 +1057,7 @@ class _ReviewsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
       child: Column(
         children: [
           const Icon(
@@ -1013,11 +1096,11 @@ class _RatingSummaryCard extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Row(
@@ -1058,7 +1141,7 @@ class _RatingSummaryCard extends StatelessWidget {
               children: [
                 for (var star = 5; star >= 1; star--)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
                     child: _RatingBarRow(
                       star: star,
                       fraction: total == 0 ? 0 : counts[star] / total,
@@ -1095,7 +1178,7 @@ class _RatingBarRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
             child: LinearProgressIndicator(
               value: fraction,
               minHeight: 6,
@@ -1138,11 +1221,11 @@ class _ReviewCard extends StatelessWidget {
         : review.authorName.trim()[0].toUpperCase();
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Column(
@@ -1152,7 +1235,7 @@ class _ReviewCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: AppColors.ecoForest,
+                backgroundColor: AppColors.success,
                 child: Text(
                   initial,
                   style: AppTextStyles.reviewAuthor.copyWith(
@@ -1255,9 +1338,9 @@ class _ContactBar extends StatelessWidget {
                 backgroundColor: AppColors.settingsBackground,
                 foregroundColor: AppColors.settingsTextDark,
                 side: const BorderSide(color: AppColors.mapControlBorder),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.detailBottomBarSecondary,
               ),
@@ -1276,13 +1359,13 @@ class _ContactBar extends StatelessWidget {
                         backgroundColor: AppColors.segmentedTrackBg,
                         foregroundColor: AppColors.settingsTextMuted,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                     )
                   : DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         boxShadow: const [
                           BoxShadow(
                             color: AppColors.detailPrimaryButtonGlow,
@@ -1303,7 +1386,7 @@ class _ContactBar extends StatelessWidget {
                           backgroundColor: AppColors.primary500,
                           foregroundColor: AppColors.settingsTextDark,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
                           textStyle: AppTextStyles.detailBottomBarPrimary,
                         ),
@@ -1360,9 +1443,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
   void _submit() {
     final comment = _commentController.text.trim();
     if (comment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escribe un comentario antes de enviar')),
-      );
+      AppSnackbar.showInfo(context, 'Escribe un comentario antes de enviar');
       return;
     }
     Navigator.of(context).pop(
@@ -1382,13 +1463,13 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
       fillColor: AppColors.surface100,
       contentPadding: const EdgeInsets.all(14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
@@ -1433,6 +1514,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     ),
                     child: const Icon(
                       Icons.close,
+                      semanticLabel: 'Cerrar',
                       size: 18,
                       color: AppColors.settingsTextDark,
                     ),
@@ -1449,7 +1531,9 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     GestureDetector(
                       onTap: () => setState(() => _rating = i),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xs,
+                        ),
                         child: Icon(
                           i <= _rating
                               ? Icons.star_rounded
@@ -1483,7 +1567,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 decoration: BoxDecoration(
                   color: AppColors.surface200.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   border: Border.all(
                     color: AppColors.primary500.withValues(alpha: 0.4),
                   ),
@@ -1517,7 +1601,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                     return Stack(
                       children: [
                         ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           child: SizedBox(
                             width: 72,
                             height: 72,
@@ -1546,6 +1630,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                               ),
                               child: const Icon(
                                 Icons.close,
+                                semanticLabel: 'Quitar foto',
                                 size: 14,
                                 color: AppColors.surface100,
                               ),
@@ -1567,7 +1652,7 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.primary500,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
                 ),
                 child: Text(

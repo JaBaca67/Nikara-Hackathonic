@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+desktop.ini
 .atom/
 .build/
 .buildlog/
@@ -11,6 +12,11 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+# Configuración y contexto local de Claude Code — no se versiona (ver
+# CLAUDE.md → Seguridad en Git). No afecta a los archivos que ya estaban
+# trackeados antes de esta regla (settings.json, skills del equipo).
+.claude/
 
 # IntelliJ related
 *.iml
@@ -51,3 +57,14 @@ app.*.map.json
 # Archivos de entorno y claves secretas
 .env
 *.env
+
+# Configuración de Firebase (Cloud Messaging) — client config generado por
+# consola, se mantiene solo en local igual que dart_defines.json.
+/android/app/google-services.json
+/firebase.json
+/lib/firebase_options.dart
+
+# Migraciones SQL de Supabase — se mantienen solo en local.
+# Ojo: son la definición del esquema (ver docs/database_erd.md), no secretos;
+# quien clone el repo no podrá recrear la base de datos sin ellas.
+/supabase/sql/

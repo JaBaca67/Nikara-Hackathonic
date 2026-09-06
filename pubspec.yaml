@@ -58,7 +58,11 @@ dependencies:
   # lib/core/services/tts_service.dart.
   flutter_tts: ^4.2.5
   flutter_dotenv: ^6.0.1
-
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
+  flutter_local_notifications: ^22.3.0
+  flutter_animate: ^4.5.2
+  animations: ^3.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -78,10 +82,15 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # flutter_launcher_icons config — image_path/adaptive_icon_foreground son PNGs
-# porque la herramienta no acepta SVG como fuente, pero su contenido se
-# genera componiendo el logotipo oficial (assets/images/logo_nikara.svg)
-# sobre el gradiente cálido de marca. Regenerar los 3 PNGs en assets/icon/
-# desde ese SVG si el logo o el gradiente cambian.
+# porque la herramienta no acepta SVG como fuente. Hoy componen el isotipo
+# monograma "N + hojas" (propuesta de Claude Design del 2026-08-26) sobre el
+# gradiente cálido de marca; el logotipo horizontal anterior quedó archivado en
+# assets/icon/_propuestas/v1_logotipo/ — se leía ilegible a 48dp.
+# El foreground se escala a 580/1024 px: la máscara adaptativa de Android solo
+# garantiza el 66% central del canvas (círculo de 682 px), y a ese ancho el punto
+# más lejano del isotipo queda en radio 316 contra los 341 disponibles. A 620 ya
+# roza el borde. El icono legacy va a 740 px, que no pasa por esa máscara.
+# Regenerar los 3 PNGs si el logo o el gradiente cambian.
 flutter_launcher_icons:
   android: true
   ios: true
@@ -116,25 +125,19 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  fonts:
-    - family: Leelawadee
-      fonts:
-      - asset: assets/fonts/LEELAWUI.TTF  # Tu fuente normal
-      - asset: assets/fonts/LEELAUIB.TTF  # Tu fuente Bold (Negrita)
-        weight: 700
-      - asset: assets/fonts/LEELUISL.TTF  # Tu fuente Light (Delgada)
-        weight: 300
-  #         style: italic
-  #   - family: Trajan Pro
+  # Sin fuentes empaquetadas: toda la tipografía sale de `google_fonts`
+  # (League Spartan + Nunito, ver lib/theme/app_theme.dart). La familia
+  # Leelawadee se removió junto con assets/fonts/ — no la usaba ninguna
+  # pantalla, solo dos etiquetas numéricas de pines de mapa.
+  #
+  # Para volver a empaquetar una fuente propia:
+  # fonts:
+  #   - family: Ejemplo
   #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
+  #       - asset: assets/fonts/Ejemplo-Regular.ttf
+  #       - asset: assets/fonts/Ejemplo-Bold.ttf
   #         weight: 700
+  #         style: italic
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

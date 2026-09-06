@@ -10,6 +10,7 @@ import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const int _kMaxDays = 30;
@@ -54,10 +55,24 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   /// Las paradas que se están armando, siempre reindexadas por día.
   late List<RouteStopModel> _stops = [...?widget.initialRoute?.stops];
 
-  /// Fotos de portada — cada elemento es la ruta local que devuelve
-  /// `image_picker` (o, al editar, la URL que ya tenía la ruta). Opcionales:
-  /// sin ninguna, la tarjeta cae de vuelta a las fotos de las paradas.
-  late final List<String> _coverPhotos = [...?widget.initialRoute?.imageUrls];
+  /// Fotos de portada ya subidas — al editar, las URLs que ya tenía la ruta.
+  /// Se suben nuevas recién al guardar (ver [_newCoverPhotos]), no al
+  /// elegirlas, para no dejar archivos huérfanos si se abandona el
+  /// formulario. Opcionales: sin ninguna, la tarjeta cae de vuelta a las
+  /// fotos de las paradas.
+  late final List<String> _coverPhotoUrls = [
+    ...?widget.initialRoute?.imageUrls,
+  ];
+
+  /// Fotos recién elegidas en este formulario, todavía sin subir a Storage.
+  final List<XFile> _newCoverPhotos = [];
+
+  /// Lo que se muestra en la grilla: las ya subidas primero, luego las
+  /// recién elegidas (mostrando su ruta local hasta que se suban).
+  List<String> get _coverPreviewPaths => [
+    ..._coverPhotoUrls,
+    ..._newCoverPhotos.map((x) => x.path),
+  ];
 
   List<RouteStopModel> _catalog = const [];
   bool _loadingCatalog = true;
@@ -204,17 +219,23 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   }
 
   Future<void> _pickCoverPhotos() async {
-    final remaining = _kMaxCoverPhotos - _coverPhotos.length;
+    final remaining = _kMaxCoverPhotos - _coverPreviewPaths.length;
     if (remaining <= 0) return;
     final picked = await ImagePicker().pickMultiImage(limit: remaining);
     if (picked.isEmpty || !mounted) return;
-    setState(
-      () => _coverPhotos.addAll(picked.take(remaining).map((x) => x.path)),
-    );
+    setState(() => _newCoverPhotos.addAll(picked.take(remaining)));
   }
 
+  /// [index] cae sobre la lista combinada de [_coverPreviewPaths]: primero
+  /// las ya subidas, luego las nuevas.
   void _removeCoverPhoto(int index) {
-    setState(() => _coverPhotos.removeAt(index));
+    setState(() {
+      if (index < _coverPhotoUrls.length) {
+        _coverPhotoUrls.removeAt(index);
+      } else {
+        _newCoverPhotos.removeAt(index - _coverPhotoUrls.length);
+      }
+    });
   }
 
   void _changeDays(int delta) {
@@ -254,6 +275,14 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   Future<void> _save() async {
     setState(() => _isSaving = true);
     try {
+      // Las fotos nuevas suben antes del insert/update: si Storage falla, no
+      // queda una ruta guardada apuntando a una imagen que nunca se subió.
+      final uploadedUrls = [
+        for (final image in _newCoverPhotos)
+          await RouteService().uploadImage(image),
+      ];
+      final imageUrls = [..._coverPhotoUrls, ...uploadedUrls];
+
       final initial = widget.initialRoute;
       if (initial == null) {
         await RouteService().createRoute(
@@ -261,7 +290,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           days: _days,
           isPublic: _isPublic,
           stops: _stops,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
       } else {
         await RouteService().updateRoute(
@@ -269,7 +298,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           title: _titleController.text.trim(),
           days: _days,
           isPublic: _isPublic,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
         await RouteService().replaceStops(initial.id, _stops);
       }
@@ -305,7 +334,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -326,7 +355,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                   showError: _titleTouched && !_titleIsValid,
                   days: _days,
                   isPublic: _isPublic,
-                  coverPhotos: _coverPhotos,
+                  coverPhotos: _coverPreviewPaths,
                   onDaysChanged: _changeDays,
                   onPublicChanged: (value) => setState(() => _isPublic = value),
                   onTitleChanged: () => setState(() {}),
@@ -383,7 +412,12 @@ class _WizardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.md,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       child: Row(
         children: [
           GestureDetector(
@@ -398,6 +432,7 @@ class _WizardHeader extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.arrow_back,
+                semanticLabel: 'Volver',
                 size: 20,
                 color: AppColors.settingsTextDark,
               ),
@@ -432,7 +467,7 @@ class _WizardHeader extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 'Salir',
@@ -460,7 +495,7 @@ class _StepIndicator extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         children: [
@@ -525,7 +560,7 @@ class _StepBubble extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: isDone
-            ? AppColors.ecoActive
+            ? AppColors.oliveText
             : (isCurrent ? AppColors.primary500 : AppColors.surface100),
         shape: BoxShape.circle,
         border: isDone || isCurrent
@@ -596,7 +631,7 @@ class _StepName extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: AppColors.surface100,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             border: showError
                 ? Border.all(color: AppColors.wizardDangerLink)
                 : null,
@@ -624,11 +659,11 @@ class _StepName extends StatelessWidget {
                   filled: true,
                   fillColor: AppColors.settingsBackground,
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.lg,
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     borderSide: BorderSide(
                       color: showError
                           ? AppColors.wizardDangerLink
@@ -636,7 +671,7 @@ class _StepName extends StatelessWidget {
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     borderSide: BorderSide(
                       color: showError
                           ? AppColors.wizardDangerLink
@@ -718,7 +753,7 @@ class _CoverPhotosCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -842,7 +877,7 @@ class _DayStepper extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -917,7 +952,7 @@ class _PublishToggle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -985,7 +1020,7 @@ class _StepPlaces extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
           decoration: BoxDecoration(
             color: AppColors.surface100,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -1009,7 +1044,9 @@ class _StepPlaces extends StatelessWidget {
                       fontSize: 15,
                     ),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.lg,
+                    ),
                   ),
                 ),
               ),
@@ -1040,17 +1077,17 @@ class _StepPlaces extends StatelessWidget {
         const SizedBox(height: 16),
         if (warning != null) ...[
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.complementario1,
-              borderRadius: BorderRadius.circular(16),
+              color: AppColors.coralPaleFill,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.info_outline_rounded,
                   size: 18,
-                  color: AppColors.settingsDanger,
+                  color: AppColors.destructive,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1085,7 +1122,7 @@ class _StepPlaces extends StatelessWidget {
         else
           for (final candidate in candidates)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
               child: _CandidateRow(
                 stop: candidate,
                 added: isAdded(candidate),
@@ -1116,11 +1153,11 @@ class _CategoryFilterChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected ? AppColors.primary500 : AppColors.surface100,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
           child: Text(
             label,
@@ -1151,15 +1188,15 @@ class _CandidateRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             child: SizedBox(
               width: 68,
               height: 68,
@@ -1221,7 +1258,7 @@ class _AddToRouteButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: added ? AppColors.detailActivityIconBg : AppColors.primary500,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1230,7 +1267,7 @@ class _AddToRouteButton extends StatelessWidget {
               const Icon(
                 Icons.check_rounded,
                 size: 16,
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
               const SizedBox(width: 6),
             ],
@@ -1242,7 +1279,7 @@ class _AddToRouteButton extends StatelessWidget {
                 style: AppTextStyles.mapRowTitle.copyWith(
                   fontSize: 13,
                   color: added
-                      ? AppColors.ecoActive
+                      ? AppColors.oliveText
                       : AppColors.settingsTextDark,
                 ),
               ),
@@ -1363,7 +1400,7 @@ class _EmptyDaySlot extends StatelessWidget {
               '+ Agregar parada',
               style: AppTextStyles.mapRowTitle.copyWith(
                 fontSize: 13,
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
             ),
           ],
@@ -1394,7 +1431,7 @@ class _OrganizeRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -1503,7 +1540,12 @@ class _WizardFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.sm,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       child: SizedBox(
         height: 58,
         width: double.infinity,
@@ -1515,7 +1557,7 @@ class _WizardFooter extends StatelessWidget {
             disabledBackgroundColor: AppColors.segmentedTrackBg,
             disabledForegroundColor: AppColors.settingsTextMuted,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(AppRadius.lg),
             ),
             textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 16),
           ),
