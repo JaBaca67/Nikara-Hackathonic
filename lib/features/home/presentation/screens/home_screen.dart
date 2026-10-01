@@ -19,6 +19,7 @@ import 'package:nikara_app/features/home/presentation/widgets/search_header_widg
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
@@ -1244,11 +1245,11 @@ class _FavoriteButton extends StatelessWidget {
               return;
             }
             if (!context.mounted) return;
-            final messenger = ScaffoldMessenger.of(context);
             try {
               await FavoritesService().toggleFavorite(businessId);
             } on FavoritesServiceException catch (e) {
-              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+              if (!context.mounted) return;
+              AppSnackbar.showError(context, e.message);
             }
           },
           child: Container(

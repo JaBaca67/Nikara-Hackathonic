@@ -12,6 +12,7 @@ import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
@@ -635,15 +636,15 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   void _nextFromStep1() {
     if (_nameController.text.trim().isEmpty) {
-      _snack('Ingresa el nombre del negocio');
+      AppSnackbar.showError(context, 'Ingresa el nombre del negocio');
       return;
     }
     if (_descriptionController.text.trim().isEmpty) {
-      _snack('Ingresa una descripción corta');
+      AppSnackbar.showError(context, 'Ingresa una descripción corta');
       return;
     }
     if (_phoneController.text.trim().isEmpty) {
-      _snack('El número de WhatsApp es obligatorio');
+      AppSnackbar.showError(context, 'El número de WhatsApp es obligatorio');
       return;
     }
     _goToStep(1);
@@ -651,11 +652,12 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   void _nextFromStep2() {
     if (_addressController.text.trim().isEmpty) {
-      _snack('Ingresa una dirección o referencia');
+      AppSnackbar.showError(context, 'Ingresa una dirección o referencia');
       return;
     }
     if (_confirmedLocation == null) {
-      _snack(
+      AppSnackbar.showError(
+        context,
         'Ubica tu negocio en el mapa y presiona "Confirmar esta ubicación" '
         'antes de continuar.',
       );
@@ -666,16 +668,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   void _nextFromStep3() {
     if (_allPhotoPaths.isEmpty) {
-      _snack('Agrega al menos una foto antes de continuar');
+      AppSnackbar.showError(
+        context,
+        'Agrega al menos una foto antes de continuar',
+      );
       return;
     }
     _goToStep(3);
-  }
-
-  void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _addCustomActivity() {
@@ -807,7 +806,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     final ownerId = _authService.currentAuthUser?.id ?? existing?.ownerId ?? '';
     if (ownerId.isEmpty) {
       setState(() => _isSaving = false);
-      _snack(
+      AppSnackbar.showError(
+        context,
         'No se pudo identificar tu cuenta. Cierra sesión y vuelve a '
         'iniciar sesión para continuar.',
       );
@@ -820,12 +820,18 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     final location = _confirmedLocation;
     if (location == null) {
       setState(() => _isSaving = false);
-      _snack('Confirma la ubicación del negocio en el mapa antes de guardar.');
+      AppSnackbar.showError(
+        context,
+        'Confirma la ubicación del negocio en el mapa antes de guardar.',
+      );
       return;
     }
     if (_allPhotoPaths.isEmpty) {
       setState(() => _isSaving = false);
-      _snack('Agrega al menos una foto antes de publicar.');
+      AppSnackbar.showError(
+        context,
+        'Agrega al menos una foto antes de publicar.',
+      );
       return;
     }
 
@@ -891,7 +897,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           } on BusinessServiceException catch (e) {
             if (!mounted) return;
             setState(() => _isSaving = false);
-            _snack(
+            AppSnackbar.showError(
+              context,
               'Guardamos tus cambios, pero no pudimos reenviarlo a '
               'revisión: ${e.message}',
             );
@@ -919,7 +926,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      _snack(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -1316,7 +1323,10 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           primaryLabel: 'Siguiente',
           onPrimary: _nextFromStep1,
           secondaryLabel: 'Guardar',
-          onSecondary: () => _snack('Borrador guardado en este dispositivo'),
+          onSecondary: () => AppSnackbar.showSuccess(
+            context,
+            'Borrador guardado en este dispositivo',
+          ),
         ),
       ],
     );

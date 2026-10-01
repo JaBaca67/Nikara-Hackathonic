@@ -8,6 +8,7 @@ import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -50,9 +51,7 @@ Future<void> _openLegalIdentityGatedFlow(
     identity = await LegalIdentityService().getMine();
   } on LegalIdentityServiceException catch (e) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(e.message)));
+    AppSnackbar.showError(context, e.message);
     return;
   }
   if (!context.mounted) return;
@@ -154,12 +153,6 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
     });
   }
 
-  void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _submit() async {
     if (_isSaving || !_canSubmit) return;
     final kind = _kind!;
@@ -206,7 +199,7 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
     } on LegalIdentityServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      _snack(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 

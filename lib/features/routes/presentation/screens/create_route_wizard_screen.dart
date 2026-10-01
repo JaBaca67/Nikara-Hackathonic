@@ -9,6 +9,7 @@ import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -303,17 +304,14 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
         await RouteService().replaceStops(initial.id, _stops);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isEditing ? 'Ruta actualizada' : '¡Ruta guardada!'),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        _isEditing ? 'Ruta actualizada' : '¡Ruta guardada!',
       );
       Navigator.of(context).pop(true);
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

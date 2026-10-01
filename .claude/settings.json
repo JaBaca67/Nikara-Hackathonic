@@ -17,6 +17,17 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/cargar_vault_index.py",
+            "statusMessage": "Cargando índice del vault"
+          }
+        ]
+      }
+    ],
     "SessionEnd": [
       {
         "hooks": [
@@ -24,6 +35,17 @@
             "type": "command",
             "command": "python .claude/hooks/guardar_sesion.py",
             "statusMessage": "Guardando sesión en Obsidian"
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/guardar_pendientes_clear.py",
+            "statusMessage": "Revisando pendientes antes de /clear",
+            "async": true
           }
         ]
       }

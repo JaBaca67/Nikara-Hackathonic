@@ -10,6 +10,7 @@ import 'package:nikara_app/shared/widgets/auth/auth_primary_button.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_prompt.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_text_field.dart';
 import 'package:nikara_app/shared/widgets/auth/guest_explore_button.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/auth/social_login_row.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
@@ -122,8 +123,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _status = AuthStatus.error);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result.message ?? 'No se pudo iniciar sesión')),
+    AppSnackbar.showError(
+      context,
+      result.message ?? 'No se pudo iniciar sesión',
     );
   }
 
@@ -139,12 +141,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _forgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'La recuperación de contraseña estará disponible pronto.',
-        ),
-      ),
+    AppSnackbar.showInfo(
+      context,
+      'La recuperación de contraseña estará disponible pronto.',
     );
   }
 

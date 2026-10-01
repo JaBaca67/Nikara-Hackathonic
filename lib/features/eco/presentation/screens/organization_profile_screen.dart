@@ -17,6 +17,7 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -119,19 +120,16 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
       setState(() => _organization = null);
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${organization.name}" quedó publicada.')),
+      AppSnackbar.showSuccess(
+        context,
+        '"${organization.name}" quedó publicada.',
       );
     } on AdminServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _savingReview = false);
     }
@@ -158,23 +156,16 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
       setState(() => _organization = null);
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Rechazaste "${organization.name}". Le avisamos a quien la registró.',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        'Rechazaste "${organization.name}". Le avisamos a quien la registró.',
       );
     } on AdminServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _savingReview = false);
     }
@@ -215,27 +206,20 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
       await _load();
       if (!mounted) return;
       setState(() => _savingSeal = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            target
-                ? '"${organization.name}" ya muestra el sello.'
-                : 'Le quitaste el sello a "${organization.name}".',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        target
+            ? '"${organization.name}" ya muestra el sello.'
+            : 'Le quitaste el sello a "${organization.name}".',
       );
     } on AdminServiceException catch (e) {
       if (!mounted) return;
       setState(() => _savingSeal = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
       setState(() => _savingSeal = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 

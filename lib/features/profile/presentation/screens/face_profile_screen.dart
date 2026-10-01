@@ -15,6 +15,7 @@ import 'package:nikara_app/features/my_business/data/my_business_service.dart';
 import 'package:nikara_app/features/my_business/domain/models/managed_item.dart';
 import 'package:nikara_app/features/my_business/presentation/widgets/my_business_widgets.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -123,7 +124,7 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _showHost = !value);
-      _snack(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -165,12 +166,6 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
       _error = error;
       _loadingStats = false;
     });
-  }
-
-  void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ==================== Acciones ====================
@@ -278,7 +273,7 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
     try {
       await BusinessStorageService().deleteBusiness(business.id);
     } on BusinessServiceException catch (e) {
-      if (mounted) _snack(e.message);
+      if (mounted) AppSnackbar.showError(context, e.message);
     }
     // Al desaparecer el negocio desaparece su cara; `ProfileFaceService` vuelve
     // a turista sola en la próxima recarga y `ProfileScreen` se encarga.

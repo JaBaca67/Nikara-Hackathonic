@@ -1,12 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:nikara_app/features/routes/data/route_service.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/presentation/screens/create_route_wizard_screen.dart';
 import 'package:nikara_app/features/routes/presentation/screens/route_detail_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -110,9 +114,7 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
   }
 
   Future<void> _openDetail(RouteModel route) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => RouteDetailScreen(route: route)));
+    await pushSharedAxis(context, RouteDetailScreen(route: route));
   }
 
   /// "Copiar ruta" de la tarjeta de Comunidad — clona sin salir del listado,
@@ -121,14 +123,10 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
     try {
       final copy = await RouteService().cloneRoute(route);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${copy.title}" ya está en tus rutas')),
-      );
+      AppSnackbar.showSuccess(context, '"${copy.title}" ya está en tus rutas');
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -177,17 +175,30 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
                     else if (filtered.isEmpty)
                       _RoutesEmptyState(tab: _tab, onCreate: _openWizard)
                     else
-                      for (final route in filtered)
+                      for (final (index, route) in filtered.indexed)
                         Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-                          child: RouteCard(
-                            route: route,
-                            onTap: () => _openDetail(route),
-                            showCreator: isCommunity,
-                            onCopy: isCommunity
-                                ? () => _quickCopy(route)
-                                : null,
-                          ),
+                          child:
+                              RouteCard(
+                                    route: route,
+                                    onTap: () => _openDetail(route),
+                                    showCreator: isCommunity,
+                                    onCopy: isCommunity
+                                        ? () => _quickCopy(route)
+                                        : null,
+                                  )
+                                  .animate(
+                                    delay: AppMotion.microDuration * index,
+                                  )
+                                  .fadeIn(
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  )
+                                  .slideY(
+                                    begin: 0.08,
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  ),
                         ),
                   ],
                 ),

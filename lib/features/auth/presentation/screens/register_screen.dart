@@ -17,6 +17,7 @@ import 'package:nikara_app/shared/widgets/auth/auth_text_field.dart';
 import 'package:nikara_app/shared/widgets/auth/country_code_picker.dart';
 import 'package:nikara_app/shared/widgets/auth/password_strength_checker.dart';
 import 'package:nikara_app/shared/widgets/auth/social_login_row.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/auth/step_progress_indicator.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
@@ -199,13 +200,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// Valida Perfil, crea la cuenta real en Supabase (necesita email y
   /// contraseña de Identidad más el teléfono de acá) y guarda
   /// usuario/foto localmente — no hay "Atrás" después de esto.
-  void _showSnack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _createAccountAndContinue() async {
     FocusScope.of(context).unfocus();
     if (!(_step2FormKey.currentState?.validate() ?? false)) {
@@ -231,8 +225,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!result.success) {
       setState(() => _status = AuthStatus.error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message ?? 'No se pudo crear la cuenta')),
+      AppSnackbar.showError(
+        context,
+        result.message ?? 'No se pudo crear la cuenta',
       );
       return;
     }
@@ -243,6 +238,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (username.isNotEmpty) {
       await _extrasService.updateUsername(username);
     }
+    if (!mounted) return;
     final avatarImage = _avatarImage;
     if (avatarImage != null) {
       if (!_authService.isLoggedIn) {
@@ -250,7 +246,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         // deja sesión — y sin sesión no hay a qué perfil subirle la foto ni
         // carpeta de Storage donde ponerla. Se avisa en vez de mostrar un
         // "necesitas iniciar sesión" justo después de registrarse.
-        _showSnack(
+        AppSnackbar.showInfo(
+          context,
           'Tu foto se podrá subir cuando confirmes tu correo e inicies '
           'sesión, desde tu perfil.',
         );
@@ -260,7 +257,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         } on AuthServiceException catch (e) {
           // La cuenta ya se creó: quedarse sin foto no justifica abortar el
           // registro, pero sí decirlo en vez de tragarse el error.
-          _showSnack(e.message);
+          if (!mounted) return;
+          AppSnackbar.showError(context, e.message);
         }
       }
     }
@@ -294,13 +292,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _attemptVerifyOtp() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'La verificación por SMS todavía no está disponible. Usa '
-          '"Saltar por ahora" para continuar — no afecta tu cuenta.',
-        ),
-      ),
+    AppSnackbar.showInfo(
+      context,
+      'La verificación por SMS todavía no está disponible. Usa '
+      '"Saltar por ahora" para continuar — no afecta tu cuenta.',
     );
   }
 

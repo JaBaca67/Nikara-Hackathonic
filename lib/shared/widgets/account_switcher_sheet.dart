@@ -5,6 +5,7 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
@@ -80,10 +81,9 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
 
     if (!result.success) {
       setState(() => _switchingId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.message ?? 'No se pudo cambiar de cuenta.'),
-        ),
+      AppSnackbar.showError(
+        context,
+        result.message ?? 'No se pudo cambiar de cuenta.',
       );
       await _load();
       return;

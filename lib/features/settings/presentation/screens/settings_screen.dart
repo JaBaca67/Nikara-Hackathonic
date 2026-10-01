@@ -8,6 +8,7 @@ import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart'
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -95,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _email = result.$2;
       _phone = result.$3;
     });
-    _showSnack('Perfil actualizado');
+    AppSnackbar.showSuccess(context, 'Perfil actualizado');
   }
 
   Future<void> _openChangePassword() async {
@@ -103,7 +104,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (_) => const _ChangePasswordDialog(),
     );
-    if (changed == true && mounted) _showSnack('Contraseña actualizada');
+    if (changed == true && mounted) {
+      AppSnackbar.showSuccess(context, 'Contraseña actualizada');
+    }
   }
 
   Future<void> _confirmLogout() async {
@@ -190,7 +193,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await _authService.deleteAccount();
     } on AuthServiceException catch (e) {
       if (!mounted) return;
-      _showSnack(e.message);
+      AppSnackbar.showError(context, e.message);
       return;
     }
     await GuestSessionService().exitGuestMode();
@@ -199,12 +202,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -239,13 +236,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   icon: Icons.mail_outline,
                   title: 'Correo electrónico',
                   value: _email,
-                  onTap: () => _showSnack('Próximamente'),
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
                 ),
                 _SettingsRow(
                   icon: Icons.call_outlined,
                   title: 'Teléfono',
                   value: _phone,
-                  onTap: () => _showSnack('Próximamente'),
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
                 ),
               ],
             ),
@@ -345,18 +342,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _SettingsRow(
                   icon: Icons.help_outline,
                   title: 'Centro de ayuda',
-                  onTap: () => _showSnack('Próximamente'),
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
                 ),
                 _SettingsRow(
                   icon: Icons.description_outlined,
                   title: 'Términos y condiciones',
-                  onTap: () => _showSnack('Próximamente'),
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
                 ),
                 _SettingsRow(
                   icon: Icons.info_outline,
                   title: 'Acerca de Níkara',
                   value: 'v1.0.0',
-                  onTap: () => _showSnack('Próximamente'),
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
                 ),
               ],
             ),

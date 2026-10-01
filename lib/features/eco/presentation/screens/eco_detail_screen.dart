@@ -17,6 +17,7 @@ import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
@@ -67,19 +68,13 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       await _notifyOrganizer(organizerId, title, approved: true);
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('"$title" quedó publicada.')));
+      AppSnackbar.showSuccess(context, '"$title" quedó publicada.');
     } on AdminServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _savingReview = false);
     }
@@ -108,23 +103,16 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       );
       await _refresh();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Rechazaste "$title". Le avisamos a quien la organiza.',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        'Rechazaste "$title". Le avisamos a quien la organiza.',
       );
     } on AdminServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _savingReview = false);
     }
@@ -192,9 +180,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
         );
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -218,12 +204,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
 
   void _openDirections() {
     if (!_activity.hasCoordinates) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Esta actividad todavía no tiene ubicación en el mapa.',
-          ),
-        ),
+      AppSnackbar.showError(
+        context,
+        'Esta actividad todavía no tiene ubicación en el mapa.',
       );
       return;
     }
@@ -239,9 +222,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+    AppSnackbar.showInfo(context, 'Próximamente');
   }
 
   Future<void> _addToRoute() async {

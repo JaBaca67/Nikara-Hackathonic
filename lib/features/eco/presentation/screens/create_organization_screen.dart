@@ -9,6 +9,7 @@ import 'package:nikara_app/features/eco/presentation/screens/edit_organization_s
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/organization_image_field.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -63,9 +64,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     } on OrganizationServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -98,7 +97,8 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         // Se ignora: la fundación ya se guardó correctamente.
       }
       if (!mounted) return;
-      _snack(
+      AppSnackbar.showSuccess(
+        context,
         '¡Solicitud enviada! Revisamos ${organization.name} en un máximo de '
         '24 horas.',
       );
@@ -111,17 +111,11 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         _myOrganizations = [..._myOrganizations, organization];
       });
     } on OrganizationServiceException catch (e) {
-      _snack(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
-  }
-
-  void _snack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _openOrganization(OrganizationModel organization) async {

@@ -20,6 +20,8 @@ import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -944,11 +946,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           },
           onViewProfile: () {
             Navigator.of(sheetContext).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => BusinessDetailScreen(business: business),
-              ),
-            );
+            pushSharedAxis(context, BusinessDetailScreen(business: business));
           },
         ),
       ),
@@ -1089,11 +1087,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         '[MapScreen] aborted: could not get current position '
         '(location permission/services?)',
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo obtener tu ubicación actual.'),
-        ),
-      );
+      AppSnackbar.showError(context, 'No se pudo obtener tu ubicación actual.');
       return;
     }
     final origin = LatLng(position.latitude, position.longitude);
@@ -1137,9 +1131,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     } on DirectionsServiceException catch (e) {
       debugPrint('[MapScreen] route failed: ${e.message}');
       if (!mounted) return null;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
       return null;
     }
   }
@@ -1660,9 +1652,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _onEcoMarkerTapped(EcoActivityModel activity) async {
     await _animateCameraTo(LatLng(activity.latitude!, activity.longitude!));
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
     if (!mounted) return;
     // Pudo haberse unido/salido, o el organizador pudo editarla.
     await _loadEcoActivities();
@@ -1881,7 +1871,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         child: _CarouselHeaderLabel(),
                       ),
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 260),
+                        // Al expandir, el contenedor salta directo a su
+                        // altura final: si animara igual que al colapsar, el
+                        // primer frame deja la card ya "expanded" (contenido
+                        // completo) dentro de un contenedor que todavía mide
+                        // lo mismo que compacto, y el `Column` de
+                        // `_BusinessCarouselCard` desborda (RenderFlex
+                        // overflow real, confirmado en el teléfono). Al
+                        // colapsar no hay ese riesgo — el contenido encoge
+                        // de inmediato, así que sí puede animarse suave.
+                        duration: _selectedBusinessId == null
+                            ? const Duration(milliseconds: 260)
+                            : Duration.zero,
                         curve: Curves.easeOutCubic,
                         height: _carouselHeight,
                         child: PageView.builder(
@@ -1907,12 +1908,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   onTap: () => _onCarouselCardTapped(business),
                                   onNavigate: () => _startTripPreview(business),
                                   onViewProfile: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => BusinessDetailScreen(
-                                          business: business,
-                                        ),
-                                      ),
+                                    pushSharedAxis(
+                                      context,
+                                      BusinessDetailScreen(business: business),
                                     );
                                   },
                                 ),
@@ -3342,11 +3340,11 @@ class _FavoriteToggle extends StatelessWidget {
               return;
             }
             if (!context.mounted) return;
-            final messenger = ScaffoldMessenger.of(context);
             try {
               await FavoritesService().toggleFavorite(businessId);
             } on FavoritesServiceException catch (e) {
-              messenger.showSnackBar(SnackBar(content: Text(e.message)));
+              if (!context.mounted) return;
+              AppSnackbar.showError(context, e.message);
             }
           },
           child: Container(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
@@ -8,9 +9,12 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -100,9 +104,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   }
 
   Future<void> _openDetail(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
   }
 
   Future<void> _toggleJoin(EcoActivityModel activity) async {
@@ -121,9 +123,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     } on EcoServiceException catch (e) {
       _applyOptimistic(activity.id, joining: !joining);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -201,13 +201,26 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      for (final activity in filtered)
+                      for (final (index, activity) in filtered.indexed)
                         Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                          child: EcoActivityCard(
-                            activity: activity,
-                            onTap: () => _openDetail(activity),
-                          ),
+                          child:
+                              EcoActivityCard(
+                                    activity: activity,
+                                    onTap: () => _openDetail(activity),
+                                  )
+                                  .animate(
+                                    delay: AppMotion.microDuration * index,
+                                  )
+                                  .fadeIn(
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  )
+                                  .slideY(
+                                    begin: 0.08,
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  ),
                         ),
                     ],
                   ],

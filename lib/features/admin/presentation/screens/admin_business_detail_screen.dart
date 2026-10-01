@@ -9,6 +9,7 @@ import 'package:nikara_app/features/admin/data/admin_service.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_business_summary.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -78,9 +79,7 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
       url = await _legalIdentityService.signedUrlFor(objectPath);
     } on LegalIdentityServiceException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnackbar.showError(context, e.message);
       }
       return;
     }
@@ -159,7 +158,8 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
         _changed = true;
         _saving = false;
       });
-      _showSnack(
+      AppSnackbar.showSuccess(
+        context,
         status.isAprobado
             ? '"${updated.name}" quedó publicado.'
             : 'Rechazaste "${updated.name}". Le avisamos a su dueño.',
@@ -167,11 +167,11 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
     } on AdminServiceException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showSnack(e.message);
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showSnack(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -192,7 +192,8 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
         _changed = true;
         _saving = false;
       });
-      _showSnack(
+      AppSnackbar.showSuccess(
+        context,
         target
             ? '"${updated.name}" ya muestra el sello.'
             : 'Le quitaste el sello a "${updated.name}".',
@@ -200,11 +201,11 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
     } on AdminServiceException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showSnack(e.message);
+      AppSnackbar.showError(context, e.message);
     } on PermissionDeniedException catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showSnack(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -223,12 +224,6 @@ class _AdminBusinessDetailScreenState extends State<AdminBusinessDetailScreen> {
         confirmColor: target ? AppColors.oliveText : AppColors.destructive,
       ),
     );
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override

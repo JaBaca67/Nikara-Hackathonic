@@ -15,6 +15,7 @@ import 'package:nikara_app/features/notifications/data/notification_service.dart
 import 'package:nikara_app/features/notifications/domain/models/app_notification.dart';
 import 'package:nikara_app/features/notifications/presentation/widgets/notification_tile.dart';
 import 'package:nikara_app/features/notifications/presentation/widgets/notifications_states.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -73,13 +74,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   /// Optimista: la fila se ve leída de inmediato y se revierte si el `update`
   /// falla, para que el listado no se quede mintiendo.
   Future<void> _markAsRead(AppNotification notification) async {
@@ -89,7 +83,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       await _service.markAsRead(notification.id);
     } on NotificationServiceException catch (e) {
       _replace(notification);
-      _showMessage(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -106,7 +101,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } on NotificationServiceException catch (e) {
       if (!mounted) return;
       setState(() => _notifications = current);
-      _showMessage(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -123,7 +118,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } on NotificationServiceException catch (e) {
       if (!mounted) return;
       setState(() => _notifications = current);
-      _showMessage(e.message);
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -191,12 +186,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         }
       }
     } on BusinessServiceException catch (e) {
-      _showMessage(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
       return;
     }
     if (!mounted) return;
     if (business == null) {
-      _showMessage('Este negocio ya no está disponible.');
+      AppSnackbar.showInfo(context, 'Este negocio ya no está disponible.');
       return;
     }
     final rejected = notification.type == NotificationType.businessUnverified;
@@ -215,7 +211,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final activity = await EcoService().getActivityById(id);
       if (!mounted) return;
       if (activity == null) {
-        _showMessage('Esta jornada ya no está disponible.');
+        AppSnackbar.showInfo(context, 'Esta jornada ya no está disponible.');
         return;
       }
       final rejected =
@@ -228,7 +224,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       );
     } on EcoServiceException catch (e) {
-      _showMessage(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -238,7 +235,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final organization = await OrganizationService().getById(id);
       if (!mounted) return;
       if (organization == null) {
-        _showMessage('Esta fundación ya no está disponible.');
+        AppSnackbar.showInfo(context, 'Esta fundación ya no está disponible.');
         return;
       }
       final rejected =
@@ -251,7 +248,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       );
     } on OrganizationServiceException catch (e) {
-      _showMessage(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
     }
   }
 

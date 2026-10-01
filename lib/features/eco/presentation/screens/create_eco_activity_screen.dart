@@ -11,6 +11,7 @@ import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -278,7 +279,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
       );
       if (!mounted) return;
       if (position == null) {
-        _snack(
+        if (!mounted) return;
+        AppSnackbar.showError(
+          context,
           'No se pudo obtener tu ubicación actual. Ubica la jornada tocando '
           'el mapa.',
         );
@@ -296,7 +299,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
 
   void _confirmLocation() {
     setState(() => _confirmedLocation = _mapCenter);
-    _snack('Ubicación confirmada en el mapa.');
+    AppSnackbar.showSuccess(context, 'Ubicación confirmada en el mapa.');
   }
 
   void _zoomMap(double delta) {
@@ -316,18 +319,12 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
     });
   }
 
-  void _snack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     final startTime = _startTime;
     if (startTime == null) {
-      _snack('Elige la fecha y hora de la actividad.');
+      AppSnackbar.showError(context, 'Elige la fecha y hora de la actividad.');
       return;
     }
 
@@ -336,7 +333,10 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
     // quizá no tenga, o quedaría imposible de corregir.
     final organization = _selectedOrganization;
     if (organization == null && !_isEditing) {
-      _snack('Elige la fundación que organiza la jornada.');
+      AppSnackbar.showError(
+        context,
+        'Elige la fundación que organiza la jornada.',
+      );
       return;
     }
 
@@ -392,7 +392,8 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           } on EcoServiceException catch (e) {
             if (!mounted) return;
             setState(() => _isSaving = false);
-            _snack(
+            AppSnackbar.showError(
+              context,
               'Guardamos tus cambios, pero no pudimos reenviarla a '
               'revisión: ${e.message}',
             );
@@ -402,14 +403,17 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
       }
       if (!mounted) return;
       if (existing != null) {
-        _snack('Cambios guardados.');
+        AppSnackbar.showSuccess(context, 'Cambios guardados.');
       } else {
-        _snack('¡Solicitud enviada como ${organization!.name}!');
+        AppSnackbar.showSuccess(
+          context,
+          '¡Solicitud enviada como ${organization!.name}!',
+        );
       }
       Navigator.of(context).pop(true);
     } on EcoServiceException catch (e) {
       if (!mounted) return;
-      _snack(e.message);
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

@@ -4,6 +4,7 @@ import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/organization_image_field.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -52,13 +53,6 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
     super.dispose();
   }
 
-  void _snack(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
@@ -91,7 +85,8 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
         } on OrganizationServiceException catch (e) {
           if (!mounted) return;
           setState(() => _isSaving = false);
-          _snack(
+          AppSnackbar.showError(
+            context,
             'Guardamos tus cambios, pero no pudimos reenviarla a revisión: '
             '${e.message}',
           );
@@ -99,10 +94,14 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
         }
       }
       if (!mounted) return;
-      _snack('Se guardaron los cambios de ${updated.name}.');
+      AppSnackbar.showSuccess(
+        context,
+        'Se guardaron los cambios de ${updated.name}.',
+      );
       Navigator.of(context).pop(true);
     } on OrganizationServiceException catch (e) {
-      _snack(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -149,10 +148,14 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
     try {
       await OrganizationService().deleteOrganization(widget.organization.id);
       if (!mounted) return;
-      _snack('Se eliminó ${widget.organization.name}.');
+      AppSnackbar.showSuccess(
+        context,
+        'Se eliminó ${widget.organization.name}.',
+      );
       Navigator.of(context).pop(false);
     } on OrganizationServiceException catch (e) {
-      _snack(e.message);
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
       if (mounted) setState(() => _isDeleting = false);
     }
   }

@@ -10,6 +10,7 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/screens/full_screen_map_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_mini_map.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -67,9 +68,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
     try {
       final copy = await RouteService().cloneRoute(_route);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${copy.title}" ya está en tus rutas')),
-      );
+      AppSnackbar.showSuccess(context, '"${copy.title}" ya está en tus rutas');
       // Se abre la copia: a partir de acá la persona edita lo suyo, no el
       // itinerario de quien lo publicó.
       await Navigator.of(context).pushReplacement(
@@ -77,9 +76,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       );
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
@@ -93,20 +90,15 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       await RouteService().updateRoute(_route.id, status: next);
       if (!mounted) return;
       setState(() => _route = _route.copyWith(status: next));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            next == RouteStatus.completed
-                ? 'Ruta marcada como completada'
-                : 'Ruta reactivada',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        next == RouteStatus.completed
+            ? 'Ruta marcada como completada'
+            : 'Ruta reactivada',
       );
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -116,20 +108,15 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       await RouteService().updateRoute(_route.id, isPublic: next);
       if (!mounted) return;
       setState(() => _route = _route.copyWith(isPublic: next));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            next
-                ? 'Tu ruta ya es visible en la comunidad'
-                : 'Tu ruta volvió a ser privada',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        next
+            ? 'Tu ruta ya es visible en la comunidad'
+            : 'Tu ruta volvió a ser privada',
       );
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -176,9 +163,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       Navigator.of(context).pop();
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -187,10 +172,9 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   /// previsualización de ruta.
   void _openStopOnMap(RouteStopModel stop) {
     if (!stop.hasCoordinates) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Esta parada todavía no tiene ubicación en el mapa.'),
-        ),
+      AppSnackbar.showError(
+        context,
+        'Esta parada todavía no tiene ubicación en el mapa.',
       );
       return;
     }

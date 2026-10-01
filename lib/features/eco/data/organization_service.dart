@@ -148,29 +148,24 @@ class OrganizationService {
     }
   }
 
-  /// RLS está deshabilitada en `organizations` (ver 010), así que la
-  /// pertenencia se valida acá: sin este chequeo cualquier cliente podría
-  /// editar la fundación de otra persona conociendo su id.
-  Future<void> _assertOwnership(String id) async {
+  String _requireOwnerId() {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
       throw const OrganizationServiceException(
         'Necesitas iniciar sesión para gestionar tus fundaciones.',
       );
     }
-    final row = await _client
-        .from('organizations')
-        .select('owner_id')
-        .eq('id', id)
-        .maybeSingle();
-    if (row == null) {
-      throw const OrganizationServiceException('Esa fundación ya no existe.');
-    }
-    if (row['owner_id'] != userId) {
-      throw const OrganizationServiceException(
-        'Solo quien registró la fundación puede modificarla.',
-      );
-    }
+    return userId;
+  }
+
+  /// PostgREST responde 200 aunque el filtro no haya alcanzado ninguna fila,
+  /// así que sin `.select()` un intento de editar/borrar la fundación de otra
+  /// persona se vería como un éxito.
+  void _requireAffectedRow(List<dynamic> rows, String action) {
+    if (rows.isNotEmpty) return;
+    throw OrganizationServiceException(
+      'No se pudo $action la fundación: ya no existe o no es tuya.',
+    );
   }
 
   /// Contraparte de [createOrganization] para editar. [logoUrl]/[bannerUrl]
@@ -196,8 +191,8 @@ class OrganizationService {
         'El handle solo puede tener letras, números, puntos o guiones bajos.',
       );
     }
+    final userId = _requireOwnerId();
     try {
-      await _assertOwnership(id);
       final patch = <String, dynamic>{
         'name': name,
         'handle': normalizedHandle,
@@ -214,14 +209,21 @@ class OrganizationService {
         patch['banner_url'] = bannerUrl;
       }
 
-      final row = await _client
-          .from('organizations')
-          .update(patch)
-          .eq('id', id)
-          .select()
-          .single();
+      // El filtro de dueño va en la misma sentencia del update, no en un
+      // `select` previo (`_assertOwnership` de antes): entre leer y escribir
+      // hay una ventana en la que la fila puede cambiar de manos, y el update
+      // no la vería.
+      final rows =
+          await _client
+                  .from('organizations')
+                  .update(patch)
+                  .eq('id', id)
+                  .eq('owner_id', userId)
+                  .select()
+              as List<dynamic>;
+      _requireAffectedRow(rows, 'actualizar');
       revision.value++;
-      return OrganizationModel.fromRow(row);
+      return OrganizationModel.fromRow(rows.first as Map<String, dynamic>);
     } on PostgrestException catch (e) {
       if (e.code == '23505') {
         throw OrganizationServiceException(
@@ -299,9 +301,19 @@ class OrganizationService {
   /// `on delete set null` (010), así que pasan a figurar como publicaciones
   /// personales de quien las creó. Quien llama debe advertirlo.
   Future<void> deleteOrganization(String id) async {
+    final userId = _requireOwnerId();
     try {
-      await _assertOwnership(id);
-      await _client.from('organizations').delete().eq('id', id);
+      // Mismo criterio que `updateOrganization`: el filtro de dueño va en la
+      // propia sentencia del delete, no en un `select` previo.
+      final rows =
+          await _client
+                  .from('organizations')
+                  .delete()
+                  .eq('id', id)
+                  .eq('owner_id', userId)
+                  .select('id')
+              as List<dynamic>;
+      _requireAffectedRow(rows, 'eliminar');
       revision.value++;
     } on PostgrestException catch (e) {
       throw OrganizationServiceException(

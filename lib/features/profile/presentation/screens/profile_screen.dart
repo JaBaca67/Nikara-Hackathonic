@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/gamification/badges_logic.dart';
@@ -17,8 +18,10 @@ import 'package:nikara_app/features/profile/presentation/screens/face_profile_sc
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -148,9 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _favoritesService.toggleFavorite(id);
     } on FavoritesServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -167,9 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await _loadAll();
     } on AuthServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isSavingAvatar = false);
     }
@@ -197,9 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+    AppSnackbar.showInfo(context, 'Próximamente');
   }
 
   void _showBadgeRequirement(BadgeInfo badge) {
@@ -783,18 +780,40 @@ class _FavoritesTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final destination in destinations) ...[
+        for (final (index, destination) in destinations.indexed) ...[
           _FavoritePlaceCard(
-            destination: destination,
-            onFavoriteToggle: () => onToggleFavorite(destination.id),
-          ),
+                destination: destination,
+                onFavoriteToggle: () => onToggleFavorite(destination.id),
+              )
+              .animate(delay: AppMotion.microDuration * index)
+              .fadeIn(
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              )
+              .slideY(
+                begin: 0.08,
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              ),
           const SizedBox(height: 10),
         ],
-        for (final business in businesses) ...[
+        for (final (index, business) in businesses.indexed) ...[
           _FavoriteBusinessCard(
-            business: business,
-            onFavoriteToggle: () => onToggleFavorite(business.id),
-          ),
+                business: business,
+                onFavoriteToggle: () => onToggleFavorite(business.id),
+              )
+              .animate(
+                delay: AppMotion.microDuration * (destinations.length + index),
+              )
+              .fadeIn(
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              )
+              .slideY(
+                begin: 0.08,
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              ),
           const SizedBox(height: 10),
         ],
       ],

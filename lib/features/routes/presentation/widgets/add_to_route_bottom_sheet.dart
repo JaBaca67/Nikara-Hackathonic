@@ -10,6 +10,7 @@ import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/features/routes/presentation/screens/create_route_wizard_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -116,15 +117,11 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
       await RouteService().addStop(routeId, widget.stop);
       if (!mounted) return;
       Navigator.of(context).pop(true);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Agregado a tu ruta')));
+      AppSnackbar.showSuccess(context, 'Agregado a tu ruta');
     } on RouteServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
