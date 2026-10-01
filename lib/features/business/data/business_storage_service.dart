@@ -1,11 +1,18 @@
-import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/image_upload.dart';
+import 'package:nikara_app/core/utils/input_sanitizers.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class BusinessServiceException implements Exception {
   const BusinessServiceException(this.message);
@@ -16,29 +23,95 @@ class BusinessServiceException implements Exception {
   String toString() => message;
 }
 
-/// Persiste [BusinessModel] en la tabla `businesses` de Supabase.
-///
-/// La tabla aún no tiene columnas para price/amenities/activities/schedules/
-/// etc.; esos campos se cachean en SharedPreferences y se fusionan al leer —
-/// trade-off deliberado de una migración parcial de backend, no un bug.
+/// Persiste [BusinessModel] en la tabla `businesses` de Supabase. Hasta la
+/// migración `021_business_extras_columns.sql`, `amenities`/`activities`/
+/// `ecoSealRequested`/`ecoPractices`/`accessDetails`/`otherNotes` vivían solo
+/// en un cache local de `SharedPreferences` — invisibles para cualquier
+/// dispositivo que no fuera el que registró el negocio. Ya son columnas
+/// reales; no queda cache local que fusionar.
 class BusinessStorageService {
-  static const _localExtrasKey = 'business_local_extras_json';
-
   /// Se incrementa en cada escritura para que pantallas como "Mis Negocios" se refresquen sin reiniciar.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
+  /// Bucket público con portada + galería (ver supabase/sql/022_business_photos_storage.sql).
+  static const photosBucket = 'businesses';
+
   SupabaseClient get _client => Supabase.instance.client;
 
+  /// Sube una foto y devuelve su URL pública — mismo patrón que
+  /// `AuthService.updateAvatar` y `OrganizationService.uploadImage`. El wizard
+  /// la llama una vez por foto nueva, al guardar (no al elegirla), para no
+  /// dejar archivos huérfanos si el usuario abandona el formulario.
+  ///
+  /// Antes `businesses.photos` guardaba la ruta local de `image_picker` — una
+  /// portada/galería que solo existía en el dispositivo que la subió, el
+  /// mismo bug que ya se había arreglado para avatars (015) y organizations
+  /// (017).
+  Future<String> uploadImage(XFile image) async {
+    final user = AuthService().currentAuthUser;
+    if (user == null) {
+      throw const BusinessServiceException(
+        'Necesitas iniciar sesión para subir una foto.',
+      );
+    }
+    final format = resolveImageUploadFormat(
+      image.name,
+      reportedMimeType: image.mimeType,
+    );
+    final objectPath = '${user.id}/${const Uuid().v4()}.${format.extension}';
+    try {
+      // readAsBytes y no File: en web `XFile.path` es un `blob:`, no una ruta.
+      final bytes = await image.readAsBytes();
+      await _client.storage
+          .from(photosBucket)
+          .uploadBinary(
+            objectPath,
+            bytes,
+            fileOptions: FileOptions(
+              contentType: format.mimeType,
+              upsert: false,
+            ),
+          );
+      return _client.storage.from(photosBucket).getPublicUrl(objectPath);
+    } on StorageException catch (e) {
+      // La ruta se acaba de generar, así que un 404 solo puede ser el bucket.
+      if (e.statusCode == '404') {
+        throw const BusinessServiceException(
+          'Falta crear el almacenamiento de fotos. Corre '
+          'supabase/sql/022_business_photos_storage.sql en Supabase.',
+        );
+      }
+      throw BusinessServiceException('No se pudo subir la foto: ${e.message}');
+    } catch (_) {
+      throw const BusinessServiceException(
+        'No se pudo subir una foto. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
+  /// Listado público: solo negocios aprobados.
+  ///
+  /// Es un filtro de **estado**, no de dueño — no choca con la regla de que
+  /// las consultas públicas nunca se filtran por `owner_id` (ver CLAUDE.md >
+  /// Supabase & Security Guidelines). Un turista sigue viendo negocios que no
+  /// son suyos; lo que no ve es lo que todavía nadie revisó.
   Future<List<BusinessModel>> getBusinesses() async {
     final rows = await _select();
-    final localExtras = await _readLocalExtras();
-    return rows
-        .map((row) {
-          final core = _fromRow(row);
-          final cached = localExtras[core.id];
-          return cached == null ? core : _mergeExtras(core, cached);
-        })
-        .toList(growable: false);
+    return _hydrate(rows);
+  }
+
+  /// Los negocios del usuario actual, **sin** filtrar por estado: el dueño
+  /// tiene que ver sus propios `pendiente` y `rechazado`, que son justo los
+  /// que no aparecen en [getBusinesses].
+  ///
+  /// Consulta "mis X": el `owner_id` sale siempre de la sesión activa, nunca
+  /// de un parámetro que venga de la UI. Sin sesión devuelve vacío en vez de
+  /// lanzar — quien llama es una pantalla de perfil que también se abre como
+  /// invitado.
+  Future<List<BusinessModel>> getMyBusinesses() async {
+    final ownerId = _client.auth.currentUser?.id;
+    if (ownerId == null || ownerId.isEmpty) return const [];
+    return _hydrate(await _select(ownerId: ownerId));
   }
 
   /// Usa el RPC `businesses_in_bounds` (índice GiST) para traer solo lo visible en el mapa, sin descargar toda la tabla en cada pan/zoom.
@@ -48,19 +121,40 @@ class BusinessStorageService {
     required double maxLng,
     required double maxLat,
   }) async {
-    final rows = await _selectInBounds(
-      minLng: minLng,
-      minLat: minLat,
-      maxLng: maxLng,
-      maxLat: maxLat,
+    return _hydrate(
+      await _selectInBounds(
+        minLng: minLng,
+        minLat: minLat,
+        maxLng: maxLng,
+        maxLat: maxLat,
+      ),
     );
-    final localExtras = await _readLocalExtras();
-    return rows
-        .map((row) {
-          final core = _fromRow(row);
-          final cached = localExtras[core.id];
-          return cached == null ? core : _mergeExtras(core, cached);
-        })
+  }
+
+  /// Completa las filas crudas con las reseñas, que viven en la tabla
+  /// `reviews` en vez de en `businesses`.
+  ///
+  /// Las reseñas se piden en **una sola** consulta para todo el lote, no una
+  /// por negocio. Si esa consulta falla, los negocios se devuelven sin reseñas
+  /// en vez de tumbar el listado: un feed sin calificaciones sigue siendo útil,
+  /// un feed vacío no.
+  Future<List<BusinessModel>> _hydrate(List<Map<String, dynamic>> rows) async {
+    final cores = rows.map(_fromRow).toList(growable: false);
+
+    Map<String, List<ReviewModel>> reviews = const {};
+    try {
+      reviews = await ReviewService().getForBusinesses([
+        for (final business in cores) business.id,
+      ]);
+    } on ReviewServiceException catch (e) {
+      debugPrint(
+        '[BusinessStorageService] _hydrate: no se pudieron cargar las reseñas '
+        '— ${e.message}',
+      );
+      return cores;
+    }
+    return cores
+        .map((business) => business.copyWith(reviews: reviews[business.id]))
         .toList(growable: false);
   }
 
@@ -81,7 +175,10 @@ class BusinessStorageService {
   /// No se limita al viewport del mapa (a diferencia de [getBusinessesInBounds]) para que los chips de categoría no cambien al hacer pan.
   Future<List<String>> getAllCategories() async {
     try {
-      final rows = await _client.from('businesses').select('category');
+      final rows = await _client
+          .from('businesses')
+          .select('category')
+          .eq('status', ReviewStatus.aprobado.wireValue);
       final categories = (rows as List<dynamic>)
           .cast<Map<String, dynamic>>()
           .map((row) => row['category'] as String? ?? '')
@@ -101,17 +198,20 @@ class BusinessStorageService {
     }
   }
 
-  Future<void> addBusiness(BusinessModel business) async {
-    _requireOwnerId(business);
+  Future<void> addBusiness(BusinessModel rawBusiness) async {
+    final ownerId = _requireCurrentUserId();
+    final business = _sanitized(rawBusiness);
     _requireLocation(business);
-    final row = _toRow(business, includeId: true);
+    // El dueño se estampa desde la sesión, nunca desde el modelo que llegó de
+    // la UI: es la única fuente que una pantalla no puede falsificar.
+    final row = {'id': business.id, 'owner_id': ownerId, ..._toRow(business)};
     debugPrint(
       '[BusinessStorageService] addBusiness("${business.name}") '
       'lat=${business.latitude} lng=${business.longitude} '
       'location="${row['location']}"',
     );
     try {
-      await _client.from('businesses').insert(row);
+      await _insertRow(row);
       debugPrint(
         '[BusinessStorageService] addBusiness("${business.name}") -> OK',
       );
@@ -133,21 +233,29 @@ class BusinessStorageService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _writeLocalExtra(business);
     revision.value++;
+    unawaited(
+      NotificationService().notifyAdminsOfPendingReview(
+        title: 'Negocio nuevo por revisar',
+        body: '"${business.name}" está esperando tu revisión.',
+      ),
+    );
   }
 
-  Future<void> updateBusiness(BusinessModel business) async {
-    _requireOwnerId(business);
+  Future<void> updateBusiness(BusinessModel rawBusiness) async {
+    final ownerId = _requireCurrentUserId();
+    final business = _sanitized(rawBusiness);
     _requireLocation(business);
-    final row = _toRow(business, includeId: false);
+    // `owner_id` no viaja en el update: el dueño de un negocio no cambia, y
+    // enviarlo abriría la puerta a "regalarle" una fila a otra cuenta.
+    final row = _toRow(business);
     debugPrint(
       '[BusinessStorageService] updateBusiness("${business.name}", '
       'id=${business.id}) lat=${business.latitude} lng=${business.longitude} '
       'location="${row['location']}"',
     );
     try {
-      await _client.from('businesses').update(row).eq('id', business.id);
+      await _updateRow(business.id, ownerId, row);
       debugPrint(
         '[BusinessStorageService] updateBusiness("${business.name}") -> OK',
       );
@@ -160,6 +268,8 @@ class BusinessStorageService {
       throw BusinessServiceException(
         'No se pudo actualizar el negocio: ${e.message}',
       );
+    } on BusinessServiceException {
+      rethrow;
     } catch (e) {
       debugPrint(
         '[BusinessStorageService] updateBusiness("${business.name}") -> '
@@ -169,42 +279,183 @@ class BusinessStorageService {
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _writeLocalExtra(business);
     revision.value++;
   }
 
-  Future<void> deleteBusiness(String id) async {
+  /// Devuelve a la cola de revisión un negocio que fue rechazado.
+  ///
+  /// No pasa por el RPC `review_business`: ése valida rol admin/auditor y
+  /// existe para **aprobar o rechazar**. Esto es el dueño tocando su propia
+  /// fila para volver a pedir revisión, así que es un `update` normal con el
+  /// filtro de dueño en la misma sentencia, igual que [updateBusiness].
+  ///
+  /// El `.eq('status', rechazado)` también va adentro del `update` a
+  /// propósito: sin él, un negocio ya aprobado podría volver a `pendiente` por
+  /// un doble toque y desaparecería del feed público hasta que alguien lo
+  /// revisara otra vez.
+  Future<void> resubmitBusiness(String id) async {
+    final ownerId = _requireCurrentUserId();
     try {
-      await _client.from('businesses').delete().eq('id', id);
+      final updated = await _client
+          .from('businesses')
+          .update({
+            'status': ReviewStatus.pendiente.wireValue,
+            'rejection_reason': null,
+          })
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .eq('status', ReviewStatus.rechazado.wireValue)
+          .select('id, name');
+      final rows = updated as List<dynamic>;
+      if (rows.isEmpty) {
+        throw const BusinessServiceException(
+          'No se pudo reenviar el negocio: ya no existe, no es tuyo o no '
+          'está rechazado.',
+        );
+      }
+      // Sin esto, un negocio corregido y reenviado nunca avisaba a los
+      // admins — quedaba en "pendiente" pero nadie recibía la señal para
+      // volver a mirarlo, a diferencia de un registro nuevo. Encontrado
+      // probando el ciclo completo en la auditoría del 2026-09-05.
+      final name = rows.first['name'] as String? ?? 'un negocio';
+      unawaited(
+        NotificationService().notifyAdminsOfPendingReview(
+          title: 'Negocio reenviado a revisión',
+          body:
+              '"$name" corrigió sus datos y está esperando tu revisión '
+              'de nuevo.',
+        ),
+      );
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
-        'No se pudo eliminar el negocio: ${e.message}',
+        'No se pudo reenviar el negocio: ${e.message}',
       );
+    } on BusinessServiceException {
+      rethrow;
     } catch (_) {
       throw const BusinessServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
-    await _removeLocalExtra(id);
     revision.value++;
   }
 
-  /// Las reseñas no tienen tabla en Supabase todavía; solo se guardan en el cache local de extras.
+  Future<void> deleteBusiness(String id) async {
+    final ownerId = _requireCurrentUserId();
+    try {
+      // El filtro de dueño va en la misma sentencia del delete, no en un
+      // `select` previo: entre leer y borrar hay una ventana en la que la
+      // fila puede cambiar de manos, y el borrado no la vería.
+      final deleted = await _client
+          .from('businesses')
+          .delete()
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
+      if ((deleted as List<dynamic>).isEmpty) {
+        throw const BusinessServiceException(
+          'No se pudo eliminar el negocio: ya no existe o no es tuyo.',
+        );
+      }
+    } on PostgrestException catch (e) {
+      throw BusinessServiceException(
+        'No se pudo eliminar el negocio: ${e.message}',
+      );
+    } on BusinessServiceException {
+      rethrow;
+    } catch (_) {
+      throw const BusinessServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+    revision.value++;
+  }
+
+  /// Delega en [ReviewService]: las reseñas viven en la tabla `reviews` desde
+  /// que se conectó ese servicio, no en el cache local del dispositivo.
+  ///
+  /// Sigue viviendo acá para no cambiar a quien ya la llamaba, pero no escribe
+  /// nada de `businesses`. `mediaPaths` no viaja — ver la nota de
+  /// [ReviewService].
   Future<void> addReview(BusinessModel business, ReviewModel review) async {
-    await _writeLocalExtra(
-      business.copyWith(reviews: [...business.reviews, review]),
+    await ReviewService().addReview(
+      businessId: business.id,
+      rating: review.rating,
+      comment: review.comment,
     );
     revision.value++;
   }
 
-  /// `owner_id` es uuid en Postgres; un string vacío falla con un error críptico en la base, así que se valida antes de enviar la petición.
-  void _requireOwnerId(BusinessModel business) {
-    if (business.ownerId.trim().isEmpty) {
+  /// Ninguna mutación sale sin sesión: `owner_id` es uuid NOT NULL en Postgres
+  /// y un string vacío falla con un error críptico en la base. Además es el
+  /// valor con el que se filtra la pertenencia, así que sin él no hay forma de
+  /// saber qué filas puede tocar quien está usando la app.
+  String _requireCurrentUserId() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
       throw const BusinessServiceException(
         'No se pudo identificar al propietario del negocio. Inicia sesión '
         'de nuevo e intenta otra vez.',
       );
     }
+    return userId;
+  }
+
+  /// Normaliza todo el texto del negocio en un solo lugar, antes de que salga
+  /// hacia Supabase **y** antes de guardarlo en el cache local de extras: si
+  /// solo se saneara la fila, el cache devolvería la versión sucia al leer
+  /// (ver [_mergeExtras]) y el dato quedaría distinto según de dónde se lea.
+  BusinessModel _sanitized(BusinessModel b) {
+    return b.copyWith(
+      name: sanitizeText(b.name, maxLength: InputLimits.name),
+      category: sanitizeText(b.category, maxLength: InputLimits.shortLabel),
+      description: sanitizeMultilineText(b.description),
+      city: sanitizeText(b.city, maxLength: InputLimits.shortLabel),
+      locationText: sanitizeText(
+        b.locationText,
+        maxLength: InputLimits.address,
+      ),
+      contactPhone: sanitizePhone(b.contactPhone),
+      instagramLink: sanitizeInstagramHandle(b.instagramLink),
+      facebookLink: sanitizeFacebookHandle(b.facebookLink),
+      tiktokLink: sanitizeTiktokHandle(b.tiktokLink),
+      // `sanitizeText` colapsa TODO whitespace (incluido '\n') a un solo
+      // espacio — `_ScheduleEntry.format()`/`.parse()` en el wizard dependen
+      // de '\n' para separar cada franja horaria. Con `sanitizeText`, un
+      // horario de 2 franjas se guardaba en una sola línea; al reabrirlo para
+      // editar, `_ScheduleEntry.parse()` no lo reconocía como 2 entradas y
+      // caía al fallback (todo el texto original como "día" + hora inventada
+      // 08:00–17:00), que se reescribía encima al guardar. Bug real y ya
+      // manifestado: los 6 negocios reales de la base tienen
+      // ": 08:00–17:00" pegado al final de su horario por esto. Encontrado
+      // en la auditoría del 2026-09-05 al editar y reenviar un negocio.
+      schedules: sanitizeMultilineText(
+        b.schedules,
+        maxLength: InputLimits.mediumText,
+      ),
+      accessDetails: sanitizeMultilineText(b.accessDetails),
+      otherNotes: sanitizeMultilineText(b.otherNotes),
+      amenities: sanitizeTextList(b.amenities),
+      activities: sanitizeTextList(b.activities),
+      ecoPractices: sanitizeTextList(b.ecoPractices),
+      hostName: sanitizeProperName(b.hostName),
+      localImagePaths: _sanitizePhotos(b.localImagePaths),
+    );
+  }
+
+  /// Las fotos son rutas locales *o* URLs de Storage, así que solo se recortan
+  /// y se deduplican: colapsar espacios como en el texto libre rompería una
+  /// ruta de archivo que los tenga.
+  static List<String> _sanitizePhotos(List<String> photos) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final photo in photos) {
+      final value = photo.trim();
+      if (value.isEmpty || !seen.add(value)) continue;
+      result.add(value);
+      if (result.length >= 20) break;
+    }
+    return List<String>.unmodifiable(result);
   }
 
   /// `location` es NOT NULL sin default; se valida aquí también (no solo en el wizard) para no depender únicamente de la UI.
@@ -216,12 +467,15 @@ class BusinessStorageService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _select() async {
+  /// Con [ownerId] es la lectura "mis negocios" (todos los estados); sin él
+  /// es la lectura pública y solo devuelve aprobados.
+  Future<List<Map<String, dynamic>>> _select({String? ownerId}) async {
     try {
-      final rows = await _client
-          .from('businesses')
-          .select()
-          .order('created_at');
+      var query = _client.from('businesses').select();
+      query = ownerId == null
+          ? query.eq('status', ReviewStatus.aprobado.wireValue)
+          : query.eq('owner_id', ownerId);
+      final rows = await query.order('created_at');
       return (rows as List<dynamic>).cast<Map<String, dynamic>>();
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
@@ -241,15 +495,20 @@ class BusinessStorageService {
     required double maxLat,
   }) async {
     try {
-      final rows = await _client.rpc(
-        'businesses_in_bounds',
-        params: {
-          'min_lng': minLng,
-          'min_lat': minLat,
-          'max_lng': maxLng,
-          'max_lat': maxLat,
-        },
-      );
+      // `businesses_in_bounds` devuelve `setof public.businesses`, así que
+      // PostgREST acepta filtros encadenados sobre su resultado igual que
+      // sobre una tabla — el estado se filtra sin tocar la función SQL.
+      final rows = await _client
+          .rpc(
+            'businesses_in_bounds',
+            params: {
+              'min_lng': minLng,
+              'min_lat': minLat,
+              'max_lng': maxLng,
+              'max_lat': maxLat,
+            },
+          )
+          .eq('status', ReviewStatus.aprobado.wireValue);
       return (rows as List<dynamic>).cast<Map<String, dynamic>>();
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
@@ -262,27 +521,84 @@ class BusinessStorageService {
     }
   }
 
-  BusinessModel _mergeExtras(BusinessModel core, BusinessModel cached) {
-    return core.copyWith(
-      allowsReservations: cached.allowsReservations,
-      price: cached.price,
-      amenities: cached.amenities,
-      activities: cached.activities,
-      ecoSealRequested: cached.ecoSealRequested,
-      ecoPractices: cached.ecoPractices,
-      facebookLink: cached.facebookLink,
-      socialMediaLink: cached.socialMediaLink,
-      schedules: cached.schedules,
-      accessDetails: cached.accessDetails,
-      otherNotes: cached.otherNotes,
-      reviews: cached.reviews,
-    );
+  /// Columnas que pueden no existir todavía según qué migraciones ya corrió
+  /// cada entorno: `schedules`/`facebook_handle` (018) y el lote de
+  /// `021_business_extras_columns.sql` (amenities/activities/eco_*/
+  /// access_details/other_notes/tiktok_handle). Se reintenta sin esas claves
+  /// en vez de impedir que se registre un negocio: el resto de los datos sí
+  /// se puede guardar.
+  static const _softColumns = [
+    'schedules',
+    'facebook_handle',
+    'amenities',
+    'activities',
+    'eco_seal_requested',
+    'eco_practices',
+    'access_details',
+    'other_notes',
+    'tiktok_handle',
+  ];
+
+  static bool _isMissingSoftColumn(PostgrestException e) =>
+      (e.code == 'PGRST204' || e.code == '42703') &&
+      _softColumns.any(e.message.contains);
+
+  Future<void> _insertRow(Map<String, dynamic> row) async {
+    try {
+      await _client.from('businesses').insert(row);
+    } on PostgrestException catch (e) {
+      if (!_isMissingSoftColumn(e)) rethrow;
+      await _client.from('businesses').insert(_withoutSoftColumns(row));
+    }
   }
 
-  Map<String, dynamic> _toRow(BusinessModel b, {required bool includeId}) {
+  /// El `.eq('owner_id', ...)` va en la misma sentencia que el `update`: es lo
+  /// que impide editar el negocio de otra persona conociendo su id, y a
+  /// diferencia de un `select` previo no deja ventana entre el chequeo y la
+  /// escritura. `.select('id')` está para distinguir "no era tuyo" de "salió
+  /// bien": sin él, PostgREST responde 200 aunque no haya tocado ninguna fila.
+  Future<void> _updateRow(
+    String id,
+    String ownerId,
+    Map<String, dynamic> row,
+  ) async {
+    List<dynamic> updated;
+    try {
+      updated = await _client
+          .from('businesses')
+          .update(row)
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
+    } on PostgrestException catch (e) {
+      if (!_isMissingSoftColumn(e)) rethrow;
+      updated = await _client
+          .from('businesses')
+          .update(_withoutSoftColumns(row))
+          .eq('id', id)
+          .eq('owner_id', ownerId)
+          .select('id');
+    }
+    if (updated.isEmpty) {
+      throw const BusinessServiceException(
+        'No se pudo actualizar el negocio: ya no existe o no es tuyo.',
+      );
+    }
+  }
+
+  static Map<String, dynamic> _withoutSoftColumns(Map<String, dynamic> row) {
+    final trimmed = Map<String, dynamic>.of(row);
+    for (final column in _softColumns) {
+      trimmed.remove(column);
+    }
+    return trimmed;
+  }
+
+  /// Solo las columnas de contenido: `id` y `owner_id` los agrega quien
+  /// inserta, para que un update no pueda reescribirlos por accidente. El
+  /// texto ya viene normalizado por [_sanitized].
+  Map<String, dynamic> _toRow(BusinessModel b) {
     return {
-      if (includeId) 'id': b.id,
-      'owner_id': b.ownerId,
       'name': b.name,
       'category': b.category,
       'description': b.description,
@@ -292,7 +608,18 @@ class BusinessStorageService {
       'location': 'SRID=4326;POINT(${b.longitude} ${b.latitude})',
       'phone': b.contactPhone,
       'instagram_handle': b.instagramLink,
+      'facebook_handle': b.facebookLink,
+      'tiktok_handle': b.tiktokLink,
+      'schedules': b.schedules,
       'photos': b.localImagePaths,
+      'amenities': b.amenities,
+      'activities': b.activities,
+      'eco_seal_requested': b.ecoSealRequested,
+      'eco_practices': b.ecoPractices,
+      'access_details': b.accessDetails,
+      'other_notes': b.otherNotes,
+      'logo_url': b.logoUrl,
+      'show_host': b.showHost,
     };
   }
 
@@ -322,11 +649,29 @@ class BusinessStorageService {
       longitude: point?.$2,
       contactPhone: row['phone'] as String? ?? '',
       instagramLink: row['instagram_handle'] as String? ?? '',
+      // Ausentes (no vacías) mientras no haya corrido la migración 018/021.
+      facebookLink: row['facebook_handle'] as String? ?? '',
+      tiktokLink: row['tiktok_handle'] as String? ?? '',
+      schedules: row['schedules'] as String? ?? '',
+      amenities:
+          (row['amenities'] as List<dynamic>?)?.cast<String>() ?? const [],
+      activities:
+          (row['activities'] as List<dynamic>?)?.cast<String>() ?? const [],
+      ecoSealRequested: row['eco_seal_requested'] as bool? ?? false,
+      ecoPractices:
+          (row['eco_practices'] as List<dynamic>?)?.cast<String>() ?? const [],
+      accessDetails: row['access_details'] as String? ?? '',
+      otherNotes: row['other_notes'] as String? ?? '',
+      logoUrl: row['logo_url'] as String?,
+      showHost: row['show_host'] as bool? ?? true,
       localImagePaths:
           (row['photos'] as List<dynamic>?)?.cast<String>() ?? const [],
       isVerified: row['is_verified'] as bool? ?? false,
-      // Sin columna aún; son defaults reales que el merge de extras locales sobrescribe si hay cache.
-      allowsReservations: false,
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
+      // Sin columna aún (ver "Identidad del negocio" en la bóveda).
       hostName: '',
     );
   }
@@ -394,36 +739,5 @@ class BusinessStorageService {
     final lng = buffer.getFloat64(offset, endian);
     final lat = buffer.getFloat64(offset + 8, endian);
     return (lat, lng);
-  }
-
-  Future<Map<String, BusinessModel>> _readLocalExtras() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_localExtrasKey);
-    if (raw == null) return {};
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    final list = decoded
-        .map((e) => BusinessModel.fromJson(e as Map<String, dynamic>))
-        .toList();
-    return {for (final b in list) b.id: b};
-  }
-
-  Future<void> _writeLocalExtra(BusinessModel business) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cache = await _readLocalExtras();
-    cache[business.id] = business;
-    await prefs.setString(
-      _localExtrasKey,
-      jsonEncode(cache.values.map((b) => b.toJson()).toList()),
-    );
-  }
-
-  Future<void> _removeLocalExtra(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cache = await _readLocalExtras();
-    cache.remove(id);
-    await prefs.setString(
-      _localExtrasKey,
-      jsonEncode(cache.values.map((b) => b.toJson()).toList()),
-    );
   }
 }

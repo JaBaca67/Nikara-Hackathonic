@@ -40,7 +40,6 @@ void main() {
     latitude: 12.1363,
     longitude: -86.2513,
     contactPhone: '+505 8888 8888',
-    allowsReservations: false,
     hostName: 'Anfitrión de prueba',
     ownerId: 'owner-1',
   );

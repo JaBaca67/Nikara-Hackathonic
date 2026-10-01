@@ -9,8 +9,10 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/models/mock_data.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Divisor "o continúa con" + 3 botones de provider social; Google/Apple resuelven de inmediato, Facebook solo lanza el flujo y este widget espera [AuthService.authStateChanges] para completar la navegación.
@@ -85,12 +87,9 @@ class _SocialLoginRowState extends State<SocialLoginRow>
 
     if (provider.kind == SocialAuthKind.apple &&
         !_authService.isAppleSignInSupported) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Iniciar sesión con Apple solo está disponible en iOS por ahora.',
-          ),
-        ),
+      AppSnackbar.showInfo(
+        context,
+        'Iniciar sesión con Apple solo está disponible en iOS por ahora.',
       );
       return;
     }
@@ -107,12 +106,9 @@ class _SocialLoginRowState extends State<SocialLoginRow>
       // AuthService ya traduce fallas de Supabase/red a un AuthResult; esto solo cubre algo que se escape (p. ej. al lanzar la URL de OAuth) para que el spinner no quede atascado.
       if (!mounted) return;
       setState(() => _loadingKind = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
-          ),
-        ),
+      AppSnackbar.showError(
+        context,
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
       return;
     }
@@ -122,9 +118,7 @@ class _SocialLoginRowState extends State<SocialLoginRow>
       setState(() => _loadingKind = null);
       final message = result.message;
       if (message != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(message)));
+        AppSnackbar.showError(context, message);
       }
       return;
     }
@@ -210,15 +204,15 @@ class _SocialButton extends StatelessWidget {
       label: 'Continuar con ${provider.label}',
       child: Material(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: isLoading ? null : onTap,
           child: Container(
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               border: Border.all(
                 color: AppColors.settingsTextDark.withValues(alpha: 0.08),
               ),

@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Bloques visuales compartidos por las pantallas de detalle (`BusinessDetailScreen`, `EcoDetailScreen`), que antes duplicaban la misma jerarquía con widgets privados (Pantalla 3a de Figma sigue siendo la fuente de verdad de medidas/colores).
@@ -113,6 +114,7 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                       DetailCoverIconButton(
                         icon: Icons.arrow_back,
                         onTap: widget.onBack,
+                        label: 'Volver',
                       ),
                       Row(children: widget.actions),
                     ],
@@ -136,7 +138,7 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.detailCoverCounterBg,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                     border: Border.all(
                       color: AppColors.detailCoverCounterBorder,
                     ),
@@ -174,30 +176,39 @@ class DetailCoverIconButton extends StatelessWidget {
     super.key,
     required this.icon,
     required this.onTap,
+    required this.label,
   });
 
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Descripción para lectores de pantalla. Obligatoria: el botón no tiene
+  /// texto visible, así que sin esto TalkBack/VoiceOver sólo anuncia "botón".
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surface100.withValues(alpha: 0.22),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.surface100.withValues(alpha: 0.4),
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.surface100.withValues(alpha: 0.22),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.surface100.withValues(alpha: 0.4),
+                ),
               ),
+              child: Icon(icon, size: 19, color: AppColors.surface100),
             ),
-            child: Icon(icon, size: 19, color: AppColors.surface100),
           ),
         ),
       ),
@@ -224,7 +235,7 @@ class DetailCoverTagPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         label,
@@ -248,7 +259,7 @@ class DetailQuickInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -326,10 +337,10 @@ class DetailSegmentedTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.segmentedTrackBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(
         children: [
@@ -439,7 +450,7 @@ class DetailIconRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: Row(
@@ -479,7 +490,7 @@ class DetailProfileCard extends StatelessWidget {
     this.caption,
     this.captionColor,
     this.verified = false,
-    this.accent = AppColors.accent300,
+    this.accent = AppColors.oliveText,
     this.accentBackground = AppColors.detailActivityIconBg,
     this.onTap,
   });
@@ -500,7 +511,7 @@ class DetailProfileCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -537,7 +548,7 @@ class DetailProfileCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: accentBackground,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -609,7 +620,7 @@ class DetailMapCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         clipBehavior: Clip.antiAlias,
@@ -657,7 +668,7 @@ class DetailMapCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.settingsBackground,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Text(
                       actionLabel,

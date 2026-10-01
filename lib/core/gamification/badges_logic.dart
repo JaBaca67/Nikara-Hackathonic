@@ -84,7 +84,7 @@ abstract class BadgesLogic {
         id: 'viajero-consciente',
         title: 'Viajero Consciente',
         icon: Icons.card_travel,
-        tint: AppColors.ecoForest,
+        tint: AppColors.success,
         unlocked: stats.reviewsCount >= 1,
         requirementLabel: 'Deja tu primera reseña',
       ),

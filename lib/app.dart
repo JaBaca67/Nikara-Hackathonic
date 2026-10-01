@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/navigation/root_navigator.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 // ¡Esta es la ruta que conecta tu diseño de Figma con la app!
@@ -20,6 +21,7 @@ class MyApp extends StatelessWidget {
     // pause, not a loading gate for that state.
     final hasAccess = AuthService().isLoggedIn || GuestSessionService().isGuest;
     return MaterialApp(
+      navigatorKey: rootNavigatorKey,
       title: 'Níkara',
       debugShowCheckedModeBanner:
           false, // Esto quita la fea cinta roja de "DEBUG"

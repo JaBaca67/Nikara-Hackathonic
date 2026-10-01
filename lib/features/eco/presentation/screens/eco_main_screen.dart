@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
@@ -8,8 +9,13 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todas';
@@ -98,13 +104,14 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   }
 
   Future<void> _openDetail(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
   }
 
   Future<void> _toggleJoin(EcoActivityModel activity) async {
     if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
+    if (!mounted) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
+    if (!mounted) return;
     final joining = !activity.isJoinedByCurrentUser;
     _applyOptimistic(activity.id, joining: joining);
     try {
@@ -116,9 +123,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     } on EcoServiceException catch (e) {
       _applyOptimistic(activity.id, joining: !joining);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -143,19 +148,24 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     final featured = _featured;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: _isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: AppColors.primary500),
+                child: CircularProgressIndicator(color: AppColors.oliveText),
               )
             : _loadError != null
             ? _EcoErrorState(message: _loadError!, onRetry: _load)
             : RefreshIndicator(
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
                 onRefresh: _load,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.lg,
+                    AppSpacing.xl,
+                    AppSpacing.xxxl,
+                  ),
                   children: [
                     const _EcoHeader(),
                     const SizedBox(height: 18),
@@ -191,13 +201,26 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      for (final activity in filtered)
+                      for (final (index, activity) in filtered.indexed)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: EcoActivityCard(
-                            activity: activity,
-                            onTap: () => _openDetail(activity),
-                          ),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                          child:
+                              EcoActivityCard(
+                                    activity: activity,
+                                    onTap: () => _openDetail(activity),
+                                  )
+                                  .animate(
+                                    delay: AppMotion.microDuration * index,
+                                  )
+                                  .fadeIn(
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  )
+                                  .slideY(
+                                    begin: 0.08,
+                                    duration: AppMotion.standardDuration,
+                                    curve: AppMotion.enter,
+                                  ),
                         ),
                     ],
                   ],
@@ -225,7 +248,7 @@ class _EcoHeader extends StatelessWidget {
           ),
           child: const Icon(
             Icons.eco_rounded,
-            color: AppColors.ecoActive,
+            color: AppColors.oliveText,
             size: 22,
           ),
         ),
@@ -271,21 +294,21 @@ class _CategoryFilterRow extends StatelessWidget {
           final category = _categories[index];
           final isSelected = category == selected;
           return Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: GestureDetector(
               onTap: () => onSelected(category),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.sm,
                 ),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? AppColors.ecoActive
+                      ? AppColors.oliveText
                       : AppColors.surface100,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                   border: isSelected
                       ? null
                       : Border.all(color: AppColors.mapControlBorder),
@@ -320,7 +343,7 @@ class _JoinedBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.ecoGreen500.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(
         children: [
@@ -329,7 +352,7 @@ class _JoinedBanner extends StatelessWidget {
             height: 28,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: AppColors.ecoActive,
+              color: AppColors.oliveText,
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -390,7 +413,7 @@ class _FeaturedCarousel extends StatelessWidget {
             itemBuilder: (context, index) {
               final activity = activities[index];
               return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                 child: _FeaturedCard(
                   activity: activity,
                   onTap: () => onOpen(activity),
@@ -413,9 +436,9 @@ class _FeaturedCarousel extends StatelessWidget {
                   height: 6,
                   decoration: BoxDecoration(
                     color: i == current
-                        ? AppColors.ecoActive
+                        ? AppColors.oliveText
                         : AppColors.mapControlBorder,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                 ),
             ],
@@ -442,7 +465,7 @@ class _FeaturedCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -464,7 +487,7 @@ class _FeaturedCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   LocalImage(
-                    path: null,
+                    path: activity.imageUrl,
                     fallbackIcon: ecoCategoryIcon(activity.category),
                     fallbackIconSize: 36,
                   ),
@@ -486,14 +509,14 @@ class _FeaturedCard extends StatelessWidget {
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary500,
-                          borderRadius: BorderRadius.circular(999),
+                          color: AppColors.oliveFill,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                         child: Text(
                           'Empieza pronto',
                           style: AppTextStyles.mapRowTitle.copyWith(
                             fontSize: 11,
-                            color: AppColors.settingsTextDark,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ),
@@ -504,7 +527,7 @@ class _FeaturedCard extends StatelessWidget {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -540,13 +563,19 @@ class _FeaturedCard extends StatelessWidget {
                                 ? null
                                 : onJoin,
                             style: ElevatedButton.styleFrom(
+                              // Mismo par que el CTA del detalle: el estado
+                              // "disponible" del modelo especifica "Unirme"
+                              // en dorado, y sobre un Fill de marca va tinta
+                              // oscura, nunca blanco.
                               backgroundColor: AppColors.primary500,
                               foregroundColor: AppColors.settingsTextDark,
                               disabledBackgroundColor:
                                   AppColors.settingsBackground,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
                               ),
                               textStyle: AppTextStyles.mapRowTitle.copyWith(
                                 fontSize: 14,
@@ -573,7 +602,9 @@ class _FeaturedCard extends StatelessWidget {
                                 color: AppColors.mapControlBorder,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
                               ),
                               textStyle: AppTextStyles.mapRowTitle.copyWith(
                                 fontSize: 13,
@@ -614,7 +645,7 @@ class _OrganizerChip extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(logo == null ? 10 : 5, 5, 10, 5),
         decoration: BoxDecoration(
           color: AppColors.detailCoverCounterBg,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -687,14 +718,14 @@ class _EcoErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
               Icons.wifi_off_rounded,
               size: 40,
-              color: AppColors.settingsDanger,
+              color: AppColors.destructive,
             ),
             const SizedBox(height: 12),
             Text(
@@ -714,8 +745,8 @@ class _EcoErrorState extends StatelessWidget {
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Reintentar'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary500,
-                foregroundColor: AppColors.textInk,
+                backgroundColor: AppColors.oliveText,
+                foregroundColor: AppColors.textInverted,
               ),
             ),
           ],

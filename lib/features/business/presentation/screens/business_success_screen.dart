@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Beat celebratorio tras guardar un negocio, antes de volver a Home.
+/// Beat celebratorio tras **enviar** un negocio a revisión, antes de volver a
+/// Home.
+///
+/// Ya no dice "está en vivo": desde `019_review_status.sql` el negocio nace en
+/// `pendiente` y no aparece en ningún listado público hasta que un admin o
+/// auditor lo aprueba. No lleva parámetro para distinguir "publicado" de "en
+/// revisión" porque no hace falta: el único camino que llega acá es la
+/// creación desde el wizard (editar hace `pop`, no navega), y una creación
+/// siempre queda pendiente.
 class BusinessSuccessScreen extends StatefulWidget {
   const BusinessSuccessScreen({super.key, required this.businessName});
 
@@ -70,7 +79,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
         backgroundColor: AppColors.surface100,
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -98,10 +107,13 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                         ),
                       ],
                     ),
+                    // Reloj y no check: el check afirmaba que el negocio ya
+                    // estaba publicado, que es justo lo que dejó de ser cierto.
                     child: const Icon(
-                      Icons.check_rounded,
+                      Icons.hourglass_top_rounded,
                       size: 64,
                       color: AppColors.textInk,
+                      semanticLabel: 'Solicitud en revisión',
                     ),
                   ),
                 ),
@@ -111,7 +123,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                   child: Column(
                     children: [
                       Text(
-                        '¡Tu negocio está en vivo!',
+                        '¡Tu solicitud fue enviada!',
                         textAlign: TextAlign.center,
                         style: AppTextStyles.h4.copyWith(
                           color: AppColors.textInk,
@@ -119,8 +131,8 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Tu establecimiento ya es visible para toda la '
-                        'comunidad de Níkara',
+                        'La revisamos en un máximo de 24 horas y te avisamos '
+                        'cuando quede visible para la comunidad de Níkara',
                         textAlign: TextAlign.center,
                         style: AppTextStyles.bodyText2.copyWith(
                           color: AppColors.neutral600,
@@ -131,7 +143,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                         widget.businessName,
                         textAlign: TextAlign.center,
                         style: AppTextStyles.subtitle1.copyWith(
-                          color: AppColors.ecoForest,
+                          color: AppColors.success,
                         ),
                       ),
                     ],
@@ -149,7 +161,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
                         backgroundColor: AppColors.primary500,
                         foregroundColor: AppColors.textInk,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                       child: Text(

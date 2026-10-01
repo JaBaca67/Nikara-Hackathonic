@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// CTA primario único del flujo de Auth; `onPressed: null` ya renderiza el estado deshabilitado, sin que el caller tenga que apagar colores manualmente.
@@ -34,7 +35,7 @@ class AuthPrimaryButton extends StatelessWidget {
             AppColors.primary700.withValues(alpha: isEnabled ? 1 : 0.6),
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: isEnabled
             ? const [
                 BoxShadow(
@@ -48,7 +49,7 @@ class AuthPrimaryButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: isEnabled ? onPressed : null,
           child: Center(
             child: isLoading
@@ -95,7 +96,7 @@ class AuthOutlinedButton extends StatelessWidget {
       width: double.infinity,
       height: 48,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(
           color: AppColors.authMuted.withValues(alpha: isEnabled ? 0.4 : 0.2),
           width: 1.5,
@@ -104,7 +105,7 @@ class AuthOutlinedButton extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: onPressed,
           child: Center(
             child: Text(

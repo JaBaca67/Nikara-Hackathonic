@@ -7,6 +7,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_status_badge.da
 import 'package:nikara_app/features/eco/utils/eco_format.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Tarjeta extendida del feed ECO, según la referencia "Estado-disponible-tarjeta".
@@ -29,7 +30,7 @@ class EcoActivityCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: AppColors.surface100,
           borderRadius: BorderRadius.circular(22),
@@ -46,12 +47,12 @@ class EcoActivityCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               child: SizedBox(
                 width: 84,
                 height: 118,
                 child: LocalImage(
-                  path: null,
+                  path: activity.imageUrl,
                   fallbackIcon: ecoCategoryIcon(activity.category),
                   fallbackIconSize: 26,
                 ),
@@ -106,6 +107,7 @@ class EcoActivityCard extends StatelessWidget {
                     children: [
                       EcoParticipantAvatars(
                         count: activity.participantCount,
+                        participants: activity.visibleParticipants,
                         size: 28,
                       ),
                       EcoStatusBadge(status: activity.status),
@@ -132,7 +134,7 @@ class _CategoryBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: AppColors.detailActivityIconBg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         label.toUpperCase(),
@@ -141,7 +143,7 @@ class _CategoryBadge extends StatelessWidget {
         style: AppTextStyles.detailEcoBadge.copyWith(
           fontSize: 10,
           letterSpacing: 0.3,
-          color: AppColors.ecoActive,
+          color: AppColors.oliveText,
         ),
       ),
     );

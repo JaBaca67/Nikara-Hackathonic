@@ -4,11 +4,97 @@ import 'package:flutter/material.dart';
 /// [neutral1100] y [surface100]/[backgroundCream] son blanco/negro
 /// suavizados a propósito — el sistema de diseño no usa negro/blanco puro.
 abstract class AppColors {
+  // ==========================================================================
+  // CAPA CANÓNICA — primitivos de marca y tokens semánticos.
+  //
+  // Es la única capa que deberían tocar las pantallas nuevas. Todo lo que
+  // viene después de esta sección es la paleta histórica extraída de Figma,
+  // en proceso de consolidación hacia estos tokens (ver CLAUDE.md >
+  // "Sistema de diseño"). Al escribir una pantalla, buscá acá primero: si
+  // el color que necesitás no está, es una pregunta abierta de diseño, no
+  // una constante nueva que se agrega al final del archivo.
+  // ==========================================================================
+
+  // --- Primitivos de marca: 3 familias, variante Fill y variante Text ---
+
+  /// Dorado de marca. **Solo relleno** — su versión oscurecida a contraste
+  /// seguro se lee como bronce, no como dorado, así que no existe `goldText`:
+  /// sobre un relleno dorado va texto oscuro ([textPrimary]/[textInk]).
+  static const goldFill = primary500;
+
+  /// Oliva-lima de marca. **Solo relleno**, misma razón que [goldFill]: es
+  /// tan claro (contraste 1.69 contra el fondo) que como color de texto es
+  /// ilegible. Sobre un relleno oliva va texto oscuro — no blanco.
+  static const oliveFill = ecoGreen500;
+
+  /// Oliva oscuro para texto/íconos interactivos con significado ECO.
+  /// Contraste 4.76 contra [background] y 5.17 contra [surface] — cumple
+  /// WCAG AA. Reemplaza a `accent300` (3.21, incumplía) y a `ecoActive`
+  /// (3.77, también incumplía). Se oscureció de `#707536` a este valor
+  /// cuando [background] pasó a beige: sobre el fondo nuevo el tono anterior
+  /// medía 4.43 y dejaba de cumplir AA.
+  static const oliveText = Color(0xFF6B7033);
+
+  // Nota: la especificación original declaraba una tercera familia de marca
+  // (Orange `orangeFill`/`orangeText`). Se eliminó en la auditoría del
+  // 2026-08-25 por tener **cero usos** en toda la app: el naranja solo vive
+  // en el gradiente de Auth (`sunset*`) y en `coral500`. Declarar una
+  // familia que ninguna pantalla usa hacía creer que había 3 acentos
+  // disponibles cuando en la práctica el sistema son 2: Gold y Olive.
+
+  // --- Tokens semánticos: neutros, superficies y estado ---
+
+  /// Fondo de pantalla: beige tostado, **deliberadamente más oscuro que
+  /// [surface]**. Con el cream anterior (`#FFF9F0`) la diferencia de
+  /// luminancia contra una tarjeta blanca era 0.029 — imperceptible, así que
+  /// las tarjetas no se leían como objetos apoyados sobre el fondo sino como
+  /// parte de él. Este valor la lleva a 0.083 (2.8x) y es el mismo beige que
+  /// usa el prototipo de Claude Design, muestreado del export.
+  static const background = Color(0xFFF7F3EC);
+
+  /// Fondo de tarjetas, inputs y hojas inferiores.
+  static const surface = surface100;
+
+  /// Texto e íconos principales.
+  static const textPrimary = neutral1100;
+
+  // `textSecondary` se define en la Fase 2 del refactor apuntando al gris
+  // que realmente ganó (`settingsTextMuted` #8A7A65, 91 usos). El alias
+  // anterior apuntaba a `neutral700` #725E5A y tenía **cero usos** — nunca
+  // fue el destino de consolidación que decía ser.
+
+  /// Texto sobre fondos oscuros o sobre un relleno de marca saturado.
+  /// **No** se usa sobre [goldFill] ni [oliveFill] — esos son claros.
+  static const textInverted = surface100;
+
+  /// Borde estándar de tarjetas y separadores.
+  static const border = cardBorder;
+
+  /// Validación inline de formularios.
+  static const error = formError;
+
+  /// Confirmación de acción destructiva (eliminar, cerrar sesión).
+  /// Deliberadamente distinto de [error]: uno señala "corregí este campo",
+  /// el otro "esto no se puede deshacer".
+  static const destructive = settingsDanger;
+
+  /// Estado positivo/éxito — contraseña fuerte, badge conseguido, registro
+  /// completado. Contraste 4.81 / 4.95, cumple AA. No pertenece a la
+  /// familia ECO pese al tono verde: es un token de estado, igual que
+  /// [error] y [destructive].
+  static const success = Color(0xFF3A7D3A);
+
+  // El módulo ECO no tiene color propio: usa `oliveFill`/`oliveText`
+  // directamente. Los alias `ecoAccentFill`/`ecoAccentText` se eliminaron
+  // (cero usos) — eran un tercer nombre para el mismo par, lo que hacía
+  // parecer que ECO tenía una familia aparte.
+
+  // ==========================================================================
+  // PALETA HISTÓRICA (Figma "UI-NÍKARA") — en consolidación.
+  // ==========================================================================
+
   /// Superficie casi blanca de los campos de entrada.
   static const surface100 = Color(0xFFFDFDFD);
-
-  /// Verde oliva de links y acentos.
-  static const accent300 = Color(0xFF8B922A);
 
   /// Naranja-rojo, punto final de gradiente.
   static const primary400 = Color(0xFFFF600F);
@@ -25,7 +111,9 @@ abstract class AppColors {
   /// "Tinta" principal de texto/íconos — negro suavizado, no `#000000` puro.
   static const neutral1100 = Color(0xFF121212);
 
-  /// Fondo crema de tarjetas y app (no es variable ligada en Figma).
+  /// Cream original de Figma (no es variable ligada). **Sin usos** desde que
+  /// [background] pasó a `#F7F3EC`: era tan claro que las tarjetas [surface]
+  /// no se despegaban del fondo. Se conserva como referencia histórica.
   static const backgroundCream = Color(0xFFFFF9F0);
 
   // --- Pantalla Inicio (Figma nodo 124:37) ---
@@ -100,70 +188,35 @@ abstract class AppColors {
   /// Fondo de miniatura placeholder (también usado en Perfil).
   static const placeholderTan = Color(0xFFE5DFD2);
 
-  // --- Paleta maestra (Figma nodo 125:2) ---
-  // Extraída por muestreo de píxeles del tablero (no son variables Figma
-  // ligadas); los duplicados exactos reusan el token ya existente.
+  // --- Tonos derivados en uso (antes "paleta maestra", Figma nodo 125:2) ---
+  // El tablero completo de 9 escalones por familia se volcó al código como
+  // `primario1..9`/`secundario1..9`/`complementario1..9`. Era documentación
+  // de Figma en forma de constantes: de ~20, solo 6 tenían algún uso real y
+  // sus nombres no decían nada de su función, así que nadie sabía cuándo
+  // tomarlos. Los 6 vivos quedan renombrados por rol (mismo hex, cero cambio
+  // visual); el resto se eliminó.
 
-  /// Primario 1/9 — dorado pálido.
-  static const primario1 = Color(0xFFFFF2CC);
-  // Primario 2/9 == profileHeaderGoldPale. Primario 3/9 == primary700.
-  // Primario 4/9 == tagGold600. Primario 5/9 == primary500.
-  /// Primario 6/9 — ámbar apagado.
-  static const primario6 = Color(0xFFCC9900);
+  /// Dorado pálido — fondo del avatar por defecto (con [goldDeepText] encima).
+  static const goldPaleFill = Color(0xFFFFF2CC);
 
-  /// Primario 7/9 — ámbar profundo.
-  static const primario7 = Color(0xFF997300);
+  /// Ámbar profundo legible como texto — inicial del avatar y pin de
+  /// alojamiento. Es el único tono de la familia Gold que funciona como
+  /// texto (por eso se lee bronce, no dorado; ver nota en [goldFill]).
+  static const goldDeepText = Color(0xFF997300);
 
-  /// Primario 8/9 — marrón-dorado oscuro.
-  static const primario8 = Color(0xFF664C00);
+  /// Oliva medio — fondo de la transición de splash.
+  static const oliveMidFill = Color(0xFFAEB738);
 
-  /// Primario 9/9 — sombra dorada casi negra.
-  static const primario9 = Color(0xFF332600);
+  /// Coral pálido — relleno del botón "ya inscrito"/estado neutro cálido.
+  static const coralPaleFill = Color(0xFFFFEEE6);
 
-  /// Secundario 1/9 — oliva pálido.
-  static const secundario1 = Color(0xFFF3F5DB);
+  /// Borde del mismo par que [coralPaleFill].
+  static const coralPaleBorder = Color(0xFFFFE7DB);
 
-  /// Secundario 2/9 — oliva claro.
-  static const secundario2 = Color(0xFFEDEFCC);
-
-  /// Secundario 3/9 — oliva claro medio.
-  static const secundario3 = Color(0xFFDFE3A5);
-  // Secundario 4/9 == notificationPill. Secundario 5/9 == ecoGreen500.
-  /// Secundario 6/9 — oliva medio.
-  static const secundario6 = Color(0xFFAEB738);
-  // Secundario 7/9 == accent300. Secundario 8/9 == statusSuccess.
-  // Secundario 9/9 == notificationBadge.
-
-  /// Complementario 1/9 — coral pálido.
-  static const complementario1 = Color(0xFFFFEEE6);
-
-  /// Complementario 2/9 — coral claro.
-  static const complementario2 = Color(0xFFFFE7DB);
-
-  /// Complementario 3/9 — coral claro medio.
-  static const complementario3 = Color(0xFFFFC5A8);
-  // Complementario 4/9 == profileHeaderCoral. Complementario 5/9 == coral500.
-  // Complementario 6/9 == primary400.
-  /// Complementario 8/9 — óxido profundo.
-  static const complementario8 = Color(0xFFA83800);
-
-  /// Complementario 9/9 — sombra óxido casi negra.
-  static const complementario9 = Color(0xFF752700);
-
-  /// Neutro 100 — casi blanco (no se usa hoy, se mantiene por completitud).
-  static const neutral100 = Color(0xFFF8F9FA);
-  // Neutro 200 == surface200.
-  /// Neutro 300 — gris cálido claro.
-  static const neutral300 = Color(0xFFCECACA);
-
-  /// Neutro 1000 — gris cálido casi negro.
-  static const neutral1000 = Color(0xFF1E1515);
+  /// Óxido profundo — pin de categoría artesanía.
+  static const rustText = Color(0xFFA83800);
 
   // --- Detalle de negocio (Figma nodos 284:2256, 233:437) ---
-
-  /// Verde bosque de íconos/tags eco y avatar de reseña — distinto del
-  /// [ecoGreen500] de marca, exclusivo de esta pantalla.
-  static const ecoForest = Color(0xFF3A7D3A);
 
   /// Fondo del track del control segmentado ("Información" / "Reseñas").
   static const segmentedTrackBg = Color(0xFFEDE9E1);
@@ -197,15 +250,8 @@ abstract class AppColors {
   /// Relleno de chip de Comodidades.
   static const warmChipBackground = Color(0xFFFFF8E1);
 
-  /// Relleno de chip de Actividades — un tono más cálido que el anterior
-  /// para diferenciar visualmente ambas secciones.
-  static const warmChipBackgroundAlt = Color(0xFFFFF3E0);
-
   /// Borde de chip para Comodidades y Actividades.
   static const warmChipBorder = Color(0xFFFDE68A);
-
-  /// Color de ícono/texto de esos chips — oscuro sólido por legibilidad.
-  static const chipContentDark = Color(0xFF111827);
 
   /// Color de foco/acento del wizard de registro (inputs, stepper, CTA).
   static const wizardFocus = Color(0xFFF59E0B);
@@ -361,7 +407,8 @@ abstract class AppColors {
   /// (más cálido/claro).
   static const authCardBackground = Color(0xFFFFFDF8);
 
-  /// Oliva profundo de todo link de texto en Auth — distinto de [accent300].
+  /// Oliva profundo de todo link de texto en Auth. Casi idéntico a
+  /// [oliveText] (#707536) — candidato a colapsar en él.
   static const authLink = Color(0xFF6E7522);
 
   /// Pill "Explorar como invitado" — gradiente y tinte del ícono circular.
@@ -387,10 +434,6 @@ abstract class AppColors {
 
   // --- Módulo ECO ("Actividades Ambientales") ---
 
-  /// Oliva de marca — pill activo del tab ECO y acentos de "Unido"/verificado.
-  /// Distinto de [ecoGreen500] (badge) y [ecoForest] (detalle de negocio).
-  static const ecoActive = Color(0xFF76882A);
-
   /// Colores del stack de avatares de participantes ("+18") — `eco_participants`
   /// no trae foto, se ciclan estos tonos neutros para simular variedad.
   static const ecoAvatarStack = <Color>[
@@ -405,8 +448,8 @@ abstract class AppColors {
   /// Sombra sutil de tarjeta de perfil — negro @ 5%.
   static const profileCardShadow = Color(0x0D000000);
 
-  /// Overlay de carga sobre el mapa — backgroundCream @ 35%.
-  static const mapLoadingOverlay = Color(0x59FFF9F0);
+  /// Overlay de carga sobre el mapa — [background] @ 35%.
+  static const mapLoadingOverlay = Color(0x59F7F3EC);
 
   /// Fondo del botón circular "eliminar" sobre una miniatura de foto —
   /// textInk @ 55%. Compartido por el wizard de negocio, el detalle de

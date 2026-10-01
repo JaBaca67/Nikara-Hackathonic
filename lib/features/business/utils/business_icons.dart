@@ -148,13 +148,13 @@ Color mapPinColor(MapPinCategory category) {
     case MapPinCategory.water:
       return AppColors.mapPinWater;
     case MapPinCategory.tour:
-      return AppColors.accent300;
+      return AppColors.oliveText;
     case MapPinCategory.eco:
       return AppColors.ecoGreen500;
     case MapPinCategory.craft:
-      return AppColors.complementario8;
+      return AppColors.rustText;
     case MapPinCategory.lodging:
-      return AppColors.primario7;
+      return AppColors.goldDeepText;
     case MapPinCategory.transport:
       return AppColors.neutral800;
     case MapPinCategory.general:

@@ -13,7 +13,7 @@ final String nikaraMapStyle = jsonEncode([
   {
     'elementType': 'geometry',
     'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
+      {'color': _hex(AppColors.background)},
     ],
   },
   // Override explícito para que las manzanas/edificios no queden en gris
@@ -25,14 +25,14 @@ final String nikaraMapStyle = jsonEncode([
     'featureType': 'landscape',
     'elementType': 'geometry',
     'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
+      {'color': _hex(AppColors.background)},
     ],
   },
   {
     'featureType': 'landscape.man_made',
     'elementType': 'geometry',
     'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
+      {'color': _hex(AppColors.background)},
     ],
   },
   {
@@ -50,7 +50,7 @@ final String nikaraMapStyle = jsonEncode([
   {
     'elementType': 'labels.text.stroke',
     'stylers': [
-      {'color': _hex(AppColors.backgroundCream)},
+      {'color': _hex(AppColors.background)},
     ],
   },
   {

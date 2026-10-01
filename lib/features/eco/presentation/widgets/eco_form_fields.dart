@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Campos compartidos por `CreateEcoActivityScreen` y `CreateOrganizationScreen`, mismo formulario visual con distintos campos.
+/// Campos compartidos por `CreateEcoActivityScreen` y `CreateOrganizationScreen`.
+///
+/// Usan deliberadamente los mismos tokens que `RegisterBusinessWizard`
+/// (`wizardFieldLabel`/`wizardFieldValue`/`wizardFocus`, tarjeta blanca sobre
+/// fondo crema, radio 20/14): registrar una jornada y registrar un negocio son
+/// el mismo gesto para el usuario, así que se ven igual. Lo único propio del
+/// módulo ECO es el verde [AppColors.oliveText] en los acentos de estado.
 
-/// Etiqueta encima de un campo ("Título", "Handle").
+/// Etiqueta encima de un campo. Recibe el texto en capitalización normal
+/// ('Título') y lo pinta en mayúsculas, como los labels del wizard.
 class EcoFieldLabel extends StatelessWidget {
   const EcoFieldLabel(this.text, {super.key});
 
@@ -13,11 +22,8 @@ class EcoFieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
-      ),
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Text(text.toUpperCase(), style: AppTextStyles.wizardFieldLabel),
     );
   }
 }
@@ -52,33 +58,153 @@ class EcoTextField extends StatelessWidget {
       keyboardType: keyboardType,
       validator: validator,
       onFieldSubmitted: onSubmitted,
-      style: AppTextStyles.settingsSubtitle.copyWith(
-        color: AppColors.settingsTextDark,
-      ),
+      style: AppTextStyles.wizardFieldValue,
       decoration: InputDecoration(
         hintText: hint,
+        hintStyle: AppTextStyles.wizardFieldHint,
         prefixText: prefixText,
-        prefixStyle: AppTextStyles.settingsSubtitle.copyWith(
+        prefixStyle: AppTextStyles.wizardFieldValue.copyWith(
           color: AppColors.settingsTextMuted,
         ),
         filled: true,
-        fillColor: AppColors.surface100,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
+        fillColor: AppColors.settingsBackground,
+        contentPadding: const EdgeInsets.all(14),
+        border: _border(AppColors.settingsTextDark.withValues(alpha: 0.07)),
+        enabledBorder: _border(
+          AppColors.settingsTextDark.withValues(alpha: 0.07),
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.mapControlBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.mapControlBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primary500, width: 1.5),
-        ),
+        focusedBorder: _border(AppColors.wizardFocus, width: 1.5),
+        errorBorder: _border(AppColors.error),
+        focusedErrorBorder: _border(AppColors.error, width: 1.5),
+        errorStyle: AppTextStyles.errorText.copyWith(fontSize: 11),
+      ),
+    );
+  }
+
+  static OutlineInputBorder _border(Color color, {double width = 1}) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: color, width: width),
+    );
+  }
+}
+
+/// Tarjeta blanca que agrupa un bloque del formulario, idéntica a la del
+/// wizard de negocios.
+class EcoFormCard extends StatelessWidget {
+  const EcoFormCard({super.key, required this.children, this.padding});
+
+  final List<Widget> children;
+  final EdgeInsets? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: padding ?? const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        border: Border.all(color: AppColors.mapControlBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.detailCardGlow,
+            offset: Offset(0, 2),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// Encabezado de sección sobre la tarjeta ("Sobre la jornada", "¿Dónde es?").
+class EcoSectionIntro extends StatelessWidget {
+  const EcoSectionIntro({
+    super.key,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTextStyles.wizardStepHeading),
+          const SizedBox(height: 3),
+          Text(subtitle, style: AppTextStyles.wizardStepSubtitle),
+        ],
+      ),
+    );
+  }
+}
+
+/// Barra superior del formulario: mismo layout que `_WizardHeader`.
+class EcoFormHeader extends StatelessWidget {
+  const EcoFormHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+      child: Row(
+        children: [
+          CircleBackButton(onTap: onBack),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTextStyles.wizardAppBarTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.wizardCaption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: onBack,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.surface100,
+                border: Border.all(color: AppColors.mapControlBorder),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
+              ),
+              child: Text('Salir', style: AppTextStyles.detailPillAction),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -90,22 +216,36 @@ class EcoPickerButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.isSet = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
 
+  /// Ya tiene valor elegido: el borde y el ícono pasan al verde ECO.
+  final bool isSet;
+
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(label, overflow: TextOverflow.ellipsis),
+      icon: Icon(
+        icon,
+        size: 16,
+        color: isSet ? AppColors.oliveText : AppColors.settingsTextMuted,
+      ),
+      label: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.settingsTextDark,
-        side: const BorderSide(color: AppColors.mapControlBorder),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        backgroundColor: AppColors.settingsBackground,
+        textStyle: AppTextStyles.wizardChipLabel,
+        side: BorderSide(
+          color: isSet
+              ? AppColors.oliveText.withValues(alpha: 0.55)
+              : AppColors.settingsTextDark.withValues(alpha: 0.07),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
@@ -126,29 +266,45 @@ class EcoPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: ElevatedButton(
-        onPressed: isBusy ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary500,
-          foregroundColor: AppColors.settingsTextDark,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.detailPrimaryButtonGlow,
+            offset: Offset(0, 6),
+            blurRadius: 18,
           ),
-          textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
+        ],
+      ),
+      child: SizedBox(
+        height: 52,
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: isBusy ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary500,
+            foregroundColor: AppColors.settingsTextDark,
+            disabledBackgroundColor: AppColors.primary500.withValues(
+              alpha: 0.55,
+            ),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            textStyle: AppTextStyles.wizardFooterPrimary,
+          ),
+          child: isBusy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.settingsTextDark,
+                  ),
+                )
+              : Text(label),
         ),
-        child: isBusy
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.settingsTextDark,
-                ),
-              )
-            : Text(label),
       ),
     );
   }

@@ -17,11 +17,13 @@ import 'package:nikara_app/shared/widgets/auth/auth_text_field.dart';
 import 'package:nikara_app/shared/widgets/auth/country_code_picker.dart';
 import 'package:nikara_app/shared/widgets/auth/password_strength_checker.dart';
 import 'package:nikara_app/shared/widgets/auth/social_login_row.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/auth/step_progress_indicator.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/otp_input_row.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const _kStepLabels = ['Identidad', 'Perfil', 'Verificación'];
@@ -62,7 +64,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
-  String? _avatarPath;
+
+  /// Foto elegida en el paso "Perfil", antes de que la cuenta exista. Se sube
+  /// a Storage recién después del signUp, cuando ya hay sesión y un user id
+  /// bajo el que guardarla (ver [AuthService.updateAvatar]).
+  XFile? _avatarImage;
   CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
 
@@ -181,7 +187,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       imageQuality: 85,
     );
     if (picked == null || !mounted) return;
-    setState(() => _avatarPath = picked.path);
+    setState(() => _avatarImage = picked);
   }
 
   Future<void> _showCountryPicker() async {
@@ -219,21 +225,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (!result.success) {
       setState(() => _status = AuthStatus.error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message ?? 'No se pudo crear la cuenta')),
+      AppSnackbar.showError(
+        context,
+        result.message ?? 'No se pudo crear la cuenta',
       );
       return;
     }
 
     // Best-effort: la cuenta real ya existe, así que si estas escrituras
-    // locales fallan no bloquean el flujo.
+    // fallan no bloquean el flujo.
     final username = _usernameController.text.trim();
     if (username.isNotEmpty) {
       await _extrasService.updateUsername(username);
     }
-    final avatarPath = _avatarPath;
-    if (avatarPath != null) {
-      await _extrasService.updateAvatar(avatarPath);
+    if (!mounted) return;
+    final avatarImage = _avatarImage;
+    if (avatarImage != null) {
+      if (!_authService.isLoggedIn) {
+        // Con confirmación de correo activada, signUp crea el usuario pero no
+        // deja sesión — y sin sesión no hay a qué perfil subirle la foto ni
+        // carpeta de Storage donde ponerla. Se avisa en vez de mostrar un
+        // "necesitas iniciar sesión" justo después de registrarse.
+        AppSnackbar.showInfo(
+          context,
+          'Tu foto se podrá subir cuando confirmes tu correo e inicies '
+          'sesión, desde tu perfil.',
+        );
+      } else {
+        try {
+          await _authService.updateAvatar(avatarImage);
+        } on AuthServiceException catch (e) {
+          // La cuenta ya se creó: quedarse sin foto no justifica abortar el
+          // registro, pero sí decirlo en vez de tragarse el error.
+          if (!mounted) return;
+          AppSnackbar.showError(context, e.message);
+        }
+      }
     }
     if (!mounted) return;
 
@@ -265,13 +292,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _attemptVerifyOtp() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'La verificación por SMS todavía no está disponible. Usa '
-          '"Saltar por ahora" para continuar — no afecta tu cuenta.',
-        ),
-      ),
+    AppSnackbar.showInfo(
+      context,
+      'La verificación por SMS todavía no está disponible. Usa '
+      '"Saltar por ahora" para continuar — no afecta tu cuenta.',
     );
   }
 
@@ -318,7 +342,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       builder: (context) => Dialog(
         backgroundColor: AppColors.authCardBackground,
         insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 26, 24, 20),
           child: Column(
@@ -497,7 +523,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
               Center(
-                child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar),
+                child: _AvatarPicker(
+                  path: _avatarImage?.path,
+                  onTap: _pickAvatar,
+                ),
               ),
               const SizedBox(height: 18),
               Row(
