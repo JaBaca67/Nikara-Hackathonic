@@ -45,7 +45,7 @@ class AuthSceneBackdrop extends StatelessWidget {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 18,
+          bottom: 0,
           child: IgnorePointer(
             child: Image.asset(
               'assets/images/parte_abajo_login.png',
