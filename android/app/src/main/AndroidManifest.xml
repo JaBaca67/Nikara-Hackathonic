@@ -12,7 +12,9 @@
     <application
         android:label="Níkara"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
         <!-- Google Maps SDK for Android — reads the key from
              android/local.properties (gradle injects it via manifest
              placeholder below) so the real key never lands in source

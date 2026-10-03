@@ -102,14 +102,19 @@ class RouteService {
   static bool _isMissingImageUrlsColumn(PostgrestException e) =>
       e.code == 'PGRST204' || e.code == '42703';
 
-  // `profiles(id, full_name)` embebe por `routes.owner_id -> profiles.id`
-  // (la misma FK desde 011_routes.sql, no hace falta ninguna migración
-  // nueva para esto) — quién creó la ruta, para la cabecera de la pestaña
-  // Comunidad. Se pide siempre y no solo en [getPublicRoutes]: es un embed
-  // liviano y así una ruta propia recién vuelta a cargar también trae el
-  // nombre, sin duplicar la constante de select.
+  // `public_profiles(id, full_name)` embebe por `routes.owner_id ->
+  // profiles.id` (la misma FK desde 011_routes.sql, no hace falta ninguna
+  // migración nueva para esto) — quién creó la ruta, para la cabecera de la
+  // pestaña Comunidad. Se pide siempre y no solo en [getPublicRoutes]: es un
+  // embed liviano y así una ruta propia recién vuelta a cargar también trae
+  // el nombre, sin duplicar la constante de select.
+  //
+  // Va contra la vista y no contra `profiles` desde
+  // `030_public_profiles_view.sql`: la tabla solo deja leer la fila propia,
+  // así que en Comunidad —donde las rutas son justamente de otra gente— el
+  // embed a la tabla devolvería `null` y las rutas aparecerían sin autor.
   static const _select =
-      '*, route_stops(*), profiles(id, full_name, avatar_url)';
+      '*, route_stops(*), public_profiles(id, full_name, avatar_url)';
 
   /// Las rutas de la cuenta con sesión abierta, la más reciente primero.
   /// Lista vacía para un invitado: una ruta necesita `owner_id`.

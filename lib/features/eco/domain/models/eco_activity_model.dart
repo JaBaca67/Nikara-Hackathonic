@@ -58,7 +58,7 @@ class EcoParticipant {
   }
 
   factory EcoParticipant.fromRow(Map<String, dynamic> row) {
-    final profile = row['profiles'] as Map<String, dynamic>?;
+    final profile = row['public_profiles'] as Map<String, dynamic>?;
     final role = profile?['role'] as String?;
     return EcoParticipant(
       userId: row['user_id'] as String,
@@ -301,7 +301,10 @@ class EcoActivityModel {
       longitude: (row['longitude'] as num?)?.toDouble(),
       // Ausente (no solo nula) mientras no haya corrido la migración 014.
       imageUrl: row['image_url'] as String?,
-      startTime: DateTime.parse(row['start_time'] as String),
+      // Postgres devuelve `timestamptz` en UTC y los formatters de
+      // `eco_format.dart` leen `.hour`/`.day` crudos, así que sin normalizar
+      // aquí una jornada de las 9:00 a.m. en Nicaragua se mostraba a las 3:00 p.m.
+      startTime: DateTime.parse(row['start_time'] as String).toLocal(),
       maxCapacity: (row['max_capacity'] as num?)?.toInt(),
       organizerId: row['organizer_id'] as String?,
       organizerName: row['organizer_name'] as String?,

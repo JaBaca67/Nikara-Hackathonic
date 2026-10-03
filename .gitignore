@@ -64,7 +64,14 @@ app.*.map.json
 /firebase.json
 /lib/firebase_options.dart
 
-# Migraciones SQL de Supabase — se mantienen solo en local.
-# Ojo: son la definición del esquema (ver docs/database_erd.md), no secretos;
-# quien clone el repo no podrá recrear la base de datos sin ellas.
-/supabase/sql/
+# Todo lo de Supabase se mantiene solo en local (decisión de José, 2026-10-01:
+# el repo es público por el hackathon). Antes la regla cubría únicamente
+# `/supabase/sql/`; se amplió a la carpeta entera al agregarse
+# `supabase/functions/`, que si no se habría subido sin querer.
+#
+# Ojo: nada de esto son secretos — el SQL es la definición del esquema (ver
+# docs/database_erd.md) y la Edge Function lee sus credenciales de variables
+# de entorno, nunca del código. Lo que sí implica: quien clone el repo no
+# podrá recrear la base de datos ni desplegar el push sin estos archivos, así
+# que conviene respaldarlos aparte (la bóveda de Obsidian es repo privado).
+/supabase/

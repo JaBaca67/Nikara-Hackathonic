@@ -189,7 +189,7 @@ class RouteModel {
     // `profiles` es un embed to-one por `owner_id` (ver RouteService._select)
     // — un mapa cuando la consulta lo pidió, ausente si no (por ejemplo el
     // insert de `createRoute`, que no vuelve a pedirlo).
-    final owner = row['profiles'] as Map<String, dynamic>?;
+    final owner = row['public_profiles'] as Map<String, dynamic>?;
     return RouteModel(
       id: row['id'] as String,
       ownerId: row['owner_id'] as String? ?? '',

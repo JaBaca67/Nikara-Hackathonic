@@ -38,9 +38,14 @@ class EcoService {
   /// embebidos y, si la jornada se publicó en nombre de una fundación, los
   /// datos de esa fundación para el bloque "Organizador" — todo en un solo
   /// viaje en vez de una consulta por actividad.
+  /// Embebe la **vista** `public_profiles` y no la tabla `profiles` desde
+  /// `030_public_profiles_view.sql`: la tabla solo deja leer la fila propia,
+  /// así que el embed a `profiles` devuelve `null` para todo participante que
+  /// no sea uno mismo. La vista trae nombre, avatar y rol — que es
+  /// exactamente lo que pinta la lista — sin email ni teléfono.
   static const _participantsEmbed =
       'eco_participants(user_id, joined_at, '
-      'profiles(id, full_name, avatar_url, role))';
+      'public_profiles(id, full_name, avatar_url, role))';
 
   static const _selectWithOrganization =
       '*, $_participantsEmbed, '
@@ -212,7 +217,7 @@ class EcoService {
     try {
       final participants = await _runParticipantsSelect(
         activityId,
-        'user_id, joined_at, profiles(id, full_name, avatar_url, role)',
+        'user_id, joined_at, public_profiles(id, full_name, avatar_url, role)',
       );
       return participants.where((p) => !p.isStaff).toList(growable: false);
     } on PostgrestException catch (e) {

@@ -259,47 +259,50 @@ class NotificationService {
   ///
   /// La consumen los servicios de creación (`BusinessStorageService.addBusiness`,
   /// `EcoService.createActivity`, `OrganizationService.createOrganization`)
-  /// justo después de insertar la fila en estado pendiente. Va como consulta
-  /// directa a `profiles` y no vía `AdminService.getUsers()` a propósito: quien
-  /// llama es el propio emprendedor/turista que está registrando algo, no un
-  /// admin — pedirle el permiso `manageUsers` que exige `getUsers()` rompería
-  /// su propio flujo de creación.
+  /// justo después de insertar la fila en estado pendiente.
   ///
-  /// Es fan-out best-effort: un destinatario que falle no debe tumbar a los
-  /// demás ni, sobre todo, la creación que ya se guardó — por eso cada envío
-  /// va en su propio `try` y el método entero nunca lanza.
+  /// El fan-out ocurre **server-side**, en el RPC
+  /// `notify_admins_of_pending_review` (`supabase/sql/028`): acá solo viajan
+  /// el título y el cuerpo, y el servidor resuelve los destinatarios. Dos
+  /// razones, en orden de importancia:
+  ///
+  /// 1. Quien llama es el propio emprendedor/turista que está registrando
+  ///    algo, no un admin — así que insertar la notificación para otro
+  ///    usuario no encaja en ninguna policy razonable de `notifications` una
+  ///    vez que RLS está activa (ver `029_enable_rls.sql`). El RPC es
+  ///    `security definer` y no pasa por esas policies.
+  /// 2. La versión anterior leía `profiles where role = 'admin'` desde el
+  ///    cliente. Con la anon key — pública, viaja dentro del APK — eso
+  ///    permitía enumerar qué cuentas son administradoras llamando directo a
+  ///    Postgrest. Ahora el cliente ya no necesita ni puede leer esa lista.
+  ///
+  /// Sigue siendo best-effort: un fallo acá no debe tumbar la creación que ya
+  /// se guardó, así que el método nunca lanza.
   Future<void> notifyAdminsOfPendingReview({
     required String title,
     required String body,
   }) async {
-    List<dynamic> admins;
+    if (AuthService().currentAuthUser == null) return;
     try {
-      admins = await _client.from('profiles').select('id').eq('role', 'admin');
+      await _client.rpc(
+        'notify_admins_of_pending_review',
+        params: {
+          'p_title': title,
+          'p_body': body,
+          'p_type': NotificationType.reviewPending.wireValue,
+        },
+      );
+      revision.value++;
     } on PostgrestException catch (e) {
       debugPrint(
-        '[NotificationService] notifyAdminsOfPendingReview: no se pudo '
-        'listar admins (${e.code}) ${e.message}',
+        '[NotificationService] notifyAdminsOfPendingReview: el fan-out no '
+        'entró (${e.code}) ${e.message}',
       );
-      return;
-    } catch (_) {
-      return;
-    }
-    for (final row in admins.cast<Map<String, dynamic>>()) {
-      final adminId = row['id'] as String?;
-      if (adminId == null || adminId.isEmpty) continue;
-      try {
-        await _create(
-          recipientId: adminId,
-          title: title,
-          body: body,
-          type: NotificationType.reviewPending,
-        );
-      } on NotificationServiceException catch (e) {
-        debugPrint(
-          '[NotificationService] notifyAdminsOfPendingReview: no se pudo '
-          'avisar a $adminId — ${e.message}',
-        );
-      }
+    } catch (e) {
+      debugPrint(
+        '[NotificationService] notifyAdminsOfPendingReview: el fan-out no '
+        'entró — $e',
+      );
     }
   }
 

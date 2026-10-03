@@ -72,10 +72,25 @@ class AuthService {
   }
 
   /// Busca el perfil de cualquier usuario por id (p. ej. el dueño real de un negocio, no solo el viewer actual).
+  ///
+  /// Lee de dos orígenes distintos según de quién sea el perfil, porque RLS
+  /// filtra filas y no columnas (ver `030_public_profiles_view.sql`):
+  ///
+  ///   - el perfil **propio** sale de la tabla `profiles`, con email y
+  ///     teléfono — los necesitan Perfil y Ajustes;
+  ///   - el de **otra persona** sale de la vista `public_profiles`, que
+  ///     expone solo nombre, avatar, rol y puntos. Email y teléfono ajenos ya
+  ///     no viajan al cliente en ningún caso.
+  ///
+  /// El cambio es invisible para quien llama: `UserModel.fromRow` ya resuelve
+  /// las columnas ausentes como cadena vacía, y de un perfil ajeno la app
+  /// solo pinta nombre, avatar y rol. El teléfono de contacto de un negocio
+  /// sigue saliendo de `businesses.contact_phone`, que es dato del negocio.
   Future<UserModel?> getProfileById(String id) async {
+    final isSelf = _client.auth.currentUser?.id == id;
     try {
       final row = await _client
-          .from('profiles')
+          .from(isSelf ? 'profiles' : 'public_profiles')
           .select()
           .eq('id', id)
           .maybeSingle();

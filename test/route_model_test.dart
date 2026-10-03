@@ -221,7 +221,7 @@ void main() {
 
   group('RouteModel.fromRow', () {
     test(
-      'lee image_urls y el embed de profiles cuando la consulta los trae',
+      'lee image_urls y el embed de public_profiles cuando la consulta los trae',
       () {
         final route = RouteModel.fromRow({
           'id': 'route-1',
@@ -232,7 +232,7 @@ void main() {
           'status': 'active',
           'created_at': '2026-01-01T00:00:00Z',
           'image_urls': ['portada-1.jpg', 'portada-2.jpg'],
-          'profiles': {'id': 'owner-1', 'full_name': 'Sofía Ramírez'},
+          'public_profiles': {'id': 'owner-1', 'full_name': 'Sofía Ramírez'},
           'route_stops': [],
         });
 

@@ -61,12 +61,18 @@ class ReviewService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
-  /// El nombre del autor no es columna: sale del embed a `profiles`, así la
-  /// reseña muestra el nombre actual de quien la escribió y no una copia
-  /// congelada del día que la publicó.
+  /// El nombre del autor no es columna: sale del embed a `public_profiles`,
+  /// así la reseña muestra el nombre actual de quien la escribió y no una
+  /// copia congelada del día que la publicó.
+  ///
+  /// Embebe la **vista** y no la tabla desde `030_public_profiles_view.sql`:
+  /// `profiles` solo deja leer la fila propia, así que el embed a la tabla
+  /// devuelve `null` para el autor de cualquier reseña ajena — es decir,
+  /// todas. La vista expone el nombre y el avatar sin el email ni el
+  /// teléfono.
   static const _columns =
       'id, user_id, target_id, rating, comment, created_at, '
-      'profiles(full_name)';
+      'public_profiles(full_name)';
 
   /// Las reseñas de un negocio, de la más nueva a la más vieja.
   ///
@@ -180,7 +186,7 @@ class ReviewService {
   }
 
   ReviewModel _fromRow(Map<String, dynamic> row) {
-    final profile = row['profiles'] as Map<String, dynamic>?;
+    final profile = row['public_profiles'] as Map<String, dynamic>?;
     final name = (profile?['full_name'] as String? ?? '').trim();
     return ReviewModel(
       id: row['id'] as String,

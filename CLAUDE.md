@@ -8,6 +8,7 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 - **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`). Credenciales en `lib/core/supabase/supabase_config.dart`. Hubo un cuarto rol `auditor` hasta el 2026-08-27 — se definió al inicio del proyecto pero nunca se usó en la práctica (nadie llegó a registrarse con él) y se retiró del sistema de permisos; el tipo `user_role` de Postgres puede seguir teniendo el valor sin que nada dependa de él.
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
 - **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
+- **Notificaciones**: dos capas que no se confunden. **In-app** = tabla `notifications` de Supabase (campanita + listado, `NotificationService`). **Push al teléfono** = Firebase Cloud Messaging, que es *solo el transporte* — Supabase sigue siendo la única fuente de verdad, no hay Firestore ni Realtime Database y no deben agregarse (`pubspec.yaml` trae únicamente `firebase_core` y `firebase_messaging`). La cadena completa: se inserta una fila en `notifications` -> el trigger `on_notification_created` (033) llama a la Edge Function `send-push` -> esa función firma un JWT con la cuenta de servicio, lee `device_push_tokens` y habla con la API HTTP v1 de FCM -> Android dibuja el aviso. Funcionando de punta a punta desde el 2026-10-01.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).
 - **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Sin fuentes empaquetadas — toda la tipografía sale de `google_fonts` (League Spartan + Nunito).
 
@@ -246,7 +247,11 @@ Los gestos (`--tap`, `--swipe`, `--back`) están autorizados dentro de la app de
 
 ## Supabase & Security Guidelines
 
-RLS está deshabilitado deliberadamente en este proyecto — hoy el cliente de Flutter es el único punto que decide qué fila le pertenece a quién. Dos categorías de consulta que **no se tratan igual**:
+**RLS está ACTIVO desde el 2026-10-01** en las 12 tablas (`supabase/sql/029_enable_rls.sql`), más la vista `public_profiles` (030) y los ajustes del linter (031/032). Antes estaba deshabilitado a propósito y el cliente de Flutter era el único punto que decidía qué fila le pertenece a quién; eso ya no es así — ahora el servidor lo evalúa en cada consulta, venga de la app o de un `curl` directo a Postgrest.
+
+Lo que **no** cambió: el filtrado por dueño en Dart sigue siendo obligatorio tal como describen las dos secciones de abajo. No es redundante — es lo que hace que las policies y las consultas coincidan, y lo que mantiene los mensajes de error en español en vez de un `[]` inexplicable.
+
+Dos categorías de consulta que **no se tratan igual**:
 
 ### Consultas públicas — nunca se filtran por dueño
 
@@ -261,14 +266,26 @@ Listar negocios (`getBusinesses`, `getBusinessesInBounds`, `getAllCategories` en
 
 ### Qué protege esto y qué no
 
-Filtrar así en Dart prepara el código para cuando RLS se active (la consulta ya solo toca lo que le pertenece al usuario, activar RLS no cambia el resultado — impacto cero) y evita bugs propios. **No es seguridad real hoy**: con RLS apagado, cualquiera que llame directamente a la REST API de Postgrest con la `anon key` sin pasar por la app de Flutter puede leer o mutar cualquier fila sin que este filtro exista para detenerlo. Es higiene de código y preparación, no un sustituto de activar RLS en producción.
+El filtrado en Dart ya no es "preparación": al activar RLS no cambió ningún resultado, que era exactamente la prueba de que estaba bien escrito. Hoy la seguridad real la da el servidor — verificado contra la REST API con la `anon key` el 2026-10-01: leer perfiles, cédulas, tokens de push o favoritos ajenos devuelve `[]`, e insertar a nombre de otro devuelve `42501 violates row-level security`.
+
+### Trabajar con RLS activo — lo que hay que saber antes de tocar una consulta
+
+- **`profiles` solo deja leer tu propia fila** (y todas si sos admin). Para datos de **otra** persona existe la vista **`public_profiles`** (`id`, `full_name`, `avatar_url`, `role`, `points` — sin email ni teléfono). `AuthService.getProfileById` elige el origen solo según de quién sea el perfil.
+- **Todo embed de PostgREST hacia un perfil ajeno va contra `public_profiles(...)`, nunca contra `profiles(...)`** — este último devuelve `null` silenciosamente, sin error. Ya pasó una vez: el 030 rompió de golpe el autor de las reseñas, el de las rutas en Comunidad y la lista de participantes ECO. Si un nombre o un avatar aparece vacío, mirá esto primero.
+- **Una policy se escribe contra lo que la app realmente muestra**, no contra lo que uno supone que debería mostrar. La lista de inscritos de una jornada es pública porque la pestaña "Participantes" es pública (031). Restringir una policy sin cambiar la UI no vuelve privado el dato: solo deja la pantalla vacía.
+- **Al crear una función nueva, `REVOKE` antes de `GRANT`.** Postgres concede `EXECUTE` a `PUBLIC` automáticamente, así que un `grant execute ... to authenticated` suelto no restringe nada y deja el RPC abierto a `anon` (032).
+- **El dashboard de Supabase entra como superusuario**, así que ahí siempre vas a ver todas las filas. Para comprobar de verdad qué expone la app, hay que consultar la REST API con la `anon key`.
+
+### Avisos del linter que quedan encendidos a propósito
+
+`security_definer_view` sobre `public_profiles` (es el mecanismo que la hace funcionar), `spatial_ref_sys` sin RLS y `postgis` en el esquema public (ambos de la extensión, no nuestros), e `is_admin()` ejecutable (las policies la necesitan; solo informa si **quien llama** es admin). Cada uno está explicado en `supabase/sql/032_linter_fixes.sql` — no "arreglarlos" sin leer esa justificación.
 
 ## Reglas estrictas — qué NO hacer
 
 - **No** agregues archivos a `lib/widgets/` — es una carpeta legacy de un solo archivo (`aurora_background_widget.dart`). Los widgets cross-feature van en `lib/shared/widgets/`; los widgets específicos de una feature van en `lib/features/<feature>/presentation/widgets/`.
 - **No** extiendas `lib/models/mock_data.dart` como fuente de datos real — es un remanente de antes de conectar Supabase (una sola referencia viva en todo `lib/`). Supabase es la fuente de verdad.
 - **No** introduzcas un paquete de state management (Provider, Riverpod, Bloc, GetX) sin acordarlo antes explícitamente con el usuario — el patrón actual de servicios singleton es una decisión deliberada, no un descuido.
-- **No** subas ni loguees la `service_role key` de Supabase en ningún archivo del cliente. La `anon key` en `supabase_config.dart` es intencional y pública (RLS está deshabilitada a propósito en este proyecto, según el comentario de esa clase); la `service_role key` nunca debe aparecer en `lib/`.
+- **No** subas ni loguees la `service_role key` de Supabase en ningún archivo del cliente. La `anon key` en `supabase_config.dart` es intencional y pública — viaja dentro del APK de todas formas, así que exponerla no es el riesgo; lo que la vuelve inofensiva es que RLS esté activo (ver arriba). La `service_role key` nunca debe aparecer en `lib/`: hoy vive solo en los secretos de Supabase y en el header del webhook de push.
 - **No** hagas `flutter build`/`flutter run` con `--release` sin que el usuario lo pida — son operaciones lentas, prefierir `flutter analyze` + `flutter test` para validar cambios.
 - **No** agregues dependencias nuevas en `pubspec.yaml` sin verificar antes que no exista ya una forma de resolverlo con lo instalado (revisa `dependencies:` completo antes de proponer un paquete nuevo).
 - **No** captures excepciones de Supabase de forma silenciosa (`catch (_) {}` sin mensaje) — siempre propaga o traduce el error, nunca lo tragues.
@@ -278,7 +295,7 @@ Filtrar así en Dart prepara el código para cuando RLS se active (la consulta y
 - **Bajo ningún concepto** se commitea: `.env`, `dart_defines.json`, `android/local.properties`, `ios/Flutter/Maps.xcconfig`, la carpeta `.claude/`, ni archivos `desktop.ini` (basura de sincronización de OneDrive/Windows, aparecen por decenas en este repo). Todos están en `.gitignore`.
 - `.claude/` está en `.gitignore` pero **no se retiró del tracking** lo que ya estaba versionado antes de esta regla (`settings.json`, los `SKILL.md` de los skills del equipo) — eso se mantiene intencional y visible para el resto del equipo. La regla nueva solo evita que basura futura (logs de sesión, skills experimentales sueltos, `desktop.ini`) se cuele con un `git add .`/`git add -A` descuidado.
 - Antes de cualquier commit, revisa `git status` — si aparece algo de la lista de arriba como `??` o modificado, es señal de que el `.gitignore` no lo está cubriendo y hay que arreglarlo antes de commitear, no ignorarlo manualmente archivo por archivo.
-- La `anon key` de Supabase en `supabase_config.dart` es pública a propósito (RLS deshabilitada intencionalmente, ver regla arriba); la `service_role key` nunca debe aparecer en `lib/` bajo ninguna circunstancia.
+- La `anon key` de Supabase en `supabase_config.dart` es pública a propósito (ver regla arriba); la `service_role key` nunca debe aparecer en `lib/` bajo ninguna circunstancia, ni pegarse en una sesión de Claude Code (el hook `SessionEnd` guarda la conversación entera en la bóveda, que es un repo git).
 
 ### Segundo Cerebro Integration
 
