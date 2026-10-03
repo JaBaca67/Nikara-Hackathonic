@@ -9,11 +9,19 @@ import 'package:nikara_app/widgets/aurora_background_widget.dart';
 /// que ambos compartan el mismo fondo en vez de reimplementar cada uno el
 /// mismo par de `Image.asset` posicionadas.
 class AuthSceneBackdrop extends StatelessWidget {
-  const AuthSceneBackdrop({super.key, this.logoFocusY = 0.16, this.child});
+  const AuthSceneBackdrop({
+    super.key,
+    this.logoFocusY = 0.16,
+    this.showIllustrations = true,
+    this.child,
+  });
 
   /// Altura (fracción de pantalla) donde se centra el halo dorado tras el
   /// logo — ver [AuroraBackgroundWidget.logoFocusY].
   final double logoFocusY;
+
+  /// Dibuja las dos escenas PNG sobre la aurora. En false queda solo la aurora.
+  final bool showIllustrations;
 
   final Widget? child;
 
@@ -26,38 +34,40 @@ class AuthSceneBackdrop extends StatelessWidget {
         // Top negativo minúsculo: sube el asset lo justo para que las aves no
         // queden pegadas al logo, sin recortar visiblemente las hojas del
         // borde superior.
-        Positioned(
-          top: -12,
-          left: 0,
-          right: 0,
-          child: IgnorePointer(
-            child: Image.asset(
-              'assets/images/parte_arriba_nikara.png',
-              width: double.infinity,
-              fit: BoxFit.fitWidth,
-              filterQuality: FilterQuality.medium,
-              alignment: Alignment.topCenter,
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
+        if (showIllustrations) ...[
+          Positioned(
+            top: -12,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/images/parte_arriba_nikara.png',
+                width: double.infinity,
+                fit: BoxFit.fitWidth,
+                filterQuality: FilterQuality.medium,
+                alignment: Alignment.topCenter,
+                errorBuilder: (context, error, stackTrace) =>
+                    const SizedBox.shrink(),
+              ),
             ),
           ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: IgnorePointer(
-            child: Image.asset(
-              'assets/images/parte_abajo_login.png',
-              width: double.infinity,
-              fit: BoxFit.fitWidth,
-              filterQuality: FilterQuality.medium,
-              alignment: Alignment.bottomCenter,
-              errorBuilder: (context, error, stackTrace) =>
-                  const SizedBox.shrink(),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/images/parte_abajo_login.png',
+                width: double.infinity,
+                fit: BoxFit.fitWidth,
+                filterQuality: FilterQuality.medium,
+                alignment: Alignment.bottomCenter,
+                errorBuilder: (context, error, stackTrace) =>
+                    const SizedBox.shrink(),
+              ),
             ),
           ),
-        ),
+        ],
         ?child,
       ],
     );

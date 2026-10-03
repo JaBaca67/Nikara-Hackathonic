@@ -45,9 +45,17 @@ const double _kLogoSidePadding = 40.0;
 
 /// Shell compartido por las pantallas de Auth (Login + los 3 pasos de Register): fondo "Sunset" animado, logo, y un bottom sheet arrastrable con [child]. La altura de [child] decide el tamaño del sheet — un `AnimatedSwitcher` de contenido variable debe top-align el suyo propio.
 class AuthBottomSheetLayout extends StatefulWidget {
-  const AuthBottomSheetLayout({super.key, required this.child, this.onBack});
+  const AuthBottomSheetLayout({
+    super.key,
+    required this.child,
+    this.onBack,
+    this.showIllustrations = true,
+  });
 
   final Widget child;
+
+  /// Ver [AuthSceneBackdrop.showIllustrations].
+  final bool showIllustrations;
 
   /// Sin botón de back propio: un círculo flotante sobre el gradiente animado no se leía como tappable. Pantallas que necesitan uno lo agregan dentro de [child].
   final VoidCallback? onBack;
@@ -91,7 +99,11 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
 
             return Stack(
               children: [
-                const Positioned.fill(child: AuthSceneBackdrop()),
+                Positioned.fill(
+                  child: AuthSceneBackdrop(
+                    showIllustrations: widget.showIllustrations,
+                  ),
+                ),
                 AnimatedBuilder(
                   animation: _sheetController,
                   builder: (context, _) {

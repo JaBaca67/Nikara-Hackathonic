@@ -104,6 +104,7 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
         body: AuthSceneBackdrop(
           // El logo del Splash va centrado, no en la franja de arriba como en Auth.
           logoFocusY: 0.5,
+          showIllustrations: false,
           child: Center(
             child: Padding(
               // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.
