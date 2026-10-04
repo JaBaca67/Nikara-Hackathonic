@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
@@ -123,6 +124,15 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                       width: 288,
                       height: 288,
                       filterQuality: FilterQuality.high,
+                      // TEMPORAL: diagnóstico de la precarga de main(); borrar tras confirmar.
+                      frameBuilder: (context, child, frame, sync) {
+                        if (kDebugMode) {
+                          debugPrint(
+                            'TEMPORAL isotipo: wasSynchronouslyLoaded=$sync frame=$frame',
+                          );
+                        }
+                        return child;
+                      },
                     ),
                   ),
                 ],

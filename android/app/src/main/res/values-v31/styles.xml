@@ -5,5 +5,7 @@
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_isotipo</item>
         <item name="android:windowBackground">@drawable/splash_bg</item>
+        <!-- Sin animación de apertura: si MainActivity entra con la de por defecto, el isotipo del windowBackground se ve subir. -->
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 </resources>
