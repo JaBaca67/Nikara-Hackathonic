@@ -33,11 +33,11 @@ class SplashTransitionScreen extends StatefulWidget {
   State<SplashTransitionScreen> createState() => _SplashTransitionScreenState();
 }
 
-/// Cuándo arranca la apertura del logo, contado desde que aparece el splash: con el degradado ya asentado (1 s) y a tiempo de terminar antes de que [SplashTransitionScreen.duration] navegue.
-const Duration _kOpeningStart = Duration(milliseconds: 600);
+/// Cuándo arranca la apertura del logo, contado desde que aparece el splash. Con 1300 ms de animación, 450 ms de arranque la termina a los 1750 ms, justo antes de que [SplashTransitionScreen.duration] (1800 ms) navegue.
+const Duration _kOpeningStart = Duration(milliseconds: 450);
 
 /// Si las piezas llegan más tarde que esto, la apertura se omite en vez de quedar cortada por la navegación.
-const Duration _kOpeningLatest = Duration(milliseconds: 700);
+const Duration _kOpeningLatest = Duration(milliseconds: 550);
 
 /// Espera antes de parsear los SVG del logo, para no coincidir con el parseo de la topografía de [SplashBackdrop] (ambos bloquean el hilo principal).
 const Duration _kOpeningLoadDelay = Duration(milliseconds: 250);

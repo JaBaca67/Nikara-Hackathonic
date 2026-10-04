@@ -185,8 +185,10 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                             ),
                           ],
                         ),
+                        // Sin `bottom`: con barra de sistema transparente, un SafeArea inferior recorta el scroll en el borde del inset y deja una franja opaca de color tarjeta; el inset se aplica como relleno del contenido (más abajo).
                         child: SafeArea(
                           top: false,
+                          bottom: false,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => FocusScope.of(context).unfocus(),
@@ -227,11 +229,14 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                                       );
                                     },
                                     child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
+                                      padding: EdgeInsets.fromLTRB(
                                         22,
                                         6,
                                         22,
-                                        18,
+                                        18 +
+                                            MediaQuery.paddingOf(
+                                              context,
+                                            ).bottom,
                                       ),
                                       child: widget.child,
                                     ),

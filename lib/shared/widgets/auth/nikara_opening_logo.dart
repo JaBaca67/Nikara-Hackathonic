@@ -12,8 +12,11 @@ import 'package:nikara_app/theme/app_theme.dart';
 const double _kBoxWidth = 2117;
 const double _kBoxHeight = 677;
 
-/// Esquina superior izquierda del cuerpo de la N dentro de la caja (viewBox: 143.9 + 14, 231.4 - 28).
+/// Esquina superior izquierda del cuerpo de la N dentro de la caja (viewBox: 143.9 + 14, 231.4 - 28); solo la altura se usa para alinear la pose inicial con el isotipo.
 const Offset _kNTopLeft = Offset(157.9, 203.4);
+
+/// Centro vertical del logo completo dentro de la caja (viewBox: (87 + 645.4) / 2 - 28), para centrarlo en pantalla al final de la apertura.
+const double _kContentCenterY = 338.2;
 
 /// Alto del cuerpo de la N en el logo (en unidades de caja).
 const double _kLogoNHeight = 396.0;
@@ -37,25 +40,43 @@ const double _kStartDpPerUnit =
     _kIsotipoContentWidth /
     _kLogoNHeight;
 
-/// Esquina de la N del isotipo respecto al centro de la pantalla, en dp. El PNG va centrado, así que sale de su contenido.
+/// Esquina de la N del isotipo respecto al centro de la pantalla, en dp (solo se usa la componente vertical: en horizontal el conjunto se centra en cada frame). El PNG va centrado, así que sale de su contenido.
 const Offset _kStartNTopLeftFromCenter = Offset(-46.67, -32.40);
 
 /// Desplazamiento inicial del tallo y las hojas (unidades de caja): pegados a la N como en el isotipo. Sale de comparar la posición de cada pieza respecto a la N en ambos SVG; el logo las tiene algo más arriba, de ahí el componente vertical.
 const Offset _kLeavesStartOffset = Offset(-1345.6, 16.2);
 
+// Línea temporal (un solo controlador, 1300 ms): apertura en su sitio, pausa breve, y ascenso a la posición de Login.
+const int _kCrossfadeMs = 100;
+const int _kOpenMs = 500;
+const int _kPauseMs = 100;
+const int _kAscentMs = 700;
+
 /// Duración total de la animación de apertura.
-const Duration kNikaraOpeningDuration = Duration(milliseconds: 1100);
+const Duration kNikaraOpeningDuration = Duration(
+  milliseconds: _kOpenMs + _kPauseMs + _kAscentMs,
+);
+
+const double _kTotalMs = (_kOpenMs + _kPauseMs + _kAscentMs) + 0.0;
 
 /// Fracción de la animación en la que las piezas del logo terminan de entrar sobre el PNG nativo (~100 ms). La N del logo y la del isotipo no son idénticas (hasta ~9 dp en las marcas), así que el relevo es un fundido breve en vez de un corte.
-const double kNikaraOpeningCrossfadeEnd = 0.09;
+const double kNikaraOpeningCrossfadeEnd = _kCrossfadeMs / _kTotalMs;
 
 const Interval _crossfadeCurve = Interval(0, kNikaraOpeningCrossfadeEnd);
 
-/// "Se abre": las hojas se deslizan y "ÍKARA" se revela detrás de ellas.
-const Interval _openCurve = Interval(0, 0.68, curve: Curves.easeInOutCubic);
+/// Fase 1, "apertura en su sitio": las hojas se deslizan, "ÍKARA" se revela y el grupo se encoge hasta el tamaño final del logo, siempre centrado en horizontal.
+const Interval kNikaraOpenInterval = Interval(
+  0,
+  _kOpenMs / _kTotalMs,
+  curve: Curves.easeInOutCubic,
+);
 
-/// El grupo sube y se encoge hasta la posición real del logo; termina antes que el cierre total para que asiente.
-const Interval _riseCurve = Interval(0, 0.86, curve: Curves.easeInOutCubic);
+/// Fase 2, "ascenso": el logo ya formado sube, solo en vertical, hasta la posición de Login. Es el intervalo al que se enlazan el halo y la tarjeta.
+const Interval kNikaraAscentInterval = Interval(
+  (_kOpenMs + _kPauseMs) / _kTotalMs,
+  1,
+  curve: Curves.easeInOutCubic,
+);
 
 /// Las tres piezas del logo ya rasterizadas, listas para dibujarse sin parsear nada por frame.
 class NikaraLogoPieces {
@@ -135,7 +156,6 @@ class NikaraOpeningLogo extends StatelessWidget {
             painter: _OpeningLogoPainter(
               pieces: pieces,
               progress: progress,
-              logoLeft: (constraints.maxWidth - logoWidth) / 2,
               logoTop: logoTop,
               logoWidth: logoWidth,
             ),
@@ -150,14 +170,12 @@ class _OpeningLogoPainter extends CustomPainter {
   _OpeningLogoPainter({
     required this.pieces,
     required this.progress,
-    required this.logoLeft,
     required this.logoTop,
     required this.logoWidth,
   }) : super(repaint: progress);
 
   final NikaraLogoPieces pieces;
   final Animation<double> progress;
-  final double logoLeft;
   final double logoTop;
   final double logoWidth;
 
@@ -167,22 +185,30 @@ class _OpeningLogoPainter extends CustomPainter {
     final fade = _crossfadeCurve.transform(p);
     if (fade <= 0) return;
 
-    final open = _openCurve.transform(p);
-    final rise = _riseCurve.transform(p);
+    final open = kNikaraOpenInterval.transform(p);
+    final ascent = kNikaraAscentInterval.transform(p);
 
-    // Una sola transformación afín para todo el grupo: la N manda y el resto cuelga de ella, así nada se desalinea entre sí.
+    // Una sola transformación afín para todo el grupo, así nada se desalinea entre sí. La escala baja de la del isotipo a la del logo durante la apertura y ya no cambia en el ascenso.
     final endScale = logoWidth / _kBoxWidth;
-    final scale = ui.lerpDouble(_kStartDpPerUnit, endScale, rise)!;
-    final nStart =
-        Offset(size.width / 2, size.height / 2) + _kStartNTopLeftFromCenter;
-    final nEnd = Offset(
-      logoLeft + _kNTopLeft.dx * endScale,
-      logoTop + _kNTopLeft.dy * endScale,
-    );
-    final nPos = Offset.lerp(nStart, nEnd, rise)!;
-    final origin = nPos - _kNTopLeft * scale;
-
+    final scale = ui.lerpDouble(_kStartDpPerUnit, endScale, open)!;
     final leaves = _kLeavesStartOffset * (1 - open);
+
+    // Horizontal: el conjunto visible (N, hojas y lo ya revelado de "ÍKARA") va centrado en CADA frame. Su extremo derecho es el tallo, así que su ancho es (caja + desplazamiento de las hojas); se centra sobre el centro de la caja del viewBox, no sobre el del dibujo, para que al terminar la apertura el origen coincida con el logo de Login (que centra la caja): la diferencia es de ~0.08 dp. La N se desplaza a la izquierda porque lo demás crece a la derecha. Sin componente horizontal en el ascenso.
+    final originX = size.width / 2 - scale * (_kBoxWidth + leaves.dx) / 2;
+
+    // Vertical: de la pose del isotipo (N alineada con el PNG) a logo centrado en pantalla, y luego, en el ascenso, a la posición de Login.
+    final startY =
+        size.height / 2 +
+        _kStartNTopLeftFromCenter.dy -
+        _kNTopLeft.dy * _kStartDpPerUnit;
+    final centeredY = size.height / 2 - _kContentCenterY * endScale;
+    final originY = ui.lerpDouble(
+      ui.lerpDouble(startY, centeredY, open)!,
+      logoTop,
+      ascent,
+    )!;
+    final origin = Offset(originX, originY);
+
     final paint = Paint()
       ..isAntiAlias = true
       ..filterQuality = FilterQuality.medium
@@ -227,7 +253,6 @@ class _OpeningLogoPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _OpeningLogoPainter oldDelegate) =>
       oldDelegate.pieces != pieces ||
-      oldDelegate.logoLeft != logoLeft ||
       oldDelegate.logoTop != logoTop ||
       oldDelegate.logoWidth != logoWidth;
 }

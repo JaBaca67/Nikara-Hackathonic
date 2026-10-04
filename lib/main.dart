@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,6 +17,7 @@ import 'package:nikara_app/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _configureSystemBars();
   // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
   final isotipoReady = _precacheSplashIsotipo();
   await dotenv.load(fileName: '.env');
@@ -34,6 +36,23 @@ Future<void> main() async {
   await _initPush();
   await isotipoReady;
   runApp(const MyApp());
+}
+
+/// Barras del sistema transparentes e iconos oscuros (fondos amarillo y beige). Sin el
+/// `systemNavigationBarContrastEnforced: false`, Android 10+ pone un velo oscuro translúcido tras la
+/// barra de gestos; ningún widget de la app declara estilo propio, así que el framework nunca lo
+/// anula. Va antes que cualquier otro `await` para que aplique desde el primer frame.
+Future<void> _configureSystemBars() async {
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
 }
 
 /// `precacheImage` exige un BuildContext y aún no hay árbol; resolver el proveedor con
