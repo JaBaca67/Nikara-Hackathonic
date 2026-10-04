@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -14,6 +16,8 @@ import 'package:nikara_app/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
+  final isotipoReady = _precacheSplashIsotipo();
   await dotenv.load(fileName: '.env');
   await Supabase.initialize(
     url: SupabaseConfig.url,
@@ -28,7 +32,34 @@ Future<void> main() async {
   // Limpieza única del avatar local pre-015, que ya nadie lee.
   await LocalProfileExtrasService().clearLegacyAvatar();
   await _initPush();
+  await isotipoReady;
   runApp(const MyApp());
+}
+
+/// `precacheImage` exige un BuildContext y aún no hay árbol; resolver el proveedor con
+/// [ImageConfiguration.empty] llena el mismo `imageCache`, así el `Image.asset` del splash
+/// (misma key: sin `cacheWidth`, sin variantes por densidad) sale sincrónico en el primer frame
+/// en vez de aparecer un instante después sobre el fondo vacío.
+Future<void> _precacheSplashIsotipo() {
+  final completer = Completer<void>();
+  final stream = const AssetImage(
+    'assets/images/isotipo_nikara_splash.png',
+  ).resolve(ImageConfiguration.empty);
+  late final ImageStreamListener listener;
+  listener = ImageStreamListener(
+    (_, _) {
+      stream.removeListener(listener);
+      completer.complete();
+    },
+    onError: (Object error, StackTrace? _) {
+      stream.removeListener(listener);
+      // Sin precarga el splash sigue funcionando (el isotipo carga async); no vale tumbar el arranque.
+      debugPrint('Precarga del isotipo del splash falló: $error');
+      completer.complete();
+    },
+  );
+  stream.addListener(listener);
+  return completer.future;
 }
 
 /// Firebase (Cloud Messaging) es solo la capa de entrega de push — ver

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
+import 'package:nikara_app/shared/widgets/splash_backdrop.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de transición animada reutilizable (Figma node 95:2, "Precarga"); hoy se usa tras auth, pero sirve para cualquier pausa de marca entre pantallas.
@@ -106,21 +107,32 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       // Bloquea el gesto/botón de back mientras dura la transición.
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.oliveMidFill,
-        body: AuthSceneBackdrop(
-          // El logo del Splash va centrado, no en la franja de arriba como en Auth.
-          logoFocusY: 0.5,
-          showIllustrations: false,
-          child: Center(
-            child: widget.showIsotipoOnly
-                // El PNG es el mismo raster del splash nativo (1152 px = 288 dp, isotipo visible ~120 dp).
-                ? Image.asset(
-                    'assets/images/isotipo_nikara_splash.png',
-                    width: 288,
-                    height: 288,
-                    filterQuality: FilterQuality.high,
-                  )
-                : Padding(
+        // En el arranque, el color del splash nativo: es lo que se ve antes del primer frame de [SplashBackdrop].
+        backgroundColor: widget.showIsotipoOnly
+            ? AppColors.sunsetStart
+            : AppColors.oliveMidFill,
+        body: widget.showIsotipoOnly
+            ? Stack(
+                fit: StackFit.expand,
+                children: [
+                  const SplashBackdrop(),
+                  // Fuera del backdrop animado: el isotipo no se repinta ni se anima. Mismo raster que el splash nativo (1152 px = 288 dp, isotipo visible ~120 dp).
+                  Center(
+                    child: Image.asset(
+                      'assets/images/isotipo_nikara_splash.png',
+                      width: 288,
+                      height: 288,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ],
+              )
+            : AuthSceneBackdrop(
+                // El logo del Splash va centrado, no en la franja de arriba como en Auth.
+                logoFocusY: 0.5,
+                showIllustrations: false,
+                child: Center(
+                  child: Padding(
                     // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.
                     padding: const EdgeInsets.symmetric(horizontal: 36),
                     child: FittedBox(
@@ -146,8 +158,8 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                       ),
                     ),
                   ),
-          ),
-        ),
+                ),
+              ),
       ),
     );
   }
