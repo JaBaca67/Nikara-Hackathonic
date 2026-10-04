@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
+import 'package:nikara_app/shared/widgets/auth/nikara_opening_logo.dart';
 import 'package:nikara_app/shared/widgets/splash_backdrop.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -32,6 +33,15 @@ class SplashTransitionScreen extends StatefulWidget {
   State<SplashTransitionScreen> createState() => _SplashTransitionScreenState();
 }
 
+/// Cuándo arranca la apertura del logo, contado desde que aparece el splash: con el degradado ya asentado (1 s) y a tiempo de terminar antes de que [SplashTransitionScreen.duration] navegue.
+const Duration _kOpeningStart = Duration(milliseconds: 600);
+
+/// Si las piezas llegan más tarde que esto, la apertura se omite en vez de quedar cortada por la navegación.
+const Duration _kOpeningLatest = Duration(milliseconds: 700);
+
+/// Espera antes de parsear los SVG del logo, para no coincidir con el parseo de la topografía de [SplashBackdrop] (ambos bloquean el hilo principal).
+const Duration _kOpeningLoadDelay = Duration(milliseconds: 250);
+
 class _SplashTransitionScreenState extends State<SplashTransitionScreen>
     with TickerProviderStateMixin {
   /// Animación de entrada del logo; el pulso continuo de abajo solo arranca después de que esta termina.
@@ -42,6 +52,14 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
   bool _navigated = false;
+
+  /// Apertura del logo (solo modo de arranque): un único controlador para toda la animación.
+  late final AnimationController _openingController;
+
+  /// El PNG nativo se retira cuando las piezas del logo ya lo cubren del todo.
+  late final Animation<double> _isotipoOpacity;
+  final Stopwatch _sinceStart = Stopwatch()..start();
+  NikaraLogoPieces? _pieces;
 
   @override
   void initState() {
@@ -66,12 +84,60 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    if (!widget.showIsotipoOnly) {
+    _openingController = AnimationController(
+      vsync: this,
+      duration: kNikaraOpeningDuration,
+    );
+    _isotipoOpacity = ReverseAnimation(
+      CurvedAnimation(
+        parent: _openingController,
+        curve: const Interval(
+          kNikaraOpeningCrossfadeEnd,
+          kNikaraOpeningCrossfadeEnd + 0.001,
+        ),
+      ),
+    );
+
+    if (widget.showIsotipoOnly) {
+      // Parsear SVG en el primer frame retrasaría justo el frame que debe igualar a la pantalla nativa.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _prepareOpening());
+    } else {
       _introController.forward().whenComplete(() {
         if (mounted) _pulseController.repeat(reverse: true);
       });
     }
     _run();
+  }
+
+  /// Rasteriza las piezas del logo y lanza la apertura. Si llegan tarde la omite: una apertura cortada por la navegación se vería peor que ninguna.
+  Future<void> _prepareOpening() async {
+    await Future<void>.delayed(_kOpeningLoadDelay);
+    if (!mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final loadTimer = Stopwatch()..start();
+    final pieces = await NikaraLogoPieces.load(
+      screenSize: size,
+      devicePixelRatio: pixelRatio,
+    );
+    if (kDebugMode) {
+      debugPrint(
+        'Splash: piezas del logo listas en ${loadTimer.elapsedMilliseconds} ms '
+        '(a los ${_sinceStart.elapsedMilliseconds} ms del inicio)',
+      );
+    }
+    if (!mounted || _sinceStart.elapsed > _kOpeningLatest) {
+      if (kDebugMode && mounted) {
+        debugPrint('Splash: apertura omitida, las piezas llegaron tarde');
+      }
+      pieces.dispose();
+      return;
+    }
+    setState(() => _pieces = pieces);
+    final wait = _kOpeningStart - _sinceStart.elapsed;
+    if (!wait.isNegative) await Future<void>.delayed(wait);
+    if (!mounted) return;
+    _openingController.forward();
   }
 
   Future<void> _run() async {
@@ -99,6 +165,8 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
   void dispose() {
     _introController.dispose();
     _pulseController.dispose();
+    _openingController.dispose();
+    _pieces?.dispose();
     super.dispose();
   }
 
@@ -123,6 +191,8 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                       'assets/images/isotipo_nikara_splash.png',
                       width: 288,
                       height: 288,
+                      // Se retira cuando las piezas del logo ya lo cubren (ver [_isotipoOpacity]).
+                      opacity: _isotipoOpacity,
                       filterQuality: FilterQuality.high,
                       // TEMPORAL: diagnóstico de la precarga de main(); borrar tras confirmar.
                       frameBuilder: (context, child, frame, sync) {
@@ -135,6 +205,15 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                       },
                     ),
                   ),
+                  if (_pieces case final pieces?)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: NikaraOpeningLogo(
+                          pieces: pieces,
+                          progress: _openingController,
+                        ),
+                      ),
+                    ),
                 ],
               )
             : AuthSceneBackdrop(
