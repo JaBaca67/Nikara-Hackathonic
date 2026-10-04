@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema de SplashActivity. Cubre Android <= 11 y modo oscuro (el degradado es el mismo). -->
+    <style name="SplashTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

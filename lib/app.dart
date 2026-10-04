@@ -27,6 +27,7 @@ class MyApp extends StatelessWidget {
           false, // Esto quita la fea cinta roja de "DEBUG"
       theme: AppTheme.lightTheme,
       home: SplashTransitionScreen(
+        showIsotipoOnly: true,
         nextPage: hasAccess ? const MainLayout() : const LoginScreen(),
       ),
     );

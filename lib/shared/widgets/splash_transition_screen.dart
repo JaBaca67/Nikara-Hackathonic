@@ -11,7 +11,11 @@ class SplashTransitionScreen extends StatefulWidget {
     this.nextPage,
     this.duration = const Duration(milliseconds: 1800),
     this.onLoadingTask,
+    this.showIsotipoOnly = false,
   });
+
+  /// Solo el isotipo, quieto desde el primer frame (sin fade, escala ni pulso), para que el paso desde el splash nativo de Android no tenga saltos.
+  final bool showIsotipoOnly;
 
   /// Null para una pausa puramente decorativa sin navegación de seguimiento.
   final Widget? nextPage;
@@ -60,9 +64,11 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    _introController.forward().whenComplete(() {
-      if (mounted) _pulseController.repeat(reverse: true);
-    });
+    if (!widget.showIsotipoOnly) {
+      _introController.forward().whenComplete(() {
+        if (mounted) _pulseController.repeat(reverse: true);
+      });
+    }
     _run();
   }
 
@@ -106,32 +112,40 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
           logoFocusY: 0.5,
           showIllustrations: false,
           child: Center(
-            child: Padding(
-              // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.
-              padding: const EdgeInsets.symmetric(horizontal: 36),
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    _introController,
-                    _pulseController,
-                  ]),
-                  builder: (context, child) {
-                    final pulse = _introController.isCompleted
-                        ? _pulseScale.value
-                        : 1.0;
-                    return Opacity(
-                      opacity: _introFade.value,
-                      child: Transform.scale(
-                        scale: _introScale.value * pulse,
-                        child: child,
+            child: widget.showIsotipoOnly
+                // El PNG es el mismo raster del splash nativo (1152 px = 288 dp, isotipo visible ~120 dp).
+                ? Image.asset(
+                    'assets/images/isotipo_nikara_splash.png',
+                    width: 288,
+                    height: 288,
+                    filterQuality: FilterQuality.high,
+                  )
+                : Padding(
+                    // FittedBox evita cortes en pantallas angostas aunque el logo pida más ancho del disponible.
+                    padding: const EdgeInsets.symmetric(horizontal: 36),
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge([
+                          _introController,
+                          _pulseController,
+                        ]),
+                        builder: (context, child) {
+                          final pulse = _introController.isCompleted
+                              ? _pulseScale.value
+                              : 1.0;
+                          return Opacity(
+                            opacity: _introFade.value,
+                            child: Transform.scale(
+                              scale: _introScale.value * pulse,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: const NikaraLogoSvg(height: 220),
                       ),
-                    );
-                  },
-                  child: const NikaraLogoSvg(height: 220),
-                ),
-              ),
-            ),
+                    ),
+                  ),
           ),
         ),
       ),
