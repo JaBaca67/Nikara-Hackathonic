@@ -29,7 +29,7 @@ Future<void> main() async {
   // Mantiene la lista de "Cambiar de cuenta" al día (incluida la rotación del
   // refresh token); debe quedar suscrito antes de que se emita initialSession.
   AuthService().startTrackingSessions();
-  // Deja isGuest disponible de forma síncrona antes de construir la UI.
+  // Borra la marca de invitado que versiones anteriores dejaban en disco.
   await GuestSessionService().load();
   // Limpieza única del avatar local pre-015, que ya nadie lee.
   await LocalProfileExtrasService().clearLegacyAvatar();
