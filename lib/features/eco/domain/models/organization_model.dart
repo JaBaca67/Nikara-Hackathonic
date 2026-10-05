@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/core/utils/search_normalize.dart';
 
 /// Fila de `public.organizations` (supabase/sql/010_organizations.sql); una persona (`owner_id`) puede tener varias.
@@ -67,13 +68,15 @@ class OrganizationModel {
   }
 
   /// Ej: "@Cocibolca Vive!" -> "cocibolcavive".
-  static String normalizeHandle(String raw) {
-    return raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9._]'), '')
-        .replaceAll(RegExp(r'^[._]+'), '');
-  }
+  ///
+  /// Delega en [sanitizeOrganizationHandle] para que la regla viva en un
+  /// solo lugar: el formulario la valida con `validateOrganizationHandle`
+  /// (que usa ese mismo sanitizador) y `OrganizationService` la aplica al
+  /// guardar. Antes eran dos implementaciones parecidas pero no iguales, y
+  /// pegar una URL las separaba: esta versión borraba las barras y dejaba
+  /// "httpsnikaraappfundacionverde" como handle, mientras el sanitizador
+  /// reconoce el host y se queda con "fundacion.verde".
+  static String normalizeHandle(String raw) => sanitizeOrganizationHandle(raw);
 
   factory OrganizationModel.fromRow(Map<String, dynamic> row) {
     return OrganizationModel(

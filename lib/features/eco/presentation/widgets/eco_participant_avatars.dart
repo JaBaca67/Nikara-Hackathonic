@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -91,12 +92,11 @@ Future<void> openParticipantProfile(
   BuildContext context,
   EcoParticipant participant,
 ) {
-  return Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => PublicUserProfileScreen(
-        userId: participant.userId,
-        fallbackName: participant.fullName,
-      ),
+  return pushSharedAxis(
+    context,
+    PublicUserProfileScreen(
+      userId: participant.userId,
+      fallbackName: participant.fullName,
     ),
   );
 }

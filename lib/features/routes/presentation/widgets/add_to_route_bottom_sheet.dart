@@ -10,9 +10,11 @@ import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/features/routes/presentation/screens/create_route_wizard_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -100,8 +102,9 @@ class _AddToRouteBottomSheetState extends State<AddToRouteBottomSheet> {
   }
 
   Future<void> _createNewRoute() async {
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const CreateRouteWizardScreen()),
+    final created = await pushSharedAxis<bool>(
+      context,
+      const CreateRouteWizardScreen(),
     );
     if (created == true && mounted) {
       setState(() => _isLoading = true);
@@ -253,7 +256,7 @@ class _RouteOption extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: AppMotion.microDuration,
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: selected

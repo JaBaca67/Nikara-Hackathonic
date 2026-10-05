@@ -8,7 +8,9 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/utils/input_formatters.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/auth/domain/models/country_dial_code.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_bottom_sheet_layout.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_header.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_primary_button.dart';
@@ -23,6 +25,7 @@ import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/otp_input_row.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -77,10 +80,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Timer? _resendTimer;
   int _resendCooldown = 0;
 
-  static final RegExp _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
-
-  static final RegExp _usernameRegex = RegExp(r'^[a-zA-Z0-9_.]+$');
-
   @override
   void initState() {
     super.initState();
@@ -99,34 +98,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _resendTimer?.cancel();
     super.dispose();
-  }
-
-  String? _required(String? value, String message) {
-    return (value == null || value.trim().isEmpty) ? message : null;
-  }
-
-  String? _validateEmail(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa un correo';
-    if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa una contraseña';
-    if (trimmed.length < 6) return 'Mínimo 6 caracteres';
-    return null;
-  }
-
-  String? _validateUsername(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Elige un nombre de usuario';
-    if (trimmed.length < 3) return 'Mínimo 3 caracteres';
-    if (!_usernameRegex.hasMatch(trimmed)) {
-      return 'Solo letras, números, "." y "_"';
-    }
-    return null;
   }
 
   void _goToProfileStep() {
@@ -302,11 +273,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _skipVerification() async {
     await _extrasService.updateIsPhoneVerified(false);
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
-      (route) => false,
+    pushFadeThroughAndRemoveUntil(
+      context,
+      const SplashTransitionScreen(nextPage: MainLayout()),
     );
   }
 
@@ -421,7 +390,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return AuthBottomSheetLayout(
       onBack: _handleBackRequest,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
+        duration: AppMotion.standardDuration,
         // El layoutBuilder por defecto centra verticalmente; acá se fija
         // arriba para que un paso más corto no quede flotando a mitad del sheet.
         layoutBuilder: (currentChild, previousChildren) => Stack(
@@ -472,7 +441,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.mail_outline,
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const [AutofillHints.email],
-                validator: _validateEmail,
+                validator: validateEmail,
               ),
               const SizedBox(height: 14),
               AuthTextField(
@@ -482,7 +451,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.lock_outline,
                 isPassword: true,
                 autofillHints: const [AutofillHints.newPassword],
-                validator: _validatePassword,
+                validator: validatePassword,
               ),
               if (_passwordController.text.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -539,7 +508,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _firstNameController,
                       icon: Icons.badge_outlined,
                       autofillHints: const [AutofillHints.givenName],
-                      validator: (v) => _required(v, 'Ingresa tu nombre'),
+                      validator: (v) =>
+                          validateRequiredText(v, label: 'tu nombre'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -550,7 +520,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _lastNameController,
                       icon: Icons.badge_outlined,
                       autofillHints: const [AutofillHints.familyName],
-                      validator: (v) => _required(v, 'Ingresa tus apellidos'),
+                      validator: (v) =>
+                          validateRequiredText(v, label: 'tus apellidos'),
                     ),
                   ),
                 ],
@@ -562,7 +533,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 controller: _usernameController,
                 icon: Icons.alternate_email,
                 autofillHints: const [AutofillHints.newUsername],
-                validator: _validateUsername,
+                validator: validateUsername,
               ),
               const SizedBox(height: 14),
               AuthTextField(
@@ -581,7 +552,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         LengthLimitingTextInputFormatter(12),
                       ],
                 autofillHints: const [AutofillHints.telephoneNumber],
-                validator: (v) => _required(v, 'Ingresa tu celular'),
+                // El código de país vive en el selector de al lado, no en
+                // el campo: sin pasarlo, un número de otro país se leería
+                // como nicaragüense y el error hablaría de Nicaragua.
+                validator: (v) =>
+                    validatePhone(v, dialCode: _selectedCountry.dialCode),
               ),
               const SizedBox(height: 18),
               AuthPrimaryButton(

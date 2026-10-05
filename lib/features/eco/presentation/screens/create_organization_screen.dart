@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/organization_image_field.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -119,19 +121,17 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   }
 
   Future<void> _openOrganization(OrganizationModel organization) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OrganizationProfileScreen(organization: organization),
-      ),
+    await pushSharedAxis(
+      context,
+      OrganizationProfileScreen(organization: organization),
     );
     await _loadMine();
   }
 
   Future<void> _editOrganization(OrganizationModel organization) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => EditOrganizationScreen(organization: organization),
-      ),
+    await pushSharedAxis(
+      context,
+      EditOrganizationScreen(organization: organization),
     );
     await _loadMine();
   }
@@ -218,10 +218,10 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                                 EcoTextField(
                                   controller: _nameController,
                                   hint: 'Ej. Fundación Cocibolca Vive',
-                                  validator: (v) =>
-                                      (v == null || v.trim().isEmpty)
-                                      ? 'Escribe el nombre de la fundación.'
-                                      : null,
+                                  validator: (v) => validateEntityName(
+                                    v,
+                                    label: 'nombre de la fundación',
+                                  ),
                                 ),
                                 const SizedBox(height: 18),
                                 const EcoFieldLabel('Handle'),
@@ -229,21 +229,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                                   controller: _handleController,
                                   hint: 'cocibolcavive',
                                   prefixText: '@',
-                                  validator: (v) {
-                                    final normalized =
-                                        OrganizationModel.normalizeHandle(
-                                          v ?? '',
-                                        );
-                                    if (normalized.isEmpty) {
-                                      return 'Escribe un handle (letras, '
-                                          'números, punto o _).';
-                                    }
-                                    if (normalized.length < 3) {
-                                      return 'El handle necesita al menos 3 '
-                                          'caracteres.';
-                                    }
-                                    return null;
-                                  },
+                                  validator: validateOrganizationHandle,
                                 ),
                                 const SizedBox(height: 18),
                                 const EcoFieldLabel('Descripción / misión'),

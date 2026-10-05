@@ -11,6 +11,7 @@ import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_bo
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -1150,7 +1151,7 @@ class _CategoryFilterChip extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: AppMotion.microDuration,
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           alignment: Alignment.center,
           decoration: BoxDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de transición animada reutilizable (Figma node 95:2, "Precarga"); hoy se usa tras auth, pero sirve para cualquier pausa de marca entre pantallas.
@@ -36,6 +37,8 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
   late final AnimationController _pulseController;
   late final Animation<double> _pulseScale;
   bool _navigated = false;
+  bool _animationsStarted = false;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -46,10 +49,10 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
     );
     _introFade = CurvedAnimation(
       parent: _introController,
-      curve: Curves.easeOut,
+      curve: AppMotion.enter,
     );
     _introScale = Tween<double>(begin: 0.72, end: 1.0).animate(
-      CurvedAnimation(parent: _introController, curve: Curves.easeOutBack),
+      CurvedAnimation(parent: _introController, curve: AppMotion.overshoot),
     );
 
     _pulseController = AnimationController(
@@ -57,13 +60,28 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
       duration: const Duration(milliseconds: 1200),
     );
     _pulseScale = Tween<double>(begin: 0.96, end: 1.04).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _pulseController, curve: AppMotion.standard),
     );
 
+    _run();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = AppMotion.reduced(context);
+    if (_animationsStarted) return;
+    _animationsStarted = true;
+    if (_reduceMotion) {
+      // Logo directo en su estado final: sin entrada escalada ni pulso. El
+      // temporizador de `_run()` sigue corriendo, así que la navegación pasa
+      // igual — solo se va el movimiento.
+      _introController.value = 1.0;
+      return;
+    }
     _introController.forward().whenComplete(() {
       if (mounted) _pulseController.repeat(reverse: true);
     });
-    _run();
   }
 
   Future<void> _run() async {
@@ -79,7 +97,9 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
     _navigated = true;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 500),
+        transitionDuration: _reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 500),
         pageBuilder: (_, _, _) => next,
         transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
@@ -116,7 +136,7 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                     _pulseController,
                   ]),
                   builder: (context, child) {
-                    final pulse = _introController.isCompleted
+                    final pulse = _introController.isCompleted && !_reduceMotion
                         ? _pulseScale.value
                         : 1.0;
                     return Opacity(

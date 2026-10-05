@@ -820,6 +820,14 @@ abstract class AppTheme {
         // superficie que no fijara su color a mano.
         surface: AppColors.surface100,
       ),
+      // Los mensajes de `validators.dart` miden hasta 67 caracteres, y el
+      // default de Material para `errorText` es **una sola línea**: en el
+      // diálogo "Editar perfil" de Ajustes (~260dp de contenido) eso cortaba
+      // "Ese número no parece válido. Escríbel…" justo donde estaba la
+      // instrucción — verificado en dispositivo el 2026-10-05. Se fija aquí
+      // y no pantalla por pantalla porque hay 12 archivos con
+      // `InputDecoration` y el próximo que se agregue también lo necesita.
+      inputDecorationTheme: const InputDecorationTheme(errorMaxLines: 2),
       // Se llena cada slot (no solo los 3 que la app usa vía
       // Theme.of(context).textTheme) para que cualquier widget que caiga en
       // la tipografía default de Material (AppBar/Dialog/SnackBar/TextField,

@@ -15,6 +15,7 @@ import 'package:nikara_app/features/my_business/data/my_business_service.dart';
 import 'package:nikara_app/features/my_business/domain/models/managed_item.dart';
 import 'package:nikara_app/features/my_business/presentation/widgets/my_business_widgets.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -150,8 +151,12 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
     String? error;
     if (_isOrganization) {
       try {
+        // Esta pantalla es el panel de una cara propia (sale del selector de
+        // caras del usuario activo), así que acá sí van las jornadas en
+        // revisión y rechazadas — la tarjeta ya dibuja su `ReviewStatusPill`.
         activities = await EcoService().getActivitiesByOrganization(
           widget.face.id,
+          includeAllStatuses: true,
         );
       } on EcoServiceException catch (e) {
         // Falla suave: la fundación sigue siendo administrable aunque el feed
@@ -173,56 +178,41 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
   /// Abre el wizard de negocio en el paso [step] — es el mismo formulario que
   /// registra, reusado para editar.
   Future<void> _editBusinessSection(BusinessModel business, int step) async {
-    await Navigator.of(context).push<BusinessModel>(
-      MaterialPageRoute(
-        builder: (_) => RegisterBusinessWizard(
-          existingBusiness: business,
-          initialStep: step,
-        ),
-      ),
+    await pushSharedAxis<BusinessModel>(
+      context,
+      RegisterBusinessWizard(existingBusiness: business, initialStep: step),
     );
     if (mounted) await _load();
   }
 
   Future<void> _openBusinessPreview(BusinessModel business) {
-    return Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: business),
-      ),
-    );
+    return pushSharedAxis(context, BusinessDetailScreen(business: business));
   }
 
   Future<void> _openOrganizationPreview() {
-    return Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            OrganizationProfileScreen(organization: widget.face.organization),
-      ),
+    return pushSharedAxis(
+      context,
+      OrganizationProfileScreen(organization: widget.face.organization),
     );
   }
 
   Future<void> _editOrganization() async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) =>
-            EditOrganizationScreen(organization: widget.face.organization!),
-      ),
+    await pushSharedAxis<bool>(
+      context,
+      EditOrganizationScreen(organization: widget.face.organization!),
     );
     if (mounted) await _load();
   }
 
   Future<void> _openActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
     if (mounted) await _load();
   }
 
   Future<void> _editActivity(EcoActivityModel? activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CreateEcoActivityScreen(existingActivity: activity),
-      ),
+    await pushSharedAxis(
+      context,
+      CreateEcoActivityScreen(existingActivity: activity),
     );
     if (mounted) await _load();
   }

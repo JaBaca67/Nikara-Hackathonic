@@ -67,8 +67,9 @@ Cada uno tiene como máximo 2 variantes — `Fill` (relleno de badges/pills/card
 | `goldFill` | `#FDBE02` | — (no se usa como texto) | Rellenos, CTAs primarios, acentos decorativos, badges. |
 | `oliveFill` | `#C2CA5B` | — | Rellenos del badge/tag ECO, acentos decorativos claros. |
 | `oliveText` | `#6B7033` | 4.76 / 5.17 | Links, texto interactivo, íconos con significado ECO. Reemplaza al antiguo `accent300` (`#8B922A`, que medía solo 3.21 — **incumplía AA para texto normal**; esto no es solo limpieza, corrige un bug de accesibilidad real). |
-| `orangeFill` | `#FF8243` | — | Gradientes, fondos de tarjeta destacada, acentos decorativos. |
-| `orangeText` | `#C44B0E` | 4.60 / 4.74 | Texto/íconos que necesitan el acento naranja (precios destacados, highlights puntuales). |
+| `orangeFill` | `#FF8243` | — | Gradiente de la aurora, barra de pasos de Auth, tabla de categorías, insignias. **Adoptado oficialmente el 2026-10-05**: la auditoría de agosto lo había declarado eliminado "por cero usos", pero tenía 6 usos reales bajo el nombre `coral500`. |
+
+**No existe `orangeText`.** La especificación original declaraba `#C44B0E` para el acento naranja como texto, pero ninguna pantalla lo usa y no está en `app_colors.dart` — se declara el día que algo lo necesite, no antes.
 
 **Gold nunca es color de texto.** Su variante oscurecida a contraste seguro (`#8F6D0A`) deja de leerse como dorado y se lee como bronce — se decidió deliberadamente no usarla; Gold vive solo como relleno con texto oscuro (`textPrimary`/`textInverted`) encima.
 
@@ -97,6 +98,39 @@ Al tocar una pantalla existente que no respete su tier, es motivo válido de ref
 ### Tipografía (`AppTextStyles`)
 
 Cada getter define únicamente `fontSize`, `fontWeight` y `height` (line-height). Nunca fija un `color`. El color se aplica en el widget por composición (`Text('...', style: AppTextStyles.body.copyWith(color: AppColors.textSecondary))`) o heredado del `ColorScheme`/`DefaultTextStyle` del árbol. Esto es un cambio de comportamiento respecto al código actual (donde ~60 de los ~90 getters ya traen color fijo) — el refactor de `app_theme.dart` debe extraer esos colores hacia el call site.
+
+### Movimiento (`AppMotion`)
+
+Toda duración y curva de animación sale de `lib/theme/app_motion.dart` — nunca un `Duration(milliseconds: ...)` ni un `Curves.x` literal en una pantalla, por la misma razón que no se escribe un hex suelto. La escala se derivó de la frecuencia real de uso en el código (no de Figma), igual que `AppSpacing`.
+
+| Token | Valor | Uso |
+|---|---|---|
+| `microDuration` | 150ms | Micro-interacciones: tap feedback, ícono que cambia de estado. |
+| `quickDuration` | 200ms | Cambios de color/tamaño acotados dentro de un mismo componente. |
+| `standardDuration` | 250ms | Transición estándar: entrada de una card, aparición de contenido. |
+| `largeDuration` | 320ms | Transición grande: cambio de tab, navegación entre pantallas. |
+| `enter` / `exit` | `easeOut` / `easeIn` | Elementos que entran / salen de la pantalla. |
+| `standard` | `easeInOut` | Transición sin dirección marcada. |
+| `emphasized` | `easeInOutCubic` | Transiciones grandes (píldora de navegación, cross-fade de tabs). |
+| `decelerate` | `easeOutCubic` | Elementos que se asientan desacelerando: sheets, chips, cámara del mapa. |
+| `overshoot` | `easeOutBack` | **Solo énfasis/celebración** (éxito, logo del Splash, entrada del sheet de Auth) — en una micro-interacción se lee como error de timing. |
+
+Las duraciones largas que quedan hardcodeadas son deliberadas y no se tokenizan: son animaciones *signature* de una sola pantalla (ciclo de 24s de la aurora, intro de 700ms y pulso de 1200ms del Splash, fade de 500ms al salir de él).
+
+**Reducir movimiento (accesibilidad).** `AppMotion.reduced(context)` lee el ajuste del sistema (Android: Accesibilidad > Eliminar animaciones; iOS: Reduce Motion) y `AppMotion.respect(context, d)` devuelve `Duration.zero` cuando está activo. Consultarlos en `didChangeDependencies`/`build`, nunca en `initState`, para que la pantalla reaccione si el ajuste cambia estando abierta. Ya respetado en: `pushSharedAxis`, la aurora (detiene el ticker infinito y queda en un frame fijo) y el Splash (logo en estado final, sin pulso; el temporizador de navegación sigue corriendo igual). Al agregar una animación nueva **continua o de pantalla completa**, respetarlo; para un cross-fade de 200ms no hace falta.
+
+`test/reduce_motion_test.dart` lo cubre, y aprovecha un efecto lateral útil: con el ajuste activo `pumpAndSettle()` **sí** termina sobre la aurora — es la prueba observable de que el ticker se detuvo (ver la nota de tests de widgets arriba, que explica por qué normalmente no termina).
+
+**Transiciones de pantalla.** Todas viven en `lib/shared/widgets/app_page_transition.dart` (paquete `animations`, oficial de Flutter y agnóstico de router). **No queda ni un `MaterialPageRoute` en `lib/`** desde el 2026-10-03 — si aparece uno nuevo, es un descuido, no el patrón. El movimiento se elige por lo que *significa* la navegación:
+
+| Helper | Movimiento | Cuándo |
+|---|---|---|
+| `pushSharedAxis` | Shared axis horizontal | Entrar en una jerarquía: lista → detalle, Perfil → Ajustes. Las dos pantallas se desplazan sobre el mismo eje, que es lo que comunica "esto está dentro de aquello". (53 usos) |
+| `pushSharedAxisReplacement` | Shared axis horizontal | Continuación de flujo donde la pantalla saliente ya no tiene sentido (el gate de identidad legal una vez verificada). (2 usos) |
+| `pushFadeThroughAndRemoveUntil` | Fade through | Cambio de raíz sin relación jerárquica: login, logout, cambio de cuenta, fin del alta de negocio. No hay un "atrás" al que volver, así que deslizar mentiría sobre la estructura. (9 usos) |
+| `sharedAxisRoute` | Shared axis horizontal | La ruta suelta, para empujar desde un `NavigatorState` sin `context` de pantalla — hoy solo el servicio de push vía `rootNavigatorKey`. |
+
+Las cuatro respetan "Eliminar animaciones" vía `AppMotion.respect`. La única transición que queda escrita a mano es el fade de salida del Splash (`splash_transition_screen.dart`), que es parte de su animación propia.
 
 ### Flujo Claude Design
 
@@ -159,8 +193,12 @@ se derivó de la frecuencia real de uso en el código), y violaciones de tier
   distintos para un pill de 3 letras) — hoy es `EcoBadge` en
   `lib/shared/widgets/eco_badge.dart`, el primer widget que consume
   `AppSpacing`/`AppRadius`.
-- **Tier de `eco_main_screen.dart`**: badge "Empieza pronto", CTA "Unirme",
-  spinner y "Reintentar" pasaron de Gold a Olive.
+- **Tier de `eco_main_screen.dart`**: badge "Empieza pronto", spinner y
+  "Reintentar" pasaron de Gold a Olive. **El CTA "Unirme" NO**: verificado
+  sobre dispositivo el 2026-10-03, renderiza `goldFill` (`#FDBD03` medido) y
+  el código lo fija a `primary500` con un comentario que lo justifica. Es
+  correcto bajo la excepción autorizada de ECO (Gold + Olive conviven porque
+  el oliva comunica categoría) — no "corregirlo" a Olive.
 
 *Pendiente:*
 
@@ -240,8 +278,9 @@ Al terminar de codificar o refactorizar cualquier pantalla, antes de darla por t
 2. Navegar a la pantalla (con `--tap`/`--swipe`, o pidiéndole a José que la abra) y capturar.
 3. Compararla contra el export de Claude Design de esa misma `pantalla` (ver "Flujo Claude Design") o contra el nodo de Figma.
 4. Revisar explícitamente: `RenderFlex overflow`, texto cortado, botones/CTAs mal alineados o fuera del viewport.
-5. **Verificar los colores con `--sample`, no a ojo.** Una captura comprimida y un color casi correcto se ven iguales; el muestreo no. Así se encontró que las tarjetas de Inicio renderizaban `#FCF5E3` en vez del `#FDFDFD` que declaraba el código — un `BoxShadow` dorado dentro de un `Ink` sin `color` se pintaba encima del relleno en lugar de detrás. Ese bug era invisible a simple vista y explicaba por completo la queja de "las tarjetas no se ven como en el prototipo".
-6. Si algo no coincide, corregir antes de reportar la tarea como completa — no describir la discrepancia como "pendiente" y seguir adelante.
+5. **Verificar los colores con `--sample`, no a ojo — y comparar contra la columna sRGB, no contra el hex crudo.** El framebuffer del A56 se captura con perfil **Display P3** (`iCCP` del PNG dice "Display P3 Gamut with sRGB Transfer"), no sRGB. Los grises y los colores poco saturados salen casi idénticos (`surface` `#FDFDFD` → `#FDFDFD`; `background` `#F7F3EC` → `#F6F3ED`), pero los primitivos de marca se desplazan mucho: **`goldFill` `#FDBE02` se captura como `#F3C142`**, `oliveFill` `#C2CA5B` como `#C3CA6B`, `oliveText` `#6B7033` como `#6C703B`. Comparar ese hex crudo contra el token da un falso positivo garantizado justo en los colores que más importan. `shot.py --sample` ya imprime las dos columnas (sRGB convertido + P3 capturado desde el 2026-10-03); **la comparación se hace contra la columna sRGB**. Segunda trampa: muestrear sobre una captura reescalada (el default de 384dp) promedia píxeles vecinos e inventa tonos en bordes y textos — para comparar un color contra un token hay que muestrear con `--width 1080`.
+6. **El muestreo también sirve para lo que el ojo no ve.** Una captura comprimida y un color casi correcto se ven iguales; el muestreo no. Así se encontró que las tarjetas de Inicio renderizaban `#FCF5E3` en vez del `#FDFDFD` que declaraba el código — un `BoxShadow` dorado dentro de un `Ink` sin `color` se pintaba encima del relleno en lugar de detrás. Ese bug era invisible a simple vista y explicaba por completo la queja de "las tarjetas no se ven como en el prototipo".
+7. Si algo no coincide, corregir antes de reportar la tarea como completa — no describir la discrepancia como "pendiente" y seguir adelante.
 
 Los gestos (`--tap`, `--swipe`, `--back`) están autorizados dentro de la app de Níkara. No se usan para salir de la app, tocar notificaciones, ni operar otras aplicaciones del teléfono.
 

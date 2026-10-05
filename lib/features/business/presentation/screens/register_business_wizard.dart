@@ -12,11 +12,13 @@ import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_success_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -629,8 +631,8 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     FocusScope.of(context).unfocus();
     _pageController.animateToPage(
       step,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+      duration: AppMotion.largeDuration,
+      curve: AppMotion.standard,
     );
   }
 
@@ -789,11 +791,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   void _openPreview() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: _draftBusiness()),
-      ),
-    );
+    pushSharedAxis(context, BusinessDetailScreen(business: _draftBusiness()));
   }
 
   Future<void> _finish() async {
@@ -917,11 +915,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         // Se ignora: el negocio ya se guardó correctamente.
       }
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => BusinessSuccessScreen(businessName: business.name),
-        ),
-        (route) => false,
+      pushFadeThroughAndRemoveUntil(
+        context,
+        BusinessSuccessScreen(businessName: business.name),
       );
     } on BusinessServiceException catch (e) {
       if (!mounted) return;

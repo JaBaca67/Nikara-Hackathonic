@@ -298,7 +298,7 @@ class _CategoryFilterRow extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onSelected(category),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: AppMotion.quickDuration,
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.lg,
                   vertical: AppSpacing.sm,
@@ -430,7 +430,7 @@ class _FeaturedCarousel extends StatelessWidget {
             children: [
               for (var i = 0; i < activities.length; i++)
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: AppMotion.quickDuration,
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   width: i == current ? 18 : 6,
                   height: 6,

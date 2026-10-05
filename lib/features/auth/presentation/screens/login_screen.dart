@@ -3,7 +3,9 @@ import 'package:flutter/services.dart' show TextInput;
 
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_bottom_sheet_layout.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_header.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_primary_button.dart';
@@ -34,58 +36,11 @@ class _LoginScreenState extends State<LoginScreen> {
   AuthStatus _status = AuthStatus.idle;
   AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
-  static final RegExp _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
-
-  static const Set<String> _weakPasswords = {
-    '123456',
-    '1234',
-    '12345',
-    '12345678',
-    '123456789',
-    'password',
-    'qwerty',
-    'abcdef',
-    '000000',
-    '111111',
-  };
-
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  String? _validateEmail(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa un correo';
-    if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa tu contraseña';
-    if (trimmed.length < 6) return 'Mínimo 6 caracteres';
-    if (_weakPasswords.contains(trimmed.toLowerCase()) ||
-        _isSequentialOrRepeated(trimmed)) {
-      return 'Contraseña muy débil';
-    }
-    return null;
-  }
-
-  /// Ej: '123456', 'abcdef', 'fedcba', 'aaaaaa'.
-  bool _isSequentialOrRepeated(String value) {
-    var ascending = true;
-    var descending = true;
-    var repeated = true;
-    for (var i = 1; i < value.length; i++) {
-      final diff = value.codeUnitAt(i) - value.codeUnitAt(i - 1);
-      if (diff != 1) ascending = false;
-      if (diff != -1) descending = false;
-      if (diff != 0) repeated = false;
-    }
-    return value.length >= 4 && (ascending || descending || repeated);
   }
 
   Future<void> _submit() async {
@@ -113,11 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
       // Avisa al autofill del sistema que terminó con éxito, para que
       // ofrezca guardar las credenciales recién ingresadas.
       TextInput.finishAutofillContext();
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-        ),
-        (route) => false,
+      pushFadeThroughAndRemoveUntil(
+        context,
+        const SplashTransitionScreen(nextPage: MainLayout()),
       );
       return;
     }
@@ -132,11 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _continueAsGuest() async {
     await GuestSessionService().enterGuestMode();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
-      (route) => false,
+    pushFadeThroughAndRemoveUntil(
+      context,
+      const SplashTransitionScreen(nextPage: MainLayout()),
     );
   }
 
@@ -172,7 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   AutofillHints.username,
                   AutofillHints.email,
                 ],
-                validator: _validateEmail,
+                validator: validateEmail,
               ),
               const SizedBox(height: 14),
               AuthTextField(
@@ -182,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 icon: Icons.lock_outline,
                 isPassword: true,
                 autofillHints: const [AutofillHints.password],
-                validator: _validatePassword,
+                validator: validateLoginPassword,
               ),
               Align(
                 alignment: Alignment.centerRight,
@@ -212,9 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 text: '¿No tienes cuenta?',
                 actionLabel: 'Regístrate aquí',
                 onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                  );
+                  pushSharedAxis(context, const RegisterScreen());
                 },
               ),
               const SizedBox(height: 14),

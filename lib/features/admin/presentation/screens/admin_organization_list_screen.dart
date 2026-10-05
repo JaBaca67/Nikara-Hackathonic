@@ -4,6 +4,7 @@ import 'package:nikara_app/features/admin/data/admin_service.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -157,11 +158,10 @@ class _AdminOrganizationListScreenState
                       final organization = filtered[index - 1];
                       return AdminOrganizationCard(
                         organization: organization,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => OrganizationProfileScreen(
-                              organizationId: organization.id,
-                            ),
+                        onTap: () => pushSharedAxis(
+                          context,
+                          OrganizationProfileScreen(
+                            organizationId: organization.id,
                           ),
                         ),
                       );

@@ -35,4 +35,30 @@ abstract class AppMotion {
   /// Transiciones grandes/con énfasis — misma curva que ya usaba la píldora
   /// de navegación.
   static const emphasized = Curves.easeInOutCubic;
+
+  /// Elementos que se asientan en su posición final desacelerando: hojas
+  /// inferiores, chips que crecen, movimientos de cámara del mapa. Se agregó
+  /// al formalizar los 9 usos literales que ya existían en el código.
+  static const decelerate = Curves.easeOutCubic;
+
+  /// Rebote corto al final. **Solo para momentos de énfasis o celebración**
+  /// (pantalla de éxito, logo del Splash, entrada del sheet de Auth) — en una
+  /// micro-interacción común se lee como un error de timing, no como gracia.
+  static const overshoot = Curves.easeOutBack;
+
+  /// `true` si el sistema pidió eliminar animaciones (Android: Accesibilidad >
+  /// Eliminar animaciones; iOS: Reduce Motion).
+  ///
+  /// Hay que consultarlo en `didChangeDependencies`/`build`, no en
+  /// `initState`, para que el widget reaccione si el ajuste cambia mientras la
+  /// pantalla está abierta.
+  static bool reduced(BuildContext context) =>
+      MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+
+  /// [duration], o cero si el sistema pidió eliminar animaciones.
+  ///
+  /// Cero no cancela la animación: la deja instantánea, así el estado final
+  /// sigue siendo el mismo y no hace falta una rama de UI aparte.
+  static Duration respect(BuildContext context, Duration duration) =>
+      reduced(context) ? Duration.zero : duration;
 }

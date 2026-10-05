@@ -8,6 +8,7 @@ import 'package:nikara_app/features/admin/presentation/screens/admin_business_li
 import 'package:nikara_app/features/admin/presentation/screens/admin_eco_activity_list_screen.dart';
 import 'package:nikara_app/features/admin/presentation/screens/admin_organization_list_screen.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -137,11 +138,8 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
                 label: 'Jornadas publicadas',
                 value: '${metrics.totalEcoActivities}',
                 icon: Icons.eco_outlined,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const AdminEcoActivityListScreen(),
-                  ),
-                ),
+                onTap: () =>
+                    pushSharedAxis(context, const AdminEcoActivityListScreen()),
               ),
               AdminStatTile(
                 label: 'Jornadas por venir',
@@ -153,10 +151,9 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
                 label: 'Organizaciones',
                 value: '${metrics.totalOrganizations}',
                 icon: Icons.groups_outlined,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const AdminOrganizationListScreen(),
-                  ),
+                onTap: () => pushSharedAxis(
+                  context,
+                  const AdminOrganizationListScreen(),
                 ),
               ),
               AdminStatTile(
@@ -199,10 +196,9 @@ class _AdminMetricsViewState extends State<AdminMetricsView> {
     String title,
     bool Function(AdminBusinessSummary) filter,
   ) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AdminBusinessListScreen(title: title, filter: filter),
-      ),
+    pushSharedAxis(
+      context,
+      AdminBusinessListScreen(title: title, filter: filter),
     );
   }
 }

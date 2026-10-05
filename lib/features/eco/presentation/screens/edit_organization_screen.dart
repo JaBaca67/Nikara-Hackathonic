@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
@@ -196,9 +197,10 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
                           EcoTextField(
                             controller: _nameController,
                             hint: 'Ej. Fundación Cocibolca Vive',
-                            validator: (v) => (v == null || v.trim().isEmpty)
-                                ? 'Escribe el nombre de la fundación.'
-                                : null,
+                            validator: (v) => validateEntityName(
+                              v,
+                              label: 'nombre de la fundación',
+                            ),
                           ),
                           const SizedBox(height: 18),
                           const EcoFieldLabel('Handle'),
@@ -206,7 +208,7 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
                             controller: _handleController,
                             hint: 'cocibolcavive',
                             prefixText: '@',
-                            validator: _validateHandle,
+                            validator: validateOrganizationHandle,
                           ),
                           const SizedBox(height: 18),
                           const EcoFieldLabel('Descripción / misión'),
@@ -316,17 +318,6 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
         ),
       ),
     );
-  }
-
-  static String? _validateHandle(String? value) {
-    final normalized = OrganizationModel.normalizeHandle(value ?? '');
-    if (normalized.isEmpty) {
-      return 'Escribe un handle (letras, números, punto o _).';
-    }
-    if (normalized.length < 3) {
-      return 'El handle necesita al menos 3 caracteres.';
-    }
-    return null;
   }
 }
 

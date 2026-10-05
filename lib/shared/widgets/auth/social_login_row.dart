@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/models/mock_data.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
@@ -133,11 +134,9 @@ class _SocialLoginRowState extends State<SocialLoginRow>
     setState(() => _loadingKind = null);
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
-      (route) => false,
+    pushFadeThroughAndRemoveUntil(
+      context,
+      const SplashTransitionScreen(nextPage: MainLayout()),
     );
   }
 

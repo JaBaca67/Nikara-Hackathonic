@@ -15,6 +15,7 @@ import 'package:nikara_app/features/notifications/data/notification_service.dart
 import 'package:nikara_app/features/notifications/domain/models/app_notification.dart';
 import 'package:nikara_app/features/notifications/presentation/widgets/notification_tile.dart';
 import 'package:nikara_app/features/notifications/presentation/widgets/notifications_states.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -196,12 +197,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return;
     }
     final rejected = notification.type == NotificationType.businessUnverified;
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => rejected
-            ? RegisterBusinessWizard(existingBusiness: business)
-            : BusinessDetailScreen(business: business!),
-      ),
+    await pushSharedAxis(
+      context,
+      rejected
+          ? RegisterBusinessWizard(existingBusiness: business)
+          : BusinessDetailScreen(business: business),
     );
   }
 
@@ -216,12 +216,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
       final rejected =
           notification.type == NotificationType.ecoActivityRejected;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => rejected
-              ? CreateEcoActivityScreen(existingActivity: activity)
-              : EcoDetailScreen(activity: activity),
-        ),
+      await pushSharedAxis(
+        context,
+        rejected
+            ? CreateEcoActivityScreen(existingActivity: activity)
+            : EcoDetailScreen(activity: activity),
       );
     } on EcoServiceException catch (e) {
       if (!mounted) return;
@@ -240,12 +239,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
       final rejected =
           notification.type == NotificationType.organizationRejected;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => rejected
-              ? EditOrganizationScreen(organization: organization)
-              : OrganizationProfileScreen(organization: organization),
-        ),
+      await pushSharedAxis(
+        context,
+        rejected
+            ? EditOrganizationScreen(organization: organization)
+            : OrganizationProfileScreen(organization: organization),
       );
     } on OrganizationServiceException catch (e) {
       if (!mounted) return;

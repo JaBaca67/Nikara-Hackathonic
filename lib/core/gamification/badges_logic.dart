@@ -68,7 +68,7 @@ abstract class BadgesLogic {
         id: 'cultura-viva',
         title: 'Cultura Viva',
         icon: Icons.festival,
-        tint: AppColors.coral500,
+        tint: AppColors.orangeFill,
         unlocked: stats.tripsCount >= 3,
         requirementLabel: 'Completa 3 viajes',
       ),

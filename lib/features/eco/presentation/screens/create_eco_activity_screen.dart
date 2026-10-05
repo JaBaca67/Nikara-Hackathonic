@@ -5,6 +5,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
@@ -14,6 +15,7 @@ import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dar
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/map_location_picker.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -562,8 +564,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
             EcoTextField(
               controller: _titleController,
               hint: 'Ej. Reforestación Lago Cocibolca',
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Escribe un título.' : null,
+              validator: validateTitle,
             ),
             const SizedBox(height: 18),
             const EcoFieldLabel('Categoría'),
@@ -584,9 +585,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
               controller: _descriptionController,
               hint: 'Describe la jornada, qué se va a hacer y por qué importa.',
               maxLines: 4,
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Escribe una descripción.'
-                  : null,
+              validator: validateDescription,
             ),
           ],
         ),
@@ -609,9 +608,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
             EcoTextField(
               controller: _locationController,
               hint: 'Ej. Cerro Apante, Managua',
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Escribe una ubicación.'
-                  : null,
+              validator: (v) => validateRequiredText(v, label: 'la ubicación'),
             ),
             const SizedBox(height: 18),
             Row(
@@ -1062,7 +1059,7 @@ class _CategoryPicker extends StatelessWidget {
           GestureDetector(
             onTap: () => onChanged(category),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
+              duration: AppMotion.microDuration,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
               decoration: BoxDecoration(
                 color: category == selected
@@ -1152,7 +1149,7 @@ class _PublishAsOption extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
+        duration: AppMotion.microDuration,
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
           color: selected

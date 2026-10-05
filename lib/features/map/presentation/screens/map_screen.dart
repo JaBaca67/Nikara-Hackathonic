@@ -26,6 +26,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -895,8 +896,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     await _carouselController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOut,
+      duration: AppMotion.largeDuration,
+      curve: AppMotion.standard,
     );
   }
 
@@ -1881,9 +1882,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         // colapsar no hay ese riesgo — el contenido encoge
                         // de inmediato, así que sí puede animarse suave.
                         duration: _selectedBusinessId == null
-                            ? const Duration(milliseconds: 260)
+                            ? AppMotion.standardDuration
                             : Duration.zero,
-                        curve: Curves.easeOutCubic,
+                        curve: AppMotion.decelerate,
                         height: _carouselHeight,
                         child: PageView.builder(
                           controller: _carouselController,
@@ -2003,8 +2004,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           // `onCameraMoveStarted`) se vuelve el botón de mira "Recentrar".
           if (!_isNavigating || !_isCameraLocked)
             AnimatedPositioned(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
+              duration: AppMotion.standardDuration,
+              curve: AppMotion.decelerate,
               right: 16,
               // Se posiciona justo encima de lo que ocupe el fondo de la
               // pantalla (panel de navegación, panel de preview, o carrusel).
@@ -2203,7 +2204,7 @@ class _TripModeButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.quickDuration,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : Colors.transparent,
@@ -3174,8 +3175,8 @@ class _BusinessCarouselCard extends StatelessWidget {
     );
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.quickDuration,
+      curve: AppMotion.decelerate,
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
@@ -3195,8 +3196,8 @@ class _BusinessCarouselCard extends StatelessWidget {
         ],
       ),
       child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.quickDuration,
+        curve: AppMotion.decelerate,
         alignment: Alignment.topCenter,
         child: expanded
             ? Stack(

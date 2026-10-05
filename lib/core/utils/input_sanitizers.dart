@@ -69,8 +69,17 @@ abstract final class InputLimits {
 /// iguales para Postgres, y son invisibles al depurar.
 final RegExp _invisibleChars = RegExp(
   '[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F'
-  '\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060\u2066-\u2069\uFEFF]',
+  '\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069\uFEFF]',
 );
+
+/// `U+2028` (LINE SEPARATOR) y `U+2029` (PARAGRAPH SEPARATOR) **no** son
+/// invisibles decorativos: representan un salto de línea real, y Word y macOS
+/// los insertan al pegar. Estaban en [_invisibleChars], así que se borraban y
+/// pegaban las dos palabras que el usuario había separado ("Hola", salto,
+/// "Mundo" quedaba "HolaMundo"). Ahora se traducen a `\n` y de ahí cada
+/// sanitizador decide: [sanitizeText] lo colapsa a un espacio,
+/// [sanitizeMultilineText] lo conserva como salto.
+final RegExp _unicodeLineBreaks = RegExp('[\u2028\u2029]');
 
 /// Espacios "raros" que sí representan un espacio real y por eso se reemplazan
 /// en vez de borrarse: NBSP, espacios tipográficos, espacio ideográfico.
@@ -91,6 +100,7 @@ String _normalizeChars(String raw) {
   return raw
       .replaceAll('\r\n', '\n')
       .replaceAll('\r', '\n')
+      .replaceAll(_unicodeLineBreaks, '\n')
       .replaceAll(_invisibleChars, '')
       .replaceAll(_exoticSpaces, ' ')
       .replaceAll(_singleQuotes, "'")
@@ -322,7 +332,7 @@ String sanitizePhone(String? raw) {
     callingCode = nicaraguaCallingCode;
     national = digits;
   } else {
-    final matched = _matchCallingCode(digits);
+    final matched = _matchCallingCode(digits, allowShortCodes: hasExplicitCode);
     if (matched == null) {
       // Código de país desconocido: se conserva textual en vez de forzarlo a
       // Nicaragua, que inventaría un número de otro país.
@@ -343,8 +353,20 @@ String sanitizePhone(String? raw) {
   return '+$callingCode $national';
 }
 
-String? _matchCallingCode(String digits) {
+/// [allowShortCodes] habilita los códigos de un solo dígito (hoy "1", EE. UU.
+/// y Canadá), que solo se reconocen cuando el usuario escribió el código de
+/// forma explícita (con `+` o `00`).
+///
+/// Sin esa condición, cualquier número escrito sin código que empiece con 1 y
+/// pase los 8 dígitos se leía como estadounidense: un `123456789` —un dígito
+/// de más al tipear un local— se guardaba como `+1 23456789`, el teléfono de
+/// otro país. Los códigos de 3 dígitos no tienen el problema: un número local
+/// nicaragüense de más de 8 dígitos que empiece con 505 no es un caso real,
+/// mientras que pegar "50588887777" sin el `+` sí lo es, y ese se sigue
+/// resolviendo.
+String? _matchCallingCode(String digits, {required bool allowShortCodes}) {
   for (final code in supportedCallingCodes) {
+    if (!allowShortCodes && code.length < 3) continue;
     if (digits.length > code.length && digits.startsWith(code)) return code;
   }
   return null;
@@ -489,5 +511,9 @@ String? sanitizeHttpUrl(String? raw) {
   final uri = Uri.tryParse(value);
   if (uri == null) return null;
   if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+  // `https://` y `https:///a.png` parsean sin error pero no tienen host, así
+  // que lo que queda guardado en la columna hace fallar el `Image.network`
+  // que la consume.
+  if (uri.host.isEmpty) return null;
   return value;
 }

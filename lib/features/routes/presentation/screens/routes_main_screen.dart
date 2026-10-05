@@ -108,9 +108,7 @@ class _RoutesMainScreenState extends State<RoutesMainScreen> {
   };
 
   Future<void> _openWizard() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const CreateRouteWizardScreen()));
+    await pushSharedAxis(context, const CreateRouteWizardScreen());
   }
 
   Future<void> _openDetail(RouteModel route) async {
@@ -336,7 +334,7 @@ class _StatusPill extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.quickDuration,
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 22),
         decoration: BoxDecoration(

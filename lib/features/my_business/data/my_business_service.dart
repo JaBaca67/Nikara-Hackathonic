@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
@@ -217,11 +218,21 @@ class MyBusinessService {
     var upcoming = 0;
     var volunteers = 0;
     try {
+      // Mismo conjunto que el listado de "Tus jornadas ECO" de
+      // `face_profile_screen` (el único que llama a este método): si el
+      // contador dejara fuera las pendientes, diría "4 jornadas" sobre una
+      // lista de 5 y la que falta sería justo la que el dueño está buscando.
       final activities = await EcoService().getActivitiesByOrganization(
         organizationId,
+        includeAllStatuses: true,
       );
       published = activities.length;
-      upcoming = activities.where((a) => !a.isPast).length;
+      // "Próximas" sí se queda solo con las aprobadas: una jornada en revisión
+      // todavía no va a ocurrir, y contarla acá prometería algo que no está
+      // confirmado.
+      upcoming = activities
+          .where((a) => !a.isPast && a.reviewStatus == ReviewStatus.aprobado)
+          .length;
       volunteers = activities.fold<int>(
         0,
         (sum, a) => sum + a.participantCount,

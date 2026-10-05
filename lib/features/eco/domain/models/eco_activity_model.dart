@@ -62,7 +62,9 @@ class EcoParticipant {
     final role = profile?['role'] as String?;
     return EcoParticipant(
       userId: row['user_id'] as String,
-      joinedAt: DateTime.parse(row['joined_at'] as String),
+      // Mismo motivo que `startTime` en `EcoActivityModel.fromRow`: se pinta
+      // con `formatEcoDateTimeShort` en la pestaña de participantes.
+      joinedAt: DateTime.parse(row['joined_at'] as String).toLocal(),
       fullName: profile?['full_name'] as String?,
       avatarUrl: profile?['avatar_url'] as String?,
       isStaff: role == 'admin',

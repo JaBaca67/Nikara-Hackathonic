@@ -157,9 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openNotifications() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+    await pushSharedAxis(context, const NotificationsScreen());
     // La pantalla marca como leídas las que se tocaron; al volver el badge
     // tiene que reflejarlo aunque el usuario no haya escrito nada más.
     await _loadUnreadNotifications();
@@ -176,9 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openAdminPanel() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AdminShellScreen()));
+    pushSharedAxis(context, const AdminShellScreen());
   }
 
   Future<void> _loadPosition() async {
@@ -576,7 +572,7 @@ class _CategoryChipsRow extends StatelessWidget {
           return GestureDetector(
             onTap: () => onSelect(category),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+              duration: AppMotion.quickDuration,
               padding: const EdgeInsets.symmetric(horizontal: 15),
               alignment: Alignment.center,
               decoration: BoxDecoration(
@@ -690,7 +686,7 @@ class _HeroCard extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
+            duration: AppMotion.largeDuration,
             child: LocalImage(
               key: ValueKey('${business.id}-$safeIndex'),
               path: imagePath,
@@ -909,7 +905,12 @@ class _DestacadosSection extends StatelessWidget {
             )
           else
             SizedBox(
-              height: 220,
+              // 96 de imagen + 55 del bloque de texto (padding 11+12, título
+              // 16, gap 2, ubicación 14). Con 220 el ListView estiraba la
+              // tarjeta y el `Ink` pintaba ~69dp de blanco vacío bajo el
+              // texto; la proporción resultante (63.6% imagen) es la misma
+              // del prototipo de Claude Design.
+              height: 151,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
@@ -978,15 +979,12 @@ class _DestacadoCard extends StatelessWidget {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(18),
-                  ),
-                  child: SizedBox(
-                    height: 96,
-                    width: double.infinity,
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [

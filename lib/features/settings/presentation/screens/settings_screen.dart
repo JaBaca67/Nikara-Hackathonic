@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -59,9 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _openAdminPanel() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AdminShellScreen()));
+    pushSharedAxis(context, const AdminShellScreen());
   }
 
   Future<void> _loadSavedAccounts() async {
@@ -146,10 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _authService.signOut();
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    pushFadeThroughAndRemoveUntil(context, const LoginScreen());
   }
 
   Future<void> _confirmDeleteAccount() async {
@@ -198,10 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    pushFadeThroughAndRemoveUntil(context, const LoginScreen());
   }
 
   @override
@@ -320,11 +314,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'Registrar actividad ECO',
                   caption: 'Organiza una jornada ambiental',
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const CreateEcoActivityScreen(),
-                      ),
-                    );
+                    pushSharedAxis(context, const CreateEcoActivityScreen());
                   },
                 ),
                 _SettingsRow(
@@ -653,8 +643,6 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   late final _emailController = TextEditingController(text: widget.email);
   late final _phoneController = TextEditingController(text: widget.phone);
 
-  static final _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
-
   @override
   void dispose() {
     _nameController.dispose();
@@ -691,27 +679,21 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
             TextFormField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Nombre'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+              validator: validateFullName,
             ),
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(labelText: 'Correo'),
-              validator: (v) {
-                final trimmed = v?.trim() ?? '';
-                if (trimmed.isEmpty) return 'Ingresa un correo';
-                if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
-                return null;
-              },
+              validator: validateEmail,
             ),
             TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(labelText: 'Teléfono'),
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Ingresa tu teléfono'
-                  : null,
+              // Antes solo exigía que no estuviera vacío: un teléfono de 3
+              // dígitos pasaba y quedaba guardado en el perfil.
+              validator: validatePhone,
             ),
           ],
         ),
@@ -787,8 +769,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               controller: _newController,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Nueva contraseña'),
-              validator: (v) =>
-                  (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+              validator: validatePassword,
             ),
             TextFormField(
               controller: _confirmController,
@@ -796,9 +777,8 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               decoration: const InputDecoration(
                 labelText: 'Confirmar contraseña',
               ),
-              validator: (v) => v != _newController.text
-                  ? 'Las contraseñas no coinciden'
-                  : null,
+              validator: (v) =>
+                  validatePasswordConfirmation(v, _newController.text),
             ),
           ],
         ),

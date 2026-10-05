@@ -9,6 +9,7 @@ import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -171,10 +172,9 @@ class _AdminReviewViewState extends State<AdminReviewView> {
   }
 
   Future<void> _openBusiness(AdminBusinessSummary business) async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => AdminBusinessDetailScreen(business: business),
-      ),
+    final changed = await pushSharedAxis<bool>(
+      context,
+      AdminBusinessDetailScreen(business: business),
     );
     // El detalle devuelve `true` cuando cambió el estado: la fila ya no
     // pertenece a esta cola, así que se recarga en vez de mutar la lista en
@@ -183,9 +183,7 @@ class _AdminReviewViewState extends State<AdminReviewView> {
   }
 
   Future<void> _openActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
     // EcoDetailScreen no devuelve si cambió (a diferencia de la ficha de
     // negocios): recarga siempre al volver, es la misma consulta barata que
     // ya corre en pull-to-refresh.
@@ -193,10 +191,9 @@ class _AdminReviewViewState extends State<AdminReviewView> {
   }
 
   Future<void> _openOrganization(OrganizationModel organization) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OrganizationProfileScreen(organization: organization),
-      ),
+    await pushSharedAxis(
+      context,
+      OrganizationProfileScreen(organization: organization),
     );
     if (mounted) await _load();
   }

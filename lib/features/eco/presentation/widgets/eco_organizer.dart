@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -14,11 +15,9 @@ Future<void> openEcoOrganizerProfile(
 ) async {
   final organizationId = activity.organizationId;
   if (activity.isFromOrganization && organizationId != null) {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            OrganizationProfileScreen(organizationId: organizationId),
-      ),
+    await pushSharedAxis(
+      context,
+      OrganizationProfileScreen(organizationId: organizationId),
     );
     return;
   }
@@ -30,12 +29,11 @@ Future<void> openEcoOrganizerProfile(
     );
     return;
   }
-  await Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => PublicUserProfileScreen(
-        userId: organizerId,
-        fallbackName: activity.organizerDisplayName,
-      ),
+  await pushSharedAxis(
+    context,
+    PublicUserProfileScreen(
+      userId: organizerId,
+      fallbackName: activity.organizerDisplayName,
     ),
   );
 }

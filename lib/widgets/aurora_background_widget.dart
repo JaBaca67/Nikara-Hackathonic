@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Duración de un ciclo completo. Es largo a propósito: un fondo ambiental que
@@ -50,7 +51,7 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: _kAuroraCycle,
-  )..repeat();
+  );
 
   ui.Image? _pattern;
 
@@ -58,6 +59,25 @@ class _AuroraBackgroundWidgetState extends State<AuroraBackgroundWidget>
   void initState() {
     super.initState();
     _loadPattern();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncTicker();
+  }
+
+  /// Arranca o detiene el ciclo según el ajuste de accesibilidad del sistema.
+  /// El fondo queda en un frame fijo —no desaparece— porque la luz es
+  /// decorativa: lo que molesta con "Eliminar animaciones" activo es el
+  /// movimiento perpetuo, y es además lo único de esta pantalla que gasta
+  /// batería de forma continua.
+  void _syncTicker() {
+    if (AppMotion.reduced(context)) {
+      if (_controller.isAnimating) _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat();
+    }
   }
 
   /// Rasteriza el tile del patrón una sola vez; el painter lo repite con un
@@ -154,7 +174,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       size,
-      color: AppColors.coral500,
+      color: AppColors.orangeFill,
       alpha: 0.34,
       cx: 0.99,
       cy: 0.07,
@@ -179,7 +199,7 @@ class _AuroraPainter extends CustomPainter {
     _blob(
       canvas,
       size,
-      color: AppColors.coral500,
+      color: AppColors.orangeFill,
       alpha: 0.26,
       cx: 0.30,
       cy: 0.92,

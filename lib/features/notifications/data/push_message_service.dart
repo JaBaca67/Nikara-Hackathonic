@@ -1,10 +1,10 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:nikara_app/core/navigation/root_navigator.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 
 /// Handler de mensajes en background: FCM lo ejecuta en un isolate aparte,
 /// así que tiene que ser una función de nivel superior (no un método), y no
@@ -95,8 +95,13 @@ class PushMessageService {
   }
 
   void _openNotifications() {
+    // Se navega desde el handler de FCM, sin `context` de pantalla: el
+    // contexto del navegador raíz es el que da el MediaQuery que necesita
+    // `sharedAxisRoute` para respetar "Eliminar animaciones".
+    final context = rootNavigatorKey.currentContext;
+    if (context == null) return;
     rootNavigatorKey.currentState?.push(
-      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      sharedAxisRoute(context, const NotificationsScreen()),
     );
   }
 }

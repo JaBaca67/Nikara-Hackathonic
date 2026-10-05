@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Estados de reposo del sheet: 0.10 es seguro porque el handle vive dentro del Scrollable; si vuelve a chocar con el gesto "swipe up" de Android, subir este valor (no reubicar el handle).
@@ -119,14 +120,14 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                     return Stack(
                       children: [
                         AnimatedPositioned(
-                          duration: const Duration(milliseconds: 320),
-                          curve: Curves.easeOutBack,
+                          duration: AppMotion.largeDuration,
+                          curve: AppMotion.overshoot,
                           top: logoTop + logoHeight + _kLogoToSloganGap,
                           left: 0,
                           right: 0,
                           child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOut,
+                            duration: AppMotion.quickDuration,
+                            curve: AppMotion.enter,
                             opacity: sloganOpacity,
                             child: Center(
                               child: Image.asset(
@@ -140,8 +141,8 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                           ),
                         ),
                         AnimatedPositioned(
-                          duration: const Duration(milliseconds: 320),
-                          curve: Curves.easeOutBack,
+                          duration: AppMotion.largeDuration,
+                          curve: AppMotion.overshoot,
                           top: logoTop,
                           left: 0,
                           right: 0,

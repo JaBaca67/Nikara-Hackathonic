@@ -17,6 +17,7 @@ import 'package:nikara_app/features/profile/presentation/screens/profile_screen.
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
@@ -119,17 +120,14 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     final ownerId = _business.ownerId;
     if (ownerId.isEmpty) return;
     if (ownerId == _currentProfile?.id) {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      pushSharedAxis(context, const ProfileScreen());
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PublicUserProfileScreen(
-          userId: ownerId,
-          fallbackName: _business.hostName,
-        ),
+    pushSharedAxis(
+      context,
+      PublicUserProfileScreen(
+        userId: ownerId,
+        fallbackName: _business.hostName,
       ),
     );
   }

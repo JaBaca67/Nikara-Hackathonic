@@ -5,6 +5,7 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
@@ -91,19 +92,15 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
 
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
-      (route) => false,
+    pushFadeThroughAndRemoveUntil(
+      context,
+      const SplashTransitionScreen(nextPage: MainLayout()),
     );
   }
 
   Future<void> _addAccount() async {
     Navigator.of(context).pop();
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+    await pushSharedAxis(context, const LoginScreen());
   }
 
   Future<void> _confirmForget(SavedAccount account) async {

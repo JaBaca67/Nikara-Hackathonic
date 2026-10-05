@@ -35,12 +35,26 @@ abstract class AppColors {
   /// medía 4.43 y dejaba de cumplir AA.
   static const oliveText = Color(0xFF6B7033);
 
-  // Nota: la especificación original declaraba una tercera familia de marca
-  // (Orange `orangeFill`/`orangeText`). Se eliminó en la auditoría del
-  // 2026-08-25 por tener **cero usos** en toda la app: el naranja solo vive
-  // en el gradiente de Auth (`sunset*`) y en `coral500`. Declarar una
-  // familia que ninguna pantalla usa hacía creer que había 3 acentos
-  // disponibles cuando en la práctica el sistema son 2: Gold y Olive.
+  /// Naranja de marca. **Solo relleno**, misma razón que [goldFill] y
+  /// [oliveFill]: ninguno de los tres primitivos admite texto blanco encima.
+  ///
+  /// La auditoría del 2026-08-25 lo declaró eliminado "por cero usos", pero
+  /// el barrido del 2026-10-05 encontró **6 usos reales** bajo el nombre
+  /// `coral500` — entre ellos la barra de progreso del registro, medida en
+  /// dispositivo como `#FF8243` exacto. Era la tercera familia entrando por
+  /// la puerta de atrás con otro nombre, así que se adopta oficialmente en
+  /// vez de migrarla: cambiar la barra de progreso de Auth a Gold u Olive
+  /// sería un cambio visual notorio en la única pantalla donde el naranja
+  /// tiene sentido (tier Expresiva, donde conviven los tres rellenos).
+  ///
+  /// Dónde vive: gradiente de la aurora (2), barra de pasos de Auth (2),
+  /// tabla de categorías de negocio (1), insignias de gamificación (1).
+  static const orangeFill = coral500;
+
+  // No existe `orangeText` (#C44B0E en la especificación original): tiene
+  // cero usos. Se declara el día que una pantalla necesite el acento naranja
+  // como texto — declararlo antes repite el error que hizo creer que había
+  // tres acentos disponibles cuando solo [orangeFill] se usa como relleno.
 
   // --- Tokens semánticos: neutros, superficies y estado ---
 

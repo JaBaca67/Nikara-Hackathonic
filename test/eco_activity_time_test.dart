@@ -47,18 +47,21 @@ void main() {
       );
     });
 
-    test('los componentes que leen los formatters son los de la zona local', () {
-      const raw = '2026-10-05T15:00:00Z';
-      final activity = EcoActivityModel.fromRow(row(startTime: raw));
-      final expected = DateTime.parse(raw).toLocal();
+    test(
+      'los componentes que leen los formatters son los de la zona local',
+      () {
+        const raw = '2026-10-05T15:00:00Z';
+        final activity = EcoActivityModel.fromRow(row(startTime: raw));
+        final expected = DateTime.parse(raw).toLocal();
 
-      expect(activity.startTime.hour, expected.hour);
-      expect(activity.startTime.day, expected.day);
-      expect(
-        formatEcoDateTimeLong(activity.startTime),
-        formatEcoDateTimeLong(expected),
-      );
-    });
+        expect(activity.startTime.hour, expected.hour);
+        expect(activity.startTime.day, expected.day);
+        expect(
+          formatEcoDateTimeLong(activity.startTime),
+          formatEcoDateTimeLong(expected),
+        );
+      },
+    );
 
     test('un start_time con offset explícito también queda local', () {
       // Lo que manda `eco_service` es siempre `toUtc()`, pero una fila vieja o
@@ -71,16 +74,38 @@ void main() {
       expect(activity.startTime.toUtc(), DateTime.utc(2026, 10, 5, 15));
     });
 
-    test('isPast compara contra el instante real, no contra la hora pintada', () {
-      final pasado = EcoActivityModel.fromRow(
-        row(startTime: '2020-01-01T12:00:00Z'),
-      );
-      final futuro = EcoActivityModel.fromRow(
-        row(startTime: '2090-01-01T12:00:00Z'),
-      );
+    test(
+      'isPast compara contra el instante real, no contra la hora pintada',
+      () {
+        final pasado = EcoActivityModel.fromRow(
+          row(startTime: '2020-01-01T12:00:00Z'),
+        );
+        final futuro = EcoActivityModel.fromRow(
+          row(startTime: '2090-01-01T12:00:00Z'),
+        );
 
-      expect(pasado.isPast, isTrue);
-      expect(futuro.isPast, isFalse);
+        expect(pasado.isPast, isTrue);
+        expect(futuro.isPast, isFalse);
+      },
+    );
+  });
+
+  group('EcoParticipant.fromRow — zona horaria', () {
+    test('normaliza joined_at: se pinta en la pestaña de participantes', () {
+      final participant = EcoParticipant.fromRow({
+        'user_id': 'user-1',
+        'joined_at': '2026-10-05T15:00:00Z',
+        'public_profiles': {'full_name': 'Sofía Ramírez', 'role': 'turista'},
+      });
+
+      expect(participant.joinedAt.isUtc, isFalse);
+      expect(participant.joinedAt.toUtc(), DateTime.utc(2026, 10, 5, 15));
+      expect(
+        formatEcoDateTimeShort(participant.joinedAt),
+        formatEcoDateTimeShort(
+          DateTime.parse('2026-10-05T15:00:00Z').toLocal(),
+        ),
+      );
     });
   });
 

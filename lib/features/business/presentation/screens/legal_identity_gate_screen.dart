@@ -8,6 +8,7 @@ import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -55,12 +56,11 @@ Future<void> _openLegalIdentityGatedFlow(
     return;
   }
   if (!context.mounted) return;
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => identity == null
-          ? LegalIdentityGateScreen(destination: destination)
-          : Builder(builder: destination),
-    ),
+  pushSharedAxis(
+    context,
+    identity == null
+        ? LegalIdentityGateScreen(destination: destination)
+        : Builder(builder: destination),
   );
 }
 
@@ -193,9 +193,12 @@ class _LegalIdentityGateScreenState extends State<LegalIdentityGateScreen> {
         documentPhotoBackUrl: backPath,
       );
       if (!mounted) return;
-      Navigator.of(
+      // `destination` es un WidgetBuilder, no un Widget: `Builder` lo
+      // resuelve igual que en `pushLegalIdentityGate`.
+      await pushSharedAxisReplacement(
         context,
-      ).pushReplacement(MaterialPageRoute(builder: widget.destination));
+        Builder(builder: widget.destination),
+      );
     } on LegalIdentityServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isSaving = false);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -114,11 +115,7 @@ class GuestGuardBottomSheet extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppRadius.md),
                     onTap: () {
                       Navigator.of(context).pop();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterScreen(),
-                        ),
-                      );
+                      pushSharedAxis(context, const RegisterScreen());
                     },
                     child: Center(
                       child: Text(
@@ -134,9 +131,7 @@ class GuestGuardBottomSheet extends StatelessWidget {
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+                pushSharedAxis(context, const LoginScreen());
               },
               child: Text('Ya tengo cuenta', style: AppTextStyles.link),
             ),

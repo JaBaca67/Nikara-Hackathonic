@@ -83,9 +83,17 @@ class ReviewStatusPill extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: foreground),
           const SizedBox(width: AppSpacing.xs),
-          Text(
-            status.label,
-            style: AppTextStyles.homeMiniBadge.copyWith(color: foreground),
+          // `Flexible` no cambia nada mientras haya espacio (el Row es
+          // `min`), pero sin él la etiqueta más larga ("Necesita ajustes")
+          // desborda cuando el pill queda en una columna angosta o el usuario
+          // tiene la fuente del sistema agrandada.
+          Flexible(
+            child: Text(
+              status.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.homeMiniBadge.copyWith(color: foreground),
+            ),
           ),
         ],
       ),

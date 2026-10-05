@@ -11,6 +11,7 @@ import 'package:nikara_app/features/business/data/business_storage_service.dart'
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
 import 'package:nikara_app/shared/widgets/user_avatar.dart';
@@ -105,17 +106,11 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
       _activities.fold(0, (total, a) => total + a.participantCount);
 
   Future<void> _openActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
   }
 
   Future<void> _openBusiness(BusinessModel business) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BusinessDetailScreen(business: business),
-      ),
-    );
+    await pushSharedAxis(context, BusinessDetailScreen(business: business));
   }
 
   @override

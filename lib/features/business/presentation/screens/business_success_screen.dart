@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -40,20 +42,20 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
         tween: Tween(
           begin: 0.0,
           end: 1.15,
-        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        ).chain(CurveTween(curve: AppMotion.overshoot)),
         weight: 65,
       ),
       TweenSequenceItem(
         tween: Tween(
           begin: 1.15,
           end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeOut)),
+        ).chain(CurveTween(curve: AppMotion.enter)),
         weight: 35,
       ),
     ]).animate(_controller);
     _fade = CurvedAnimation(
       parent: _controller,
-      curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
+      curve: const Interval(0.3, 1.0, curve: AppMotion.enter),
     );
     _controller.forward();
   }
@@ -65,10 +67,7 @@ class _BusinessSuccessScreenState extends State<BusinessSuccessScreen>
   }
 
   void _goToHome() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const MainLayout()),
-      (route) => false,
-    );
+    pushFadeThroughAndRemoveUntil(context, const MainLayout());
   }
 
   @override

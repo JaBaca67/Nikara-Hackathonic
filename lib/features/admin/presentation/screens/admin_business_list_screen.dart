@@ -4,6 +4,7 @@ import 'package:nikara_app/features/admin/data/admin_service.dart';
 import 'package:nikara_app/features/admin/domain/models/admin_business_summary.dart';
 import 'package:nikara_app/features/admin/presentation/screens/admin_business_detail_screen.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -63,10 +64,9 @@ class _AdminBusinessListScreenState extends State<AdminBusinessListScreen> {
   }
 
   Future<void> _openDetail(AdminBusinessSummary business) async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => AdminBusinessDetailScreen(business: business),
-      ),
+    await pushSharedAxis<bool>(
+      context,
+      AdminBusinessDetailScreen(business: business),
     );
     // A diferencia de la cola de revisión, acá no importa que el estado haya
     // cambiado: esta lista no está filtrada por estado, así que la fila sigue

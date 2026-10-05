@@ -92,7 +92,9 @@ class _AuthTextFieldState extends State<AuthTextField> {
                       color: AppColors.authPlaceholder,
                     ),
                     border: InputBorder.none,
-                    errorMaxLines: 1,
+                    // 2, no 1: el validador de correo compartido mide 57
+                    // caracteres y a una línea se corta en la mitad.
+                    errorMaxLines: 2,
                     errorStyle: AppTextStyles.errorText,
                   ),
                 ),

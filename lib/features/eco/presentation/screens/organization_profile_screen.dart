@@ -17,6 +17,7 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/public_profile_header.dart';
@@ -248,10 +249,9 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   }
 
   Future<void> _manage(OrganizationModel organization) async {
-    final stillExists = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => EditOrganizationScreen(organization: organization),
-      ),
+    final stillExists = await pushSharedAxis<bool>(
+      context,
+      EditOrganizationScreen(organization: organization),
     );
     if (!mounted) return;
     // `false` = se eliminó desde esa pantalla: este perfil ya no tiene qué
@@ -265,9 +265,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
   }
 
   Future<void> _openActivity(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
   }
 
   @override

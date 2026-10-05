@@ -10,9 +10,13 @@
 ///
 /// Vive aparte de la sanitización a propósito: sanear es obligatorio y ocurre
 /// siempre (capa de servicio); validar es opcional y ocurre donde haya un
-/// formulario. Ninguna pantalla está cableada a estos validadores todavía —
-/// se dejan disponibles para que las adopten sin tener que reinventar los
-/// mensajes.
+/// formulario.
+///
+/// Cableado desde el 2026-10-03 en `register_screen`, `login_screen` y
+/// `settings_screen`. Al agregar un formulario nuevo, usá estos validadores en
+/// vez de escribir una lambda inline: así el mensaje de error vive en un solo
+/// lugar y la regla no se desincroniza del saneo. El cableado ya corrigió un
+/// bug real — ver [validateEmail].
 library;
 
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
@@ -83,6 +87,12 @@ String? validateDescription(String? value, {bool required = true}) {
 /// expresión regular rechaza direcciones válidas y no evita ninguna inválida
 /// que importe. Lo único que puede confirmar de verdad que un correo existe es
 /// el mail de confirmación que ya manda Supabase.
+///
+/// Ser permisivo no es dejadez: el patrón que este reemplazó estaba duplicado
+/// byte a byte en tres pantallas y **rechazaba cualquier dominio con más de un
+/// punto**, porque exigía `[\w-]+\.[A-Za-z]{2,}` justo antes del fin de
+/// cadena. O sea que un correo institucional como `nombre@uamv.edu.ni` o
+/// cualquier `.co.uk` no podía registrarse.
 String? validateEmail(String? value) {
   final email = sanitizeEmail(value);
   if (email.isEmpty) return 'Escribe tu correo electrónico.';
@@ -94,16 +104,47 @@ String? validateEmail(String? value) {
 
 final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$');
 
+/// Nombre de usuario del perfil: 3 caracteres o más, y solo letras sin acento,
+/// dígitos, punto y guion bajo.
+///
+/// El alfabeto restringido es a propósito y no se relaja a `\p{L}`: este valor
+/// se muestra como identificador público, así que admitir acentos o eñes haría
+/// que dos usuarios distintos se vieran casi iguales ("josé" / "jose").
+String? validateUsername(String? value) {
+  final username = sanitizeText(value, maxLength: InputLimits.handle);
+  if (username.isEmpty) return 'Elige un nombre de usuario.';
+  if (username.length < 3) {
+    return 'El nombre de usuario debe tener al menos 3 caracteres.';
+  }
+  if (!_usernamePattern.hasMatch(username)) {
+    return 'Solo letras, números, puntos y guiones bajos.';
+  }
+  return null;
+}
+
+final RegExp _usernamePattern = RegExp(r'^[a-zA-Z0-9_.]+$');
+
 /// Teléfono. Valida sobre el formato canónico de [sanitizePhone], así que da
 /// igual si la persona escribió "8888 7777", "+505 8888-7777" o "005058887777".
 ///
 /// [required] en `false` acepta el campo vacío (el teléfono es opcional en
 /// varios formularios) pero sigue rechazando un número mal escrito.
-String? validatePhone(String? value, {bool required = true}) {
+///
+/// [dialCode] es para los formularios donde el código de país vive en un
+/// selector aparte y el campo de texto solo tiene el número nacional
+/// (`register_screen`, el wizard de negocios). Sin pasarlo, un número de 10
+/// dígitos elegido como estadounidense se leería como nicaragüense y el error
+/// diría "Un número de Nicaragua tiene 8 dígitos" a alguien que nunca eligió
+/// Nicaragua. Se acepta con o sin `+` adelante.
+String? validatePhone(String? value, {bool required = true, String? dialCode}) {
   final raw = (value ?? '').trim();
   if (raw.isEmpty) return required ? 'Escribe un número de teléfono.' : null;
 
-  final canonical = sanitizePhone(raw);
+  final prefix = (dialCode ?? '').trim();
+  final withCode = prefix.isEmpty
+      ? raw
+      : '+${prefix.replaceAll(RegExp(r'[^0-9]'), '')}$raw';
+  final canonical = sanitizePhone(withCode);
   if (canonical.isEmpty) {
     return 'Ese número no parece válido. Escríbelo con dígitos.';
   }
@@ -134,6 +175,22 @@ String? validatePassword(String? value) {
   if (password.trim() != password) {
     return 'La contraseña no puede empezar ni terminar con espacios.';
   }
+  return null;
+}
+
+/// Contraseña al **iniciar sesión**: lo único que se valida es que haya algo
+/// escrito.
+///
+/// Deliberadamente distinto de [validatePassword]. Acá la contraseña
+/// correcta es la que la cuenta ya tiene, buena o mala, así que medir
+/// fuerza solo puede rechazar a alguien legítimo: `login_screen` exigía 8
+/// caracteres y descartaba una lista de contraseñas débiles, de modo que
+/// una cuenta creada cuando el registro pedía 6 —y con "123456" como
+/// contraseña— no podía iniciar sesión nunca, porque el formulario no
+/// llegaba a consultarle a Supabase. La higiene se exige donde se elige la
+/// contraseña (registro y cambio en Ajustes), no donde se usa.
+String? validateLoginPassword(String? value) {
+  if ((value ?? '').isEmpty) return 'Escribe tu contraseña.';
   return null;
 }
 

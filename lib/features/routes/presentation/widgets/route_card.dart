@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/user_avatar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -112,12 +113,11 @@ class _CreatorHeader extends StatelessWidget {
   final VoidCallback? onCopy;
 
   void _openCreator(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PublicUserProfileScreen(
-          userId: route.ownerId,
-          fallbackName: route.creatorName,
-        ),
+    pushSharedAxis(
+      context,
+      PublicUserProfileScreen(
+        userId: route.ownerId,
+        fallbackName: route.creatorName,
       ),
     );
   }

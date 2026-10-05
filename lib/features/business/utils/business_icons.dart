@@ -144,7 +144,7 @@ IconData mapPinIcon(MapPinCategory category) {
 Color mapPinColor(MapPinCategory category) {
   switch (category) {
     case MapPinCategory.food:
-      return AppColors.coral500;
+      return AppColors.orangeFill;
     case MapPinCategory.water:
       return AppColors.mapPinWater;
     case MapPinCategory.tour:

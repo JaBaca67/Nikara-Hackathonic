@@ -10,6 +10,7 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/screens/full_screen_map_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_mini_map.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -55,10 +56,9 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   }
 
   Future<void> _edit() async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreateRouteWizardScreen(initialRoute: _route),
-      ),
+    final saved = await pushSharedAxis<bool>(
+      context,
+      CreateRouteWizardScreen(initialRoute: _route),
     );
     if (saved == true) await _refresh();
   }
@@ -71,9 +71,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       AppSnackbar.showSuccess(context, '"${copy.title}" ya está en tus rutas');
       // Se abre la copia: a partir de acá la persona edita lo suyo, no el
       // itinerario de quien lo publicó.
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RouteDetailScreen(route: copy)),
-      );
+      await pushSharedAxisReplacement(context, RouteDetailScreen(route: copy));
     } on RouteServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
@@ -178,16 +176,15 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullScreenMapScreen(
-          title: stop.title,
-          subtitle: stop.subtitle,
-          latitude: stop.latitude!,
-          longitude: stop.longitude!,
-          locationId: 'route-stop-${stop.id ?? stop.sourceKey}',
-          badge: RouteCategoryChip(category: stop.category, compact: true),
-        ),
+    pushSharedAxis(
+      context,
+      FullScreenMapScreen(
+        title: stop.title,
+        subtitle: stop.subtitle,
+        latitude: stop.latitude!,
+        longitude: stop.longitude!,
+        locationId: 'route-stop-${stop.id ?? stop.sourceKey}',
+        badge: RouteCategoryChip(category: stop.category, compact: true),
       ),
     );
   }

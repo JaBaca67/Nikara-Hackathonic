@@ -18,6 +18,7 @@ import 'package:nikara_app/features/profile/presentation/screens/face_profile_sc
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
@@ -175,9 +176,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _openSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    pushSharedAxis(context, const SettingsScreen());
   }
 
   /// Control provisional de cambio de cara — ver el docstring de la pantalla.
@@ -491,9 +490,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       // Cross-fade en vez de cambio instantáneo; la key por índice es lo que hace que AnimatedSwitcher detecte el cambio de tab.
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        switchInCurve: Curves.easeInOutCubic,
-                        switchOutCurve: Curves.easeInOutCubic,
+                        duration: AppMotion.standardDuration,
+                        switchInCurve: AppMotion.emphasized,
+                        switchOutCurve: AppMotion.emphasized,
                         transitionBuilder: (child, animation) =>
                             FadeTransition(opacity: animation, child: child),
                         child: _activeTab == 0
@@ -662,8 +661,8 @@ class _ProfileTabSelector extends StatelessWidget {
           children: [
             Positioned.fill(
               child: AnimatedAlign(
-                duration: const Duration(milliseconds: 340),
-                curve: Curves.easeOutBack,
+                duration: AppMotion.largeDuration,
+                curve: AppMotion.overshoot,
                 alignment: activeTab == 0
                     ? Alignment.centerLeft
                     : Alignment.centerRight,
@@ -723,7 +722,7 @@ class _ProfileTabButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedDefaultTextStyle(
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.quickDuration,
         style: AppTextStyles.buttonMd.copyWith(
           color: selected ? AppColors.textPrimary : AppColors.neutral700,
         ),
@@ -731,7 +730,7 @@ class _ProfileTabButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: AppMotion.quickDuration,
               child: Icon(
                 icon,
                 key: ValueKey(selected),

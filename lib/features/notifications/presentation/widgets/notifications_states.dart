@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -137,13 +138,9 @@ class NotificationsGuestState extends StatelessWidget {
           'Las notificaciones son personales: necesitas una cuenta para que '
           'podamos avisarte sobre tus negocios y tus jornadas ECO.',
       actionLabel: 'Crear mi cuenta',
-      onAction: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
+      onAction: () => pushSharedAxis(context, const RegisterScreen()),
       secondaryLabel: 'Ya tengo cuenta',
-      onSecondary: () => Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
+      onSecondary: () => pushSharedAxis(context, const LoginScreen()),
     );
   }
 }

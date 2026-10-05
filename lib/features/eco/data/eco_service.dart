@@ -77,10 +77,25 @@ class EcoService {
 
   /// Todas las jornadas de una fundación, la más próxima primero — el
   /// listado del perfil público de la organización.
+  ///
+  /// [includeAllStatuses] levanta el filtro de estado y es **solo** para el
+  /// panel del dueño: sin esto quien envía una jornada recibe el toast de
+  /// "solicitud enviada" y después no tiene ninguna pantalla donde ver si
+  /// quedó en revisión, si fue rechazada ni por qué. El perfil público visto
+  /// por un tercero lo deja en `false`, que es lo correcto ahí.
+  ///
+  /// No abre un hueco de privacidad: la policy de lectura de 029 es
+  /// `status = 'aprobado' or organizer_id = auth.uid()`, así que incluso con
+  /// el filtro levantado el servidor solo agrega las no aprobadas que creó
+  /// quien consulta.
   Future<List<EcoActivityModel>> getActivitiesByOrganization(
-    String organizationId,
-  ) async {
-    return _select(organizationId: organizationId);
+    String organizationId, {
+    bool includeAllStatuses = false,
+  }) async {
+    return _select(
+      organizationId: organizationId,
+      includeAllStatuses: includeAllStatuses,
+    );
   }
 
   /// Las jornadas que una persona publicó a título personal (sin
@@ -95,6 +110,7 @@ class EcoService {
     bool? pastOnly,
     String? organizationId,
     String? personalOrganizerId,
+    bool includeAllStatuses = false,
   }) async {
     try {
       return await _runSelect(
@@ -102,6 +118,7 @@ class EcoService {
         pastOnly: pastOnly,
         organizationId: organizationId,
         personalOrganizerId: personalOrganizerId,
+        includeAllStatuses: includeAllStatuses,
       );
     } on PostgrestException catch (e) {
       if (_isMissingEmbed(e)) {
@@ -113,6 +130,7 @@ class EcoService {
           pastOnly: pastOnly,
           personalOrganizerId: personalOrganizerId,
           skipOrganizationFilter: true,
+          includeAllStatuses: includeAllStatuses,
         );
       }
       throw EcoServiceException(
@@ -132,16 +150,20 @@ class EcoService {
     String? organizationId,
     String? personalOrganizerId,
     bool skipOrganizationFilter = false,
+    bool includeAllStatuses = false,
   }) async {
-    // Todas las consultas que pasan por acá son listados públicos (feed,
-    // perfil de una fundación, perfil de una persona), así que el filtro de
-    // estado va fijo. "Mis actividades" no pasa por acá: usa
-    // [_runMineSelect], que no filtra, porque el organizador tiene que ver
-    // sus jornadas pendientes y rechazadas.
-    var query = _client
-        .from('eco_activities')
-        .select(select)
-        .eq('status', ReviewStatus.aprobado.wireValue);
+    // Casi todas las consultas que pasan por acá son listados públicos (feed,
+    // perfil de una fundación visto por un tercero, perfil de una persona), y
+    // ahí el filtro de estado es obligatorio. La única excepción es
+    // [includeAllStatuses], que usa el panel del propio dueño de la fundación
+    // para ver sus jornadas en revisión y rechazadas.
+    //
+    // "Mis actividades" sigue sin pasar por acá: usa [_runMineSelect], que
+    // filtra por `organizer_id` en vez de por `organization_id`.
+    var query = _client.from('eco_activities').select(select);
+    if (!includeAllStatuses) {
+      query = query.eq('status', ReviewStatus.aprobado.wireValue);
+    }
     if (pastOnly != null) {
       final nowIso = DateTime.now().toUtc().toIso8601String();
       query = pastOnly
