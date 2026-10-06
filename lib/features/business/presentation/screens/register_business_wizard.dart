@@ -29,6 +29,11 @@ const List<String> _kCategoryPresets = [
   'Tour',
   'Cultura',
   'Transporte',
+  'Bienestar',
+  'Eventos',
+  'Compras y mercados',
+  'Agroturismo / Fincas',
+  'Servicios para el viajero',
 ];
 
 const List<String> _kAmenityPresets = [
@@ -458,6 +463,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _accessDetailsController = TextEditingController();
   final _otherNotesController = TextEditingController();
   String _category = _kCategoryPresets.first;
+  String _subcategory = '';
   String _countryCode = _kCountryCodes.first;
   final _phoneController = TextEditingController();
   final _instagramController = TextEditingController();
@@ -497,6 +503,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _customActivityController = TextEditingController();
   String _customActivityIconKey = 'explore';
 
+  // --- Paso 3 (4c): Pase de día (solo categoría Hospedaje) ---
+  bool _dayPassEnabled = false;
+  final _dayPassPriceController = TextEditingController();
+  final Set<String> _dayPassIncludes = {};
+  final _dayPassScheduleController = TextEditingController();
+  final _dayPassNotesController = TextEditingController();
+
   List<String> get _allPhotoPaths => [
     ..._existingImagePaths,
     ..._images.map((x) => x.path),
@@ -526,6 +539,16 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _category = business.category.isEmpty
         ? _kCategoryPresets.first
         : business.category;
+    _subcategory = business.subcategory;
+    _dayPassEnabled = business.dayPassEnabled;
+    if (business.dayPassPrice != null) {
+      _dayPassPriceController.text = business.dayPassPrice!.toStringAsFixed(
+        business.dayPassPrice! % 1 == 0 ? 0 : 2,
+      );
+    }
+    _dayPassIncludes.addAll(business.dayPassIncludes);
+    _dayPassScheduleController.text = business.dayPassSchedule;
+    _dayPassNotesController.text = business.dayPassNotes;
     _department = _departmentForCity(business.city);
     _city = business.city.isEmpty
         ? _kMunicipalitiesByDepartment[_department]!.first
@@ -584,6 +607,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _addressController.dispose();
     _freeformScheduleController.dispose();
     _customActivityController.dispose();
+    _dayPassPriceController.dispose();
+    _dayPassScheduleController.dispose();
+    _dayPassNotesController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -765,6 +791,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
           ? 'Tu negocio'
           : _nameController.text.trim(),
       category: _category,
+      subcategory: _subcategory,
       description: _descriptionController.text.trim(),
       city: _city,
       locationText: _addressController.text.trim(),
@@ -778,6 +805,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       activities: _selectedActivities.toList(),
       ecoSealRequested: _ecoSealRequested,
       ecoPractices: _ecoPractices.toList(),
+      dayPassEnabled: _dayPassEnabled,
+      dayPassPrice: double.tryParse(_dayPassPriceController.text.trim()),
+      dayPassIncludes: _dayPassIncludes.toList(),
+      dayPassSchedule: _dayPassScheduleController.text.trim(),
+      dayPassNotes: _dayPassNotesController.text.trim(),
       hostName: existing?.hostName ?? '',
       logoUrl: _logoImage?.path ?? _existingLogoUrl,
       showHost: _showHost,
@@ -852,6 +884,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         id: existing?.id ?? const Uuid().v4(),
         name: _nameController.text.trim(),
         category: _category,
+        subcategory: _subcategory,
         description: _descriptionController.text.trim(),
         city: _city,
         locationText: _addressController.text.trim(),
@@ -865,6 +898,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         activities: _selectedActivities.toList(),
         ecoSealRequested: _ecoSealRequested,
         ecoPractices: _ecoPractices.toList(),
+        dayPassEnabled: _dayPassEnabled,
+        dayPassPrice: double.tryParse(_dayPassPriceController.text.trim()),
+        dayPassIncludes: _dayPassIncludes.toList(),
+        dayPassSchedule: _dayPassScheduleController.text.trim(),
+        dayPassNotes: _dayPassNotesController.text.trim(),
         hostName: hostName,
         logoUrl: logoUrl,
         showHost: _showHost,
@@ -1036,7 +1074,13 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                           _WizardChip(
                             label: category,
                             selected: _category == category,
-                            onTap: () => setState(() => _category = category),
+                            onTap: () => setState(() {
+                              _category = category;
+                              // Los presets de subcategoría cambian con la
+                              // categoría — una subcategoría elegida bajo
+                              // "Hospedaje" no tiene sentido bajo "Tour".
+                              _subcategory = '';
+                            }),
                           ),
                       ],
                     ),
@@ -1045,6 +1089,30 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       'Define el ícono de tu pin en el mapa y los filtros donde apareces.',
                       style: AppTextStyles.wizardCaption,
                     ),
+                    if (subcategoriesFor(_category).isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'SUBCATEGORÍA',
+                        style: AppTextStyles.wizardFieldLabel,
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final subcategory in subcategoriesFor(_category))
+                            _WizardChip(
+                              label: subcategory,
+                              selected: _subcategory == subcategory,
+                              onTap: () => setState(
+                                () => _subcategory = _subcategory == subcategory
+                                    ? ''
+                                    : subcategory,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2019,6 +2087,113 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     ],
                   ],
                 ),
+                // Solo Hospedaje: el pase de día es un producto de hotel
+                // (acceso a piscina/playa sin pernoctar), no tiene sentido
+                // para un restaurante o un tour.
+                if (_category == 'Hospedaje')
+                  _card(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.detailActivityIconBg,
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: const Icon(
+                              Icons.pool_outlined,
+                              color: AppColors.primary500,
+                            ),
+                          ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Pase de día',
+                                  style: AppTextStyles.wizardCardTitle,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Acceso a tus instalaciones por el día, sin hospedaje',
+                                  style: AppTextStyles.wizardCaption,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: _dayPassEnabled,
+                            onChanged: (v) =>
+                                setState(() => _dayPassEnabled = v),
+                            activeThumbColor: AppColors.surface100,
+                            activeTrackColor: AppColors.primary500,
+                          ),
+                        ],
+                      ),
+                      if (_dayPassEnabled) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'PRECIO POR PERSONA (USD)',
+                          style: AppTextStyles.wizardFieldLabel,
+                        ),
+                        const SizedBox(height: 7),
+                        _WizardTextField(
+                          controller: _dayPassPriceController,
+                          hint: 'ej: 15',
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'QUÉ INCLUYE',
+                          style: AppTextStyles.wizardFieldLabel,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final item in dayPassIncludesPresets)
+                              _WizardChip(
+                                label: item,
+                                icon: amenityIcon(item),
+                                selected: _dayPassIncludes.contains(item),
+                                onTap: () => setState(() {
+                                  _dayPassIncludes.contains(item)
+                                      ? _dayPassIncludes.remove(item)
+                                      : _dayPassIncludes.add(item);
+                                }),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text('HORARIO', style: AppTextStyles.wizardFieldLabel),
+                        const SizedBox(height: 7),
+                        _WizardTextField(
+                          controller: _dayPassScheduleController,
+                          hint: 'ej: Lunes a jueves, 9:00am–4:00pm',
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'NOTAS (cupo, restricciones)',
+                          style: AppTextStyles.wizardFieldLabel,
+                        ),
+                        const SizedBox(height: 7),
+                        _WizardTextField(
+                          controller: _dayPassNotesController,
+                          hint:
+                              'ej: Cupo limitado, se recomienda avisar un día antes',
+                          maxLines: 3,
+                        ),
+                      ],
+                    ],
+                  ),
                 _card(
                   children: [
                     Text(

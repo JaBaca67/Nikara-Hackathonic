@@ -14,6 +14,7 @@ class AdminBusinessSummary {
     required this.id,
     required this.name,
     required this.category,
+    this.subcategory = '',
     required this.description,
     required this.city,
     required this.addressText,
@@ -35,6 +36,7 @@ class AdminBusinessSummary {
   final String id;
   final String name;
   final String category;
+  final String subcategory;
   final String description;
   final String city;
   final String addressText;
@@ -99,6 +101,7 @@ class AdminBusinessSummary {
     if (q.isEmpty) return true;
     return normalizeForSearch(name).contains(q) ||
         normalizeForSearch(category).contains(q) ||
+        normalizeForSearch(subcategory).contains(q) ||
         normalizeForSearch(city).contains(q) ||
         normalizeForSearch(ownerLabel).contains(q);
   }
@@ -112,6 +115,7 @@ class AdminBusinessSummary {
     id: id,
     name: name,
     category: category,
+    subcategory: subcategory,
     description: description,
     city: city,
     addressText: addressText,
@@ -139,6 +143,7 @@ class AdminBusinessSummary {
       id: row['id'] as String,
       name: row['name'] as String? ?? '',
       category: row['category'] as String? ?? '',
+      subcategory: row['subcategory'] as String? ?? '',
       description: row['description'] as String? ?? '',
       city: row['city'] as String? ?? '',
       addressText: row['address_text'] as String? ?? '',

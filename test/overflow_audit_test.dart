@@ -5,9 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/features/ai_assistant/domain/models/assistant_models.dart';
+import 'package:nikara_app/features/ai_assistant/domain/models/assistant_place.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_cards.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
@@ -36,12 +40,57 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// enough to break any card/header that isn't actually protected by
 /// `maxLines`/`Expanded`/`Flexible`, instead of only ever being exercised
 /// against today's short seed data.
+/// Mismo criterio que [_stressBusiness]: el `reason` lo redacta un modelo de
+/// lenguaje, así que no hay garantía de largo aunque el prompt pida brevedad.
+final _stressPlace = AssistantPlace(
+  id: 'stress-place',
+  kind: AssistantItemKind.business,
+  name:
+      'Complejo Ecoturístico y Balneario Familiar Laguna Escondida del '
+      'Bosque Nuboso de Nicaragua',
+  subtitle:
+      'Eco Turismo y Aventura Extrema en la Montaña Nublada · San Juan de '
+      'Río Coco, Madriz',
+  reason:
+      'Te lo recomiendo porque combina senderos interpretativos de bosque '
+      'nuboso con avistamiento de aves endémicas, prácticas de turismo '
+      'regenerativo certificadas y una vista panorámica que abarca tres '
+      'departamentos en un día despejado.',
+  isEco: true,
+  latitude: 13.5,
+  longitude: -86.1,
+);
+
+final _stressItinerary = AssistantItinerary(
+  title:
+      'Escapada Regenerativa de Dos Días por el Bosque Nuboso y las '
+      'Comunidades Alfareras del Norte de Nicaragua',
+  days: [
+    for (var day = 1; day <= 3; day++)
+      AssistantItineraryDay(
+        day: day,
+        stops: [
+          for (var i = 0; i < 3; i++)
+            AssistantStop(
+              id: 'stress-place',
+              kind: AssistantItemKind.business,
+              note:
+                  'Arrancá temprano para aprovechar la luz de la mañana y '
+                  'coordiná con la cooperativa local la visita guiada al '
+                  'taller de barro antes del almuerzo.',
+            ),
+        ],
+      ),
+  ],
+);
+
 final _stressBusiness = BusinessModel(
   id: 'stress-test-id',
   name:
       'Complejo Ecoturístico y Balneario Familiar Laguna Escondida del '
       'Bosque Nuboso de Nicaragua',
   category: 'Eco Turismo y Aventura Extrema en la Montaña Nublada',
+  subcategory: 'Reserva natural y mirador comunitario de altura',
   description:
       'Una descripción extremadamente larga que simula lo que un dueño de '
       'negocio ansioso por vender su experiencia podría escribir sin '
@@ -75,6 +124,16 @@ final _stressBusiness = BusinessModel(
     'Tour de Café',
     'Fotografía',
   ],
+  dayPassEnabled: true,
+  dayPassPrice: 999.99,
+  dayPassIncludes: dayPassIncludesPresets,
+  dayPassSchedule:
+      'Todos los días del año excepto feriados nacionales y los primeros '
+      'lunes de cada mes por mantenimiento programado de las instalaciones',
+  dayPassNotes:
+      'Cupo limitado a un número reducido de visitantes por día, se '
+      'recomienda confirmar con al menos 48 horas de anticipación por '
+      'temporada alta y disponibilidad de parqueo en el sitio',
   hostName: 'Bartolomé de las Casas y Fuentes Rodríguez de la Vega Hernández',
   ownerId: 'stress-owner-id',
 );
@@ -503,6 +562,47 @@ void main() {
     await expectNoOverflow(tester, const MapScreen(), 'MapScreen');
   });
 
+  // Las tarjetas del asistente renderizan texto que viene de dos fuentes sin
+  // tope de largo: el nombre/categoría del negocio (que escribe su dueño) y el
+  // motivo que redacta el modelo de lenguaje, que puede ignorar la
+  // instrucción de "una oración" y devolver un párrafo.
+  testWidgets(
+    'AssistantRecommendationCard con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        Scaffold(
+          body: AssistantRecommendationCard(
+            place: _stressPlace,
+            onOpenProfile: () {},
+            onShowOnMap: () {},
+          ),
+        ),
+        'AssistantRecommendationCard',
+      );
+    },
+  );
+
+  testWidgets('AssistantItineraryCard con contenido extremo no desborda', (
+    tester,
+  ) async {
+    await expectNoOverflow(
+      tester,
+      Scaffold(
+        body: SingleChildScrollView(
+          child: AssistantItineraryCard(
+            itinerary: _stressItinerary,
+            placeResolver: (_) => _stressPlace,
+            onSave: () {},
+            isSaving: false,
+            isSaved: false,
+          ),
+        ),
+      ),
+      'AssistantItineraryCard',
+    );
+  });
+
   testWidgets('ProfileScreen no desborda en pantallas pequeñas', (
     tester,
   ) async {
@@ -552,6 +652,21 @@ void main() {
       tester,
       const RegisterBusinessWizard(),
       'RegisterBusinessWizard',
+    );
+  });
+
+  testWidgets('RegisterBusinessWizard con pase de día activo no desborda '
+      '(Paso 3, categoría Hospedaje)', (tester) async {
+    // category: 'Hospedaje' es lo que revela la tarjeta "Pase de día" en
+    // el wizard — _stressBusiness usa otra categoría a propósito para no
+    // mezclar ambos casos de estrés.
+    await expectNoOverflow(
+      tester,
+      RegisterBusinessWizard(
+        existingBusiness: _stressBusiness.copyWith(category: 'Hospedaje'),
+        initialStep: 2,
+      ),
+      'RegisterBusinessWizard (Paso 3, pase de día)',
     );
   });
 }

@@ -7,9 +7,11 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/features/business/data/business_post_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
+import 'package:nikara_app/features/business/domain/models/business_post_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
@@ -330,7 +332,11 @@ class _CoverCaption extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        DetailCoverTagPill(label: business.category),
+        DetailCoverTagPill(
+          label: business.subcategory.isEmpty
+              ? business.category
+              : '${business.subcategory} · ${business.category}',
+        ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -435,6 +441,36 @@ class _InformationTab extends StatefulWidget {
 
 class _InformationTabState extends State<_InformationTab> {
   bool _showAllActivities = false;
+  List<BusinessPostModel> _posts = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosts();
+  }
+
+  @override
+  void didUpdateWidget(_InformationTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.business.id != widget.business.id) _loadPosts();
+  }
+
+  /// Anuncios es contenido secundario del detalle: si falla la carga, la
+  /// sección simplemente no aparece en vez de tumbar el resto de la
+  /// pantalla con un error.
+  Future<void> _loadPosts() async {
+    // 'draft' = BusinessModel armado por el wizard para "Vista previa", sin
+    // fila real en Supabase — no tiene anuncios que cargar.
+    if (widget.business.id == 'draft') return;
+    try {
+      final posts = await BusinessPostService().getPostsForBusiness(
+        widget.business.id,
+      );
+      if (mounted) setState(() => _posts = posts);
+    } on BusinessPostServiceException {
+      // Se queda en la lista vacía (ver doc de arriba).
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -458,7 +494,9 @@ class _InformationTabState extends State<_InformationTab> {
     ];
 
     final sections = <Widget>[
+      if (_posts.isNotEmpty) _AnnouncementsSection(posts: _posts),
       _DescriptionSection(business: business),
+      if (business.dayPassEnabled) _DayPassSection(business: business),
       if (business.activities.isNotEmpty)
         _ActivitiesSection(
           activities: business.activities,
@@ -765,6 +803,225 @@ class _ServicesSection extends StatelessWidget {
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta informativa, no un CTA de reserva: igual que el resto del
+/// detalle, termina en el mismo botón de WhatsApp de [_ContactBar] — el
+/// flujo de reservas en vivo se eliminó por completo en agosto 2026.
+class _DayPassSection extends StatelessWidget {
+  const _DayPassSection({required this.business});
+
+  final BusinessModel business;
+
+  void _contact(BuildContext context) {
+    launchWhatsApp(
+      context,
+      business.contactPhone,
+      message:
+          'Hola, vi el pase de día de ${business.name} en Níkara y me '
+          'gustaría más información.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final price = business.dayPassPrice;
+    return DetailSection(
+      title: 'Pase de día',
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.mapControlBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (price != null)
+              Text(
+                '\$${price.toStringAsFixed(price % 1 == 0 ? 0 : 2)} por persona',
+                style: AppTextStyles.detailActivityLabel.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            if (business.dayPassIncludes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final item in business.dayPassIncludes)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.settingsBackground,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            amenityIcon(item),
+                            size: 15,
+                            color: AppColors.settingsTextMuted,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              item,
+                              style: AppTextStyles.detailServicePill,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            if (business.dayPassSchedule.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 15,
+                    color: AppColors.settingsTextMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      business.dayPassSchedule,
+                      style: AppTextStyles.detailDescriptionText,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (business.dayPassNotes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 15,
+                    color: AppColors.settingsTextMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      business.dayPassNotes,
+                      style: AppTextStyles.detailDescriptionText.copyWith(
+                        color: AppColors.settingsTextMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: business.contactPhone.isEmpty
+                  ? null
+                  : () => _contact(context),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Preguntar por el pase de día',
+                      style: AppTextStyles.detailInlineLink,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 15,
+                    color: AppColors.oliveText,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Canal de novedades del negocio ("promo del día", un pase de día puntual,
+/// un evento, un aviso de cierre) — publicado manualmente por el dueño desde
+/// `ManageBusinessPostsScreen`. No lleva "editar"/"borrar" acá: esa gestión
+/// vive solo en el flujo del dueño, esta es la vista pública de solo lectura.
+class _AnnouncementsSection extends StatelessWidget {
+  const _AnnouncementsSection({required this.posts});
+
+  final List<BusinessPostModel> posts;
+
+  @override
+  Widget build(BuildContext context) {
+    return DetailSection(
+      title: 'Anuncios',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < posts.length; i++) ...[
+            _AnnouncementCard(post: posts[i]),
+            if (i != posts.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementCard extends StatelessWidget {
+  const _AnnouncementCard({required this.post});
+
+  final BusinessPostModel post;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.mapControlBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            post.relativeTime(),
+            style: AppTextStyles.wizardCaption.copyWith(
+              color: AppColors.settingsTextMuted,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(post.body, style: AppTextStyles.detailDescriptionText),
+          if (post.imageUrl != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: LocalImage(path: post.imageUrl),
+              ),
+            ),
+          ],
         ],
       ),
     );

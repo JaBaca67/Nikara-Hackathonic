@@ -2,6 +2,97 @@ import 'package:flutter/material.dart';
 
 import 'package:nikara_app/theme/app_colors.dart';
 
+/// Subcategorías por categoría de nivel superior, para el segundo picker del
+/// wizard (Paso 1, debajo del de categoría). Texto libre igual que
+/// `category` — este set es solo el curado que ofrece la UI, nunca un enum
+/// de Postgres, para que una subcategoría nueva no necesite migración.
+const Map<String, List<String>> subcategoryPresetsByCategory = {
+  'Hospedaje': [
+    'Hotel',
+    'Hostal',
+    'Eco-lodge',
+    'Cabañas/Bungalows',
+    'Finca turística',
+    'Hospedaje familiar',
+    'Camping/Glamping',
+  ],
+  'Restaurante': [
+    'Restaurante',
+    'Comedor típico',
+    'Cafetería',
+    'Repostería',
+    'Food truck',
+  ],
+  'Tour': [
+    'Tour operador',
+    'Deportes acuáticos',
+    'Senderismo/volcán',
+    'Canopy/zip-line',
+    'Pesca deportiva',
+    'City tour',
+  ],
+  'Eco-destino': ['Reserva natural', 'Mirador', 'Cascada', 'Playa', 'Sendero'],
+  'Cultura': [
+    'Taller artesanal',
+    'Museo/sitio histórico',
+    'Galería de arte',
+    'Turismo comunitario/indígena',
+    'Sitio arqueológico',
+  ],
+  'Transporte': [
+    'Alquiler de vehículos',
+    'Alquiler de motos/bicicletas',
+    'Traslados/shuttle',
+    'Lancha/ferry',
+  ],
+  'Bienestar': [
+    'Spa',
+    'Masajes',
+    'Retiro de yoga',
+    'Medicina natural/temazcal',
+  ],
+  'Eventos': [
+    'Evento cultural',
+    'Festival local',
+    'Concierto/música en vivo',
+    'Feria gastronómica/artesanal',
+  ],
+  'Compras y mercados': [
+    'Mercado artesanal',
+    'Mercado municipal',
+    'Tienda de souvenirs',
+    'Boutique local',
+  ],
+  'Agroturismo / Fincas': [
+    'Finca cafetalera',
+    'Finca cacaotera',
+    'Finca ganadera',
+    'Vivero/finca agrícola',
+  ],
+  'Servicios para el viajero': [
+    'Cambio de moneda',
+    'Farmacia/clínica',
+    'Cajero automático',
+    'Gasolinera',
+    'SIM/internet',
+  ],
+};
+
+/// `[]` para una categoría sin preset (ej. dato legacy con categoría custom).
+List<String> subcategoriesFor(String category) =>
+    subcategoryPresetsByCategory[category] ?? const [];
+
+/// Chips de "qué incluye" para la tarjeta de Pase de día del wizard (solo
+/// categoría Hospedaje) y su despliegue en BusinessDetailScreen.
+const List<String> dayPassIncludesPresets = [
+  'Piscina',
+  'Playa',
+  'Almuerzo incluido',
+  'Bebida de bienvenida',
+  'Toallas',
+  'Acceso a spa',
+];
+
 /// Compartido entre el picker del wizard y BusinessDetailScreen para que ambos usen el mismo glifo.
 IconData amenityIcon(String label) {
   final key = label.toLowerCase();
@@ -178,7 +269,15 @@ MapPinCategory mapPinCategoryFor(String category) {
       key.contains('agua')) {
     return MapPinCategory.water;
   }
-  if (key.contains('tour')) return MapPinCategory.tour;
+  // `turismo` y `mirador` van acá explícitamente: "tour" no es substring de
+  // "turismo", así que "Turismo y Miradores" —la categoría de varios datos
+  // semilla— caía en `general` y se mostraba como "Otros" tanto en el filtro
+  // de Inicio como en su pin del mapa.
+  if (key.contains('tour') ||
+      key.contains('turismo') ||
+      key.contains('mirador')) {
+    return MapPinCategory.tour;
+  }
   if (key.contains('eco') ||
       key.contains('sender') ||
       key.contains('bosque') ||
@@ -212,4 +311,33 @@ bool isVideoPath(String path) {
       lower.endsWith('.mkv') ||
       lower.endsWith('.webm') ||
       lower.endsWith('.m4v');
+}
+
+/// Etiqueta corta en español de una familia de pin, para el filtro por
+/// categoría de Inicio.
+///
+/// Son nombres de **familia**, no la `businesses.category` que escribió el
+/// dueño: esa es texto libre y produce etiquetas como "Artesanía y Alfarería"
+/// que no entran en un chip sin cortarse. Agrupar acá además hace que el
+/// filtro de Inicio y los pines del Mapa hablen el mismo idioma — el usuario
+/// ve el mismo glifo en los dos lados.
+String mapPinCategoryLabel(MapPinCategory category) {
+  switch (category) {
+    case MapPinCategory.food:
+      return 'Comida';
+    case MapPinCategory.water:
+      return 'Agua';
+    case MapPinCategory.tour:
+      return 'Tours';
+    case MapPinCategory.eco:
+      return 'ECO';
+    case MapPinCategory.craft:
+      return 'Cultura';
+    case MapPinCategory.lodging:
+      return 'Hospedaje';
+    case MapPinCategory.transport:
+      return 'Transporte';
+    case MapPinCategory.general:
+      return 'Otros';
+  }
 }

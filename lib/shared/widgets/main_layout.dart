@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_main_screen.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/features/home/presentation/widgets/main_navigation_bar.dart';
@@ -107,6 +108,11 @@ class _MainLayoutState extends State<MainLayout> {
     4: GuestFeature.perfil,
   };
 
+  /// Tabs donde aparece el lanzador del asistente: Inicio y Mapa. Son las dos
+  /// donde recomendar un lugar tiene contexto; en Rutas, ECO y Perfil el botón
+  /// competiría con los CTA propios de esas pantallas.
+  static const _assistantTabs = {0, _mapTabIndex};
+
   void _onNavTap(int index) {
     final gated = _guestGatedTabs[index];
     if (_isGuest && gated != null) {
@@ -155,6 +161,21 @@ class _MainLayoutState extends State<MainLayout> {
         builder: (context, navigating, child) =>
             navigating ? const SizedBox.shrink() : child!,
         child: MainNavigationBar(currentIndex: _currentIndex, onTap: _onNavTap),
+      ),
+      // El lanzador del asistente vive acá y no dentro de Inicio/Mapa por dos
+      // razones: `map_screen` ya maneja cinco capas de chrome flotante con sus
+      // propios estados (navegación, preview de viaje, carrusel) y meterle un
+      // botón más es buscar un conflicto de layout; y así la regla de "en qué
+      // tabs aparece" se lee en un solo lugar.
+      floatingActionButton: ValueListenableBuilder<bool>(
+        valueListenable: MapFocusController().navigationActive,
+        builder: (context, navigating, _) {
+          // Durante la navegación en vivo la pantalla es para manejar, no para
+          // conversar — igual que el bottom-nav, el asistente desaparece.
+          final visible = !navigating && _assistantTabs.contains(_currentIndex);
+          if (!visible) return const SizedBox.shrink();
+          return const AssistantFab();
+        },
       ),
     );
   }

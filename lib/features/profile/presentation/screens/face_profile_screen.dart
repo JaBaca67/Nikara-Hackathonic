@@ -4,6 +4,7 @@ import 'package:nikara_app/core/models/profile_face.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
+import 'package:nikara_app/features/business/presentation/screens/manage_business_posts_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
@@ -484,6 +485,16 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
         title: 'Ver como lo ven los viajeros',
         subtitle: 'Abre tu perfil público tal cual se publica',
         onTap: () => _openBusinessPreview(business),
+      ),
+      const SizedBox(height: AppSpacing.sm),
+      ManageRow(
+        icon: Icons.campaign_outlined,
+        title: 'Publicar anuncios',
+        subtitle: 'Promos, pases de día puntuales, eventos, avisos',
+        onTap: () => pushSharedAxis(
+          context,
+          ManageBusinessPostsScreen(business: business),
+        ),
       ),
       const SizedBox(height: AppSpacing.xl),
       Center(

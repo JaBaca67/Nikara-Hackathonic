@@ -14,6 +14,7 @@ class BusinessModel {
     required this.id,
     required this.name,
     required this.category,
+    this.subcategory = '',
     required this.description,
     required this.city,
     required this.locationText,
@@ -27,6 +28,11 @@ class BusinessModel {
     this.activities = const [],
     this.ecoSealRequested = false,
     this.ecoPractices = const [],
+    this.dayPassEnabled = false,
+    this.dayPassPrice,
+    this.dayPassIncludes = const [],
+    this.dayPassSchedule = '',
+    this.dayPassNotes = '',
     required this.hostName,
     this.logoUrl,
     this.showHost = true,
@@ -46,6 +52,11 @@ class BusinessModel {
   final String id;
   final String name;
   final String category;
+
+  /// Texto libre, presets por categoría en
+  /// `subcategoryPresetsByCategory` (business_icons.dart). Vacío en
+  /// negocios registrados antes de esta columna.
+  final String subcategory;
   final String description;
 
   /// Etiqueta corta de ciudad/municipio (ej. "Masaya"); nunca la dirección completa.
@@ -68,6 +79,19 @@ class BusinessModel {
 
   /// Prácticas de sostenibilidad marcadas por el dueño; el wizard exige al menos 2 para mostrar "por verificar", pero es solo un hint de UI, no hay workflow de revisión admin todavía.
   final List<String> ecoPractices;
+
+  /// Pase de día (solo categoría Hospedaje): tarjeta informativa en el
+  /// detalle, nunca un sistema de reservas — el flujo de reservas en vivo se
+  /// eliminó por completo en agosto 2026 (ver `_ContactBar` en
+  /// `business_detail_screen.dart`). El turista contacta por WhatsApp igual
+  /// que para cualquier otra pregunta sobre el negocio.
+  final bool dayPassEnabled;
+  final double? dayPassPrice;
+  final List<String> dayPassIncludes;
+  final String dayPassSchedule;
+
+  /// Cupo/restricciones en texto libre; informativo, no enforced por la app.
+  final String dayPassNotes;
 
   final String hostName;
 
@@ -126,6 +150,7 @@ class BusinessModel {
   BusinessModel copyWith({
     String? name,
     String? category,
+    String? subcategory,
     String? description,
     String? city,
     String? locationText,
@@ -139,6 +164,11 @@ class BusinessModel {
     List<String>? activities,
     bool? ecoSealRequested,
     List<String>? ecoPractices,
+    bool? dayPassEnabled,
+    double? dayPassPrice,
+    List<String>? dayPassIncludes,
+    String? dayPassSchedule,
+    String? dayPassNotes,
     String? hostName,
     String? logoUrl,
     bool? showHost,
@@ -158,6 +188,7 @@ class BusinessModel {
       id: id,
       name: name ?? this.name,
       category: category ?? this.category,
+      subcategory: subcategory ?? this.subcategory,
       description: description ?? this.description,
       city: city ?? this.city,
       locationText: locationText ?? this.locationText,
@@ -171,6 +202,11 @@ class BusinessModel {
       activities: activities ?? this.activities,
       ecoSealRequested: ecoSealRequested ?? this.ecoSealRequested,
       ecoPractices: ecoPractices ?? this.ecoPractices,
+      dayPassEnabled: dayPassEnabled ?? this.dayPassEnabled,
+      dayPassPrice: dayPassPrice ?? this.dayPassPrice,
+      dayPassIncludes: dayPassIncludes ?? this.dayPassIncludes,
+      dayPassSchedule: dayPassSchedule ?? this.dayPassSchedule,
+      dayPassNotes: dayPassNotes ?? this.dayPassNotes,
       hostName: hostName ?? this.hostName,
       logoUrl: logoUrl ?? this.logoUrl,
       showHost: showHost ?? this.showHost,
@@ -192,6 +228,7 @@ class BusinessModel {
     'id': id,
     'name': name,
     'category': category,
+    'subcategory': subcategory,
     'description': description,
     'city': city,
     'locationText': locationText,
@@ -205,6 +242,11 @@ class BusinessModel {
     'activities': activities,
     'ecoSealRequested': ecoSealRequested,
     'ecoPractices': ecoPractices,
+    'dayPassEnabled': dayPassEnabled,
+    'dayPassPrice': dayPassPrice,
+    'dayPassIncludes': dayPassIncludes,
+    'dayPassSchedule': dayPassSchedule,
+    'dayPassNotes': dayPassNotes,
     'hostName': hostName,
     'logoUrl': logoUrl,
     'showHost': showHost,
@@ -226,6 +268,7 @@ class BusinessModel {
       id: json['id'] as String,
       name: json['name'] as String,
       category: json['category'] as String,
+      subcategory: json['subcategory'] as String? ?? '',
       description: json['description'] as String,
       // Negocios guardados antes del split ciudad/dirección solo tienen locationText; se usa como fallback hasta que el dueño edite.
       city: json['city'] as String? ?? json['locationText'] as String? ?? '',
@@ -243,6 +286,13 @@ class BusinessModel {
       ecoSealRequested: json['ecoSealRequested'] as bool? ?? false,
       ecoPractices:
           (json['ecoPractices'] as List<dynamic>?)?.cast<String>() ?? const [],
+      dayPassEnabled: json['dayPassEnabled'] as bool? ?? false,
+      dayPassPrice: (json['dayPassPrice'] as num?)?.toDouble(),
+      dayPassIncludes:
+          (json['dayPassIncludes'] as List<dynamic>?)?.cast<String>() ??
+          const [],
+      dayPassSchedule: json['dayPassSchedule'] as String? ?? '',
+      dayPassNotes: json['dayPassNotes'] as String? ?? '',
       hostName: json['hostName'] as String,
       logoUrl: json['logoUrl'] as String?,
       showHost: json['showHost'] as bool? ?? true,

@@ -8,6 +8,11 @@
 /// esto rompa nada: si alguna fila vieja lo tuviera, [_roleFromString] lo
 /// degrada a `turista` por el mismo `default` que ya cubre cualquier valor
 /// desconocido.
+///
+/// Que el valor sea inofensivo recién es cierto desde `034`: hasta entonces
+/// los tres RPC de revisión (019) seguían aceptando `'auditor'` como rol
+/// autorizado, así que una fila con ese valor podía aprobar negocios,
+/// fundaciones y jornadas aunque la app ya no lo reconociera.
 enum UserRole { turista, emprendedor, admin }
 
 UserRole _roleFromString(String? raw) {

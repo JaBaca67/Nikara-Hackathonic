@@ -307,7 +307,10 @@ class AdminBusinessCard extends StatelessWidget {
               Text(
                 business.category.isEmpty
                     ? business.locationLabel
-                    : '${business.category} · ${business.locationLabel}',
+                    : business.subcategory.isEmpty
+                    ? '${business.category} · ${business.locationLabel}'
+                    : '${business.subcategory} · ${business.category} · '
+                          '${business.locationLabel}',
                 style: AppTextStyles.settingsRowCaption.copyWith(
                   color: AppColors.settingsTextMuted,
                 ),

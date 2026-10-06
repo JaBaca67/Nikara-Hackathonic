@@ -15,6 +15,7 @@ import 'package:nikara_app/features/business/data/business_storage_service.dart'
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
@@ -29,6 +30,11 @@ import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todos';
+
+/// Cuántas tarjetas muestra la grilla "Explorá todos" antes de pedir "Cargar
+/// más". Seis son tres filas de dos, suficiente para que se entienda que hay
+/// una grilla sin alargar el scroll de Inicio de entrada.
+const int _kGridPageSize = 6;
 
 enum _SortMode { recientes, cercanos }
 
@@ -74,7 +80,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _photoTimer;
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
-  String _selectedCategory = _kAllCategories;
+
+  /// Familia de categoría seleccionada en el filtro; null es "Todos".
+  ///
+  /// Se filtra por familia y no por el texto literal de `businesses.category`
+  /// porque esa columna es libre: hoy conviven categorías del wizard actual
+  /// ("Hospedaje", "Eco-destino") con las de los datos semilla ("Artesanía y
+  /// Alfarería", "Cultura y Patrimonio"), así que un filtro por igualdad exacta
+  /// parte en dos un mismo rubro.
+  MapPinCategory? _selectedFamily;
+
+  /// Cuántas tarjetas de la grilla están visibles ahora mismo.
+  int _gridLimit = _kGridPageSize;
+
   String _searchQuery = '';
   _SortMode _sortMode = _SortMode.recientes;
 
@@ -237,10 +255,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openWizard() => openBusinessRegistrationFlow(context);
 
-  List<String> _availableCategories(List<BusinessModel> businesses) {
-    final categories = businesses.map((b) => b.category).toSet().toList()
-      ..sort();
-    return [_kAllCategories, ...categories];
+  /// Las familias que de verdad tienen algún negocio, en el orden fijo del
+  /// enum. Mostrar una familia vacía sería ofrecer un filtro que devuelve
+  /// "no hay nada" — peor que no ofrecerlo.
+  List<MapPinCategory> _availableFamilies(List<BusinessModel> businesses) {
+    final present = businesses
+        .map((b) => mapPinCategoryFor(b.category))
+        .toSet();
+    return MapPinCategory.values
+        .where(present.contains)
+        .toList(growable: false);
   }
 
   /// Búsqueda básica: coincide si el texto aparece en el nombre, la ciudad o
@@ -261,9 +285,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<BusinessModel> _visibleBusinesses(List<BusinessModel> businesses) {
     final searched = _searchFiltered(businesses);
-    final filtered = _selectedCategory == _kAllCategories
+    final family = _selectedFamily;
+    final filtered = family == null
         ? searched
-        : searched.where((b) => b.category == _selectedCategory).toList();
+        : searched
+              .where((b) => mapPinCategoryFor(b.category) == family)
+              .toList();
     if (_sortMode == _SortMode.recientes) {
       return filtered.reversed.toList(growable: false);
     }
@@ -351,7 +378,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final heroIndex = heroBusinesses.isEmpty
         ? 0
         : _heroIndex.clamp(0, heroBusinesses.length - 1);
-    final categories = _availableCategories(businesses);
+    final families = _availableFamilies(businesses);
     final visible = _visibleBusinesses(businesses);
 
     // El realtime de `_unsubscribeBusinessChanges` cubre negocios de otras
@@ -375,6 +402,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
               ),
+            // El filtro va pegado al buscador y por encima del carrusel: los
+            // dos son controles de "qué estoy viendo", así que viven juntos
+            // arriba en vez de quedar uno a cada lado del hero.
+            const SizedBox(height: AppSpacing.md),
+            _CategoryIconsRow(
+              families: families,
+              selected: _selectedFamily,
+              onSelect: (family) => setState(() {
+                _selectedFamily = family;
+                // Cambiar de filtro reinicia la paginación: si no, al pasar
+                // de una familia con 20 negocios a una con 3, la grilla
+                // quedaría "cargada" mostrando menos de lo que cabe.
+                _gridLimit = _kGridPageSize;
+              }),
+            ),
             if (heroBusinesses.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -391,27 +433,40 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-            const SizedBox(height: 16),
-            _CategoryChipsRow(
-              categories: categories,
-              selected: _selectedCategory,
-              onSelect: (category) =>
-                  setState(() => _selectedCategory = category),
-            ),
             _DestacadosSection(
               businesses: visible,
               userPosition: _userPosition,
               onTap: _openBusinessDetail,
-              onSeeAll: _selectedCategory == _kAllCategories
+              onSeeAll: _selectedFamily == null
                   ? null
-                  : () => setState(() => _selectedCategory = _kAllCategories),
+                  : () => setState(() {
+                      _selectedFamily = null;
+                      _gridLimit = _kGridPageSize;
+                    }),
             ),
+            // Recibe `visible` y no la lista completa: así respeta el filtro
+            // de categoría y la búsqueda, igual que las otras dos secciones.
+            // Antes ignoraba ambos y mostraba lo más cercano aunque no
+            // tuviera nada que ver con lo que el usuario estaba filtrando.
             if (_userPosition case final position?)
               _CercaDeTiSection(
-                businesses: businesses,
+                businesses: visible,
                 userPosition: position,
                 onTap: _openBusinessDetail,
               ),
+            // Cierra el feed con todo lo que hay.
+            //
+            // Es además la red de seguridad del layout: "Cerca de ti"
+            // desaparece entera sin GPS, así que sin esta grilla un usuario
+            // que niegue el permiso de ubicación solo vería los carruseles
+            // horizontales.
+            _ExploreGridSection(
+              businesses: visible,
+              userPosition: _userPosition,
+              limit: _gridLimit,
+              onTap: _openBusinessDetail,
+              onLoadMore: () => setState(() => _gridLimit += _kGridPageSize),
+            ),
           ],
         ),
       ),
@@ -544,68 +599,130 @@ class _SortOption extends StatelessWidget {
   }
 }
 
-class _CategoryChipsRow extends StatelessWidget {
-  const _CategoryChipsRow({
-    required this.categories,
+/// Filtro por familia de categoría: ícono + etiqueta corta, en scroll
+/// horizontal.
+///
+/// Reemplazó a una fila de pills con el texto literal de `businesses.category`.
+/// El cambio no es estético: esa columna es libre y produce etiquetas como
+/// "Artesanía y Alfarería" o "Cultura y Patrimonio", que no entran en un chip
+/// y se cortaban. Agrupar por familia además alinea este filtro con los pines
+/// del Mapa — el mismo glifo significa lo mismo en las dos pantallas.
+class _CategoryIconsRow extends StatelessWidget {
+  const _CategoryIconsRow({
+    required this.families,
     required this.selected,
     required this.onSelect,
   });
 
-  final List<String> categories;
-  final String selected;
-  final ValueChanged<String> onSelect;
+  final List<MapPinCategory> families;
+
+  /// null es "Todos".
+  final MapPinCategory? selected;
+  final ValueChanged<MapPinCategory?> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    if (categories.length <= 1) return const SizedBox.shrink();
+    // Con una sola familia el filtro no filtra nada.
+    if (families.length <= 1) return const SizedBox.shrink();
+
     return SizedBox(
-      height: 36,
+      height: 76,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         physics: const ClampingScrollPhysics(),
-        itemCount: categories.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        // +1 por "Todos", que no es una familia sino la ausencia de filtro.
+        itemCount: families.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.lg),
         itemBuilder: (context, index) {
-          final category = categories[index];
-          final isSelected = category == selected;
-          return GestureDetector(
-            onTap: () => onSelect(category),
-            child: AnimatedContainer(
-              duration: AppMotion.quickDuration,
-              padding: const EdgeInsets.symmetric(horizontal: 15),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary500 : AppColors.surface100,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-                border: isSelected
-                    ? null
-                    : Border.all(
-                        color: AppColors.settingsTextDark.withValues(
-                          alpha: 0.08,
-                        ),
-                      ),
-                boxShadow: isSelected
-                    ? const [
-                        BoxShadow(
-                          color: AppColors.detailSegmentGlow,
-                          offset: Offset(0, 2),
-                          blurRadius: 8,
-                        ),
-                      ]
-                    : null,
+          if (index == 0) {
+            return _CategoryIcon(
+              icon: Icons.grid_view_rounded,
+              label: _kAllCategories,
+              isSelected: selected == null,
+              onTap: () => onSelect(null),
+            );
+          }
+          final family = families[index - 1];
+          return _CategoryIcon(
+            icon: mapPinIcon(family),
+            label: mapPinCategoryLabel(family),
+            isSelected: selected == family,
+            onTap: () => onSelect(family),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: 'Filtrar por $label',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        child: SizedBox(
+          // 56 de ancho deja el target táctil por encima del mínimo accesible
+          // contando el alto de la fila.
+          width: 60,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: AppMotion.quickDuration,
+                curve: AppMotion.standard,
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  // Gold marca la selección, igual que el resto de los
+                  // filtros de la app; sin seleccionar es superficie neutra.
+                  color: isSelected ? AppColors.goldFill : AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: isSelected
+                      ? null
+                      : Border.all(color: AppColors.border),
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  // Sobre un relleno de marca va tinta oscura, nunca blanco.
+                  color: isSelected
+                      ? AppColors.textPrimary
+                      : AppColors.settingsTextMuted,
+                ),
               ),
-              child: Text(
-                category,
+              const SizedBox(height: AppSpacing.xs + 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: AppTextStyles.homeChipLabel.copyWith(
                   color: isSelected
                       ? AppColors.settingsTextDark
                       : AppColors.settingsTextMuted,
                 ),
               ),
-            ),
-          );
-        },
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1037,6 +1154,16 @@ class _DestacadoCard extends StatelessWidget {
 }
 
 /// "Cerca de ti": lista ordenada por distancia real. Solo se renderiza si hay posición GPS; sin ella no existe la sección en vez de mostrar distancias inventadas.
+/// "Cerca de ti": carrusel horizontal ordenado por distancia real.
+///
+/// Solo existe si hay posición GPS — sin ella no hay "cerca", y mostrar la
+/// sección con distancias inventadas sería peor que no mostrarla. El listado
+/// completo sin GPS lo cubre [_ExploreGridSection].
+///
+/// Pasó de lista vertical a carrusel para que las tres secciones de negocios
+/// de Inicio (Destacados, esta y Explorá todos) tengan la misma gramática:
+/// dos carruseles para recorrer y una grilla para abarcar. En vertical, con
+/// cinco filas apiladas, era la sección que más scroll consumía.
 class _CercaDeTiSection extends StatelessWidget {
   const _CercaDeTiSection({
     required this.businesses,
@@ -1047,6 +1174,10 @@ class _CercaDeTiSection extends StatelessWidget {
   final List<BusinessModel> businesses;
   final Position userPosition;
   final ValueChanged<BusinessModel> onTap;
+
+  /// Ocho y no cinco: al scrollear en horizontal el costo de uno más es un
+  /// gesto, no una pantalla entera de scroll.
+  static const _maxItems = 8;
 
   List<BusinessModel> get _nearest {
     final withDistance = [...businesses]
@@ -1064,16 +1195,19 @@ class _CercaDeTiSection extends StatelessWidget {
         )!;
         return da.compareTo(db);
       });
-    return withDistance.take(5).toList(growable: false);
+    return withDistance.take(_maxItems).toList(growable: false);
   }
 
   @override
   Widget build(BuildContext context) {
     final nearest = _nearest;
+    // Con el filtro de categoría puesto puede no quedar nada con
+    // coordenadas; entonces la sección no se dibuja en vez de mostrar un
+    // título sobre un vacío.
     if (nearest.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.md),
+      padding: const EdgeInsets.only(top: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1082,137 +1216,38 @@ class _CercaDeTiSection extends StatelessWidget {
             child: Text('Cerca de ti', style: AppTextStyles.homeSectionTitle),
           ),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: Column(
-              children: [
-                for (final (index, business) in nearest.indexed)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child:
-                        _NearbyRow(
-                              business: business,
-                              locationLabel: _cityWithDistance(
-                                userPosition,
-                                business,
-                              ),
-                              onTap: () => onTap(business),
-                            )
-                            .animate(delay: AppMotion.microDuration * index)
-                            .fadeIn(
-                              duration: AppMotion.standardDuration,
-                              curve: AppMotion.enter,
-                            )
-                            .slideY(
-                              begin: 0.08,
-                              duration: AppMotion.standardDuration,
-                              curve: AppMotion.enter,
-                            ),
-                  ),
-              ],
+          SizedBox(
+            // Misma altura que Destacados: las dos filas son el mismo
+            // componente con otro criterio de orden, y cualquier diferencia
+            // de alto se leería como un error de alineación.
+            height: 151,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              physics: const ClampingScrollPhysics(),
+              itemCount: nearest.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final business = nearest[index];
+                return _DestacadoCard(
+                      business: business,
+                      locationLabel: _cityWithDistance(userPosition, business),
+                      onTap: () => onTap(business),
+                    )
+                    .animate(delay: AppMotion.microDuration * index)
+                    .fadeIn(
+                      duration: AppMotion.standardDuration,
+                      curve: AppMotion.enter,
+                    )
+                    .slideX(
+                      begin: 0.08,
+                      duration: AppMotion.standardDuration,
+                      curve: AppMotion.enter,
+                    );
+              },
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NearbyRow extends StatelessWidget {
-  const _NearbyRow({
-    required this.business,
-    required this.locationLabel,
-    required this.onTap,
-  });
-
-  final BusinessModel business;
-  final String locationLabel;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final imagePath = business.localImagePaths.isNotEmpty
-        ? business.localImagePaths.first
-        : null;
-    final isEco = business.category.toLowerCase().contains('eco');
-
-    return Semantics(
-      button: true,
-      label: '${business.name}, $locationLabel',
-      child: Material(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            decoration: BoxDecoration(
-              // Mismo motivo que en la tarjeta de "Destacados": el relleno
-              // manda la sombra dorada detrás de la tarjeta, no encima.
-              color: AppColors.surface100,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.mapControlBorder),
-              boxShadow: const [
-                BoxShadow(
-                  color: AppColors.cardGlowSoft,
-                  offset: Offset(0, 2),
-                  blurRadius: 8,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: SizedBox(
-                    width: 52,
-                    height: 46,
-                    child: LocalImage(
-                      path: imagePath,
-                      fallbackIcon: Icons.storefront_outlined,
-                      fallbackIconSize: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        business.name,
-                        style: AppTextStyles.homeCardTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              locationLabel,
-                              style: AppTextStyles.homeCardLocation,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (isEco) ...[
-                            const SizedBox(width: 6),
-                            const EcoBadge(),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _FavoriteButton(businessId: business.id, size: 32),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1403,6 +1438,255 @@ class _LoadErrorState extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppRadius.md),
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+/// "Explorá todos": grilla de dos columnas con paginación, debajo del
+/// carrusel de Destacados.
+///
+/// Resuelve un problema concreto del layout anterior: el único listado
+/// completo de negocios era "Cerca de ti", que toma como mucho 5 y
+/// **desaparece entera sin posición GPS**. Un usuario que negara el permiso
+/// de ubicación solo veía el carrusel horizontal y nada más, por muchos
+/// negocios que hubiera registrados. Esta sección no depende del GPS: la
+/// distancia es un dato opcional de cada tarjeta, no la condición para
+/// mostrarla.
+class _ExploreGridSection extends StatelessWidget {
+  const _ExploreGridSection({
+    required this.businesses,
+    required this.userPosition,
+    required this.limit,
+    required this.onTap,
+    required this.onLoadMore,
+  });
+
+  final List<BusinessModel> businesses;
+  final Position? userPosition;
+  final int limit;
+  final ValueChanged<BusinessModel> onTap;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    if (businesses.isEmpty) return const SizedBox.shrink();
+
+    final visible = businesses.take(limit).toList(growable: false);
+    final hasMore = businesses.length > visible.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Explorá todos',
+                    style: AppTextStyles.homeSectionTitle,
+                  ),
+                ),
+                Text(
+                  '${businesses.length}',
+                  style: AppTextStyles.homeSeeMore.copyWith(
+                    color: AppColors.settingsTextMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: GridView.builder(
+              // Vive dentro del scroll de Inicio, así que no scrollea por su
+              // cuenta: se deja medir completa.
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: AppSpacing.md,
+                mainAxisSpacing: AppSpacing.md,
+                // Alto fijo en vez de `childAspectRatio`: lo que necesita la
+                // tarjeta depende del texto, no del ancho de la pantalla, así
+                // que un ratio se desborda en pantallas angostas.
+                mainAxisExtent: 196,
+              ),
+              itemCount: visible.length,
+              itemBuilder: (context, index) {
+                final business = visible[index];
+                return _ExploreCard(
+                  business: business,
+                  subtitle: _cityWithDistance(userPosition, business),
+                  onTap: () => onTap(business),
+                );
+              },
+            ),
+          ),
+          if (hasMore) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Center(
+              child: OutlinedButton(
+                onPressed: onLoadMore,
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: AppColors.surface,
+                  side: BorderSide(color: AppColors.border),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                    vertical: AppSpacing.md,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                ),
+                child: Text(
+                  'Cargar más perfiles',
+                  style: AppTextStyles.homeSeeMore.copyWith(
+                    color: AppColors.settingsTextDark,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de la grilla. Más compacta que [_DestacadoCard] porque entra de a
+/// dos por fila.
+class _ExploreCard extends StatelessWidget {
+  const _ExploreCard({
+    required this.business,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final BusinessModel business;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cover = business.localImagePaths.isNotEmpty
+        ? business.localImagePaths.first
+        : business.logoUrl;
+    final family = mapPinCategoryFor(business.category);
+
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(AppRadius.md),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              children: [
+                SizedBox(
+                  height: 112,
+                  width: double.infinity,
+                  child: LocalImage(
+                    path: cover,
+                    fallbackIcon: Icons.storefront_outlined,
+                  ),
+                ),
+                // El badge de familia dice de qué es la tarjeta sin tener que
+                // leer el nombre, con el mismo glifo que su pin en el Mapa.
+                Positioned(
+                  top: AppSpacing.sm,
+                  left: AppSpacing.sm,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.sm,
+                      vertical: AppSpacing.xs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.goldFill,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          mapPinIcon(family),
+                          size: 11,
+                          // Sobre un Fill de marca va tinta oscura.
+                          color: AppColors.textPrimary,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          mapPinCategoryLabel(family),
+                          style: AppTextStyles.homeMiniBadge.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: AppSpacing.xs,
+                  right: AppSpacing.xs,
+                  child: _FavoriteButton(businessId: business.id, size: 28),
+                ),
+                if (business.ecoSealRequested)
+                  const Positioned(
+                    bottom: AppSpacing.sm,
+                    right: AppSpacing.sm,
+                    child: EcoBadge(),
+                  ),
+              ],
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      business.name,
+                      style: AppTextStyles.homeCardTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on,
+                          size: 12,
+                          color: AppColors.settingsTextMuted,
+                        ),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            subtitle,
+                            style: AppTextStyles.homeCardLocation,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -55,9 +55,9 @@ class AdminService {
   /// no arrastrar el `geography` de `location`, que llega como hex WKB y acá
   /// no se usa para nada.
   static const _businessColumns =
-      'id, owner_id, name, category, description, city, address_text, '
-      'phone, instagram_handle, facebook_handle, schedules, photos, '
-      'is_verified, status, rejection_reason, reviewed_at, created_at';
+      'id, owner_id, name, category, subcategory, description, city, '
+      'address_text, phone, instagram_handle, facebook_handle, schedules, '
+      'photos, is_verified, status, rejection_reason, reviewed_at, created_at';
 
   // ==================== Cola de revisión ====================
 
@@ -181,6 +181,7 @@ class AdminService {
             id: business.id,
             name: business.name,
             category: business.category,
+            subcategory: business.subcategory,
             description: business.description,
             city: business.city,
             addressText: business.addressText,
@@ -567,7 +568,7 @@ class AdminService {
   ///
   /// `P0001` es el `raise exception` de los propios RPC de revisión — el
   /// mensaje ya viene en español desde Postgres ("No autorizado: se requiere
-  /// rol admin o auditor"), así que se muestra tal cual en vez de envolverlo.
+  /// rol admin"), así que se muestra tal cual en vez de envolverlo.
   String _friendlyError(PostgrestException e, String action) {
     if (e.code == 'P0001') return e.message;
     if (e.code == '42501') {

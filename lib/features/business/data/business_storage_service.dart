@@ -522,11 +522,12 @@ class BusinessStorageService {
   }
 
   /// Columnas que pueden no existir todavía según qué migraciones ya corrió
-  /// cada entorno: `schedules`/`facebook_handle` (018) y el lote de
+  /// cada entorno: `schedules`/`facebook_handle` (018), el lote de
   /// `021_business_extras_columns.sql` (amenities/activities/eco_*/
-  /// access_details/other_notes/tiktok_handle). Se reintenta sin esas claves
-  /// en vez de impedir que se registre un negocio: el resto de los datos sí
-  /// se puede guardar.
+  /// access_details/other_notes/tiktok_handle), y el lote de
+  /// `037_business_subcategory_day_pass_posts.sql` (subcategory/day_pass_*).
+  /// Se reintenta sin esas claves en vez de impedir que se registre un
+  /// negocio: el resto de los datos sí se puede guardar.
   static const _softColumns = [
     'schedules',
     'facebook_handle',
@@ -537,6 +538,12 @@ class BusinessStorageService {
     'access_details',
     'other_notes',
     'tiktok_handle',
+    'subcategory',
+    'day_pass_enabled',
+    'day_pass_price',
+    'day_pass_includes',
+    'day_pass_schedule',
+    'day_pass_notes',
   ];
 
   static bool _isMissingSoftColumn(PostgrestException e) =>
@@ -601,6 +608,7 @@ class BusinessStorageService {
     return {
       'name': b.name,
       'category': b.category,
+      'subcategory': b.subcategory,
       'description': b.description,
       'city': b.city,
       'address_text': b.locationText,
@@ -616,6 +624,11 @@ class BusinessStorageService {
       'activities': b.activities,
       'eco_seal_requested': b.ecoSealRequested,
       'eco_practices': b.ecoPractices,
+      'day_pass_enabled': b.dayPassEnabled,
+      'day_pass_price': b.dayPassPrice,
+      'day_pass_includes': b.dayPassIncludes,
+      'day_pass_schedule': b.dayPassSchedule,
+      'day_pass_notes': b.dayPassNotes,
       'access_details': b.accessDetails,
       'other_notes': b.otherNotes,
       'logo_url': b.logoUrl,
@@ -642,6 +655,7 @@ class BusinessStorageService {
       ownerId: row['owner_id'] as String? ?? '',
       name: row['name'] as String? ?? '',
       category: row['category'] as String? ?? '',
+      subcategory: row['subcategory'] as String? ?? '',
       description: row['description'] as String? ?? '',
       city: row['city'] as String? ?? '',
       locationText: row['address_text'] as String? ?? '',
@@ -660,6 +674,13 @@ class BusinessStorageService {
       ecoSealRequested: row['eco_seal_requested'] as bool? ?? false,
       ecoPractices:
           (row['eco_practices'] as List<dynamic>?)?.cast<String>() ?? const [],
+      dayPassEnabled: row['day_pass_enabled'] as bool? ?? false,
+      dayPassPrice: (row['day_pass_price'] as num?)?.toDouble(),
+      dayPassIncludes:
+          (row['day_pass_includes'] as List<dynamic>?)?.cast<String>() ??
+          const [],
+      dayPassSchedule: row['day_pass_schedule'] as String? ?? '',
+      dayPassNotes: row['day_pass_notes'] as String? ?? '',
       accessDetails: row['access_details'] as String? ?? '',
       otherNotes: row['other_notes'] as String? ?? '',
       logoUrl: row['logo_url'] as String?,
