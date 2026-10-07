@@ -51,13 +51,12 @@ dependencies:
   google_maps_flutter: ^2.10.1
   geolocator: ^14.0.3
   # Already pulled in transitively (supabase_flutter -> gotrue/postgrest use
-  # it internally) — declared directly since DirectionsService imports it
-  # itself, to call the Google Directions API for "Cómo llegar" routing.
+  # it internally) — declared directly because test/eco_header_test.dart
+  # imports package:http/testing.dart to mock Supabase's httpClient.
   http: ^1.6.0
   # Turn-by-turn voice guidance during live navigation — see
   # lib/core/services/tts_service.dart.
   flutter_tts: ^4.2.5
-  flutter_dotenv: ^6.0.1
   firebase_core: ^4.14.0
   firebase_messaging: ^16.6.0
   flutter_local_notifications: ^22.3.0
@@ -117,7 +116,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
-    - .env
+    - assets/flags/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

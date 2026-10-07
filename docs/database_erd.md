@@ -32,6 +32,19 @@ RLS real habilitada — el resto del esquema valida pertenencia en Dart.
 | `role` | text | `turista` \| `emprendedor` \| `admin` \| `auditor` — nunca escribible directo por el cliente (ver `promote_to_emprendedor()`) |
 | `points` | int | default 0, sin flujo que lo escriba aún |
 | `avatar_url` | text, null | agregada en `013`; URL pública del bucket `avatars` de Storage. `015` otorga el `grant update` que le faltaba — sin él la columna era inescribible desde el cliente |
+| `residence_type` | text, null | `nicaraguan` o `foreign`; `039`, NULL para cuentas que aún deben completar procedencia |
+| `origin_country_code` | text, null | código del catálogo de países; Nicaragua = `NI` |
+| `origin_city` | text, null | obligatorio para nicaragüenses; máximo 100 caracteres |
+| `origin_municipality` | text, null | obligatorio para nicaragüenses; máximo 100 caracteres |
+| `public_display_name` | text | nombre público opcional; máximo 80 caracteres |
+| `bio` | text | presentación pública; máximo 300 caracteres |
+| `show_origin` | boolean | default true; al desactivar, la vista pública oculta todo el origen |
+| `show_origin_details` | boolean | default true; controla exposición de ciudad y municipio |
+
+Procedencia y privacidad: [user_origin.md](user_origin.md). La migración `039`
+extiende `public_profiles` con origen condicionado por visibilidad y `bio`;
+`full_name` usa el nombre público cuando se personaliza. La tabla conserva
+los datos reales privados y sus políticas RLS.
 
 ### `businesses`
 Negocios turísticos registrados vía el wizard "Registra tu negocio". Tabla

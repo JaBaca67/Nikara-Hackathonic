@@ -1,3 +1,5 @@
+import 'package:nikara_app/core/models/user_origin.dart';
+
 /// Replica el enum `user_role` de Supabase (`public.profiles.role`); los
 /// nombres se envían/leen tal cual contra Postgres.
 ///
@@ -36,6 +38,11 @@ class UserModel {
     this.phone = '',
     this.points = 0,
     this.avatarUrl,
+    this.origin = const UserOrigin(),
+    this.publicDisplayName = '',
+    this.bio = '',
+    this.showOrigin = true,
+    this.showOriginDetails = true,
   });
 
   final String id;
@@ -43,6 +50,22 @@ class UserModel {
   final String email;
   final UserRole role;
   final String phone;
+  final UserOrigin origin;
+  final String publicDisplayName;
+  final String bio;
+  final bool showOrigin;
+  final bool showOriginDetails;
+
+  String get publicName =>
+      publicDisplayName.trim().isEmpty ? fullName : publicDisplayName.trim();
+  UserOrigin get publicOrigin => !showOrigin
+      ? const UserOrigin()
+      : UserOrigin(
+          residenceType: origin.residenceType,
+          countryCode: origin.countryCode,
+          city: showOriginDetails ? origin.city : '',
+          municipality: showOriginDetails ? origin.municipality : '',
+        );
 
   /// `profiles.avatar_url` — URL pública del bucket `avatars` de Storage (ver
   /// supabase/sql/015_profile_avatars.sql). Es la única fuente de verdad del
@@ -80,6 +103,11 @@ class UserModel {
       phone: row['phone'] as String? ?? '',
       points: (row['points'] as num?)?.toInt() ?? 0,
       avatarUrl: row['avatar_url'] as String?,
+      origin: UserOrigin.fromRow(row),
+      publicDisplayName: row['public_display_name'] as String? ?? '',
+      bio: row['bio'] as String? ?? '',
+      showOrigin: row['show_origin'] as bool? ?? true,
+      showOriginDetails: row['show_origin_details'] as bool? ?? true,
     );
   }
 }

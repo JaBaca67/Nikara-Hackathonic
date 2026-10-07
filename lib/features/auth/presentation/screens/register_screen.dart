@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/models/user_origin.dart';
+import 'package:nikara_app/shared/widgets/origin_form_fields.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/utils/input_formatters.dart';
@@ -72,6 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// a Storage recién después del signUp, cuando ya hay sesión y un user id
   /// bajo el que guardarla (ver [AuthService.updateAvatar]).
   XFile? _avatarImage;
+  UserOrigin _origin = const UserOrigin();
   CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
 
@@ -191,6 +194,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
       phone: phone,
+      origin: _origin,
     );
     if (!mounted) return;
 
@@ -557,6 +561,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // como nicaragüense y el error hablaría de Nicaragua.
                 validator: (v) =>
                     validatePhone(v, dialCode: _selectedCountry.dialCode),
+              ),
+              const SizedBox(height: 18),
+              OriginFormFields(
+                initialValue: _origin,
+                onChanged: (value) => _origin = value,
+                enabled: _status != AuthStatus.loading,
               ),
               const SizedBox(height: 18),
               AuthPrimaryButton(

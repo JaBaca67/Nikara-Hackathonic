@@ -1,6 +1,7 @@
 import 'package:nikara_app/core/gamification/badges_logic.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 
 /// Calcula las [UserStats] reales del usuario a partir del estado persistido de la app; ningún campo es un número fijo/mock.
@@ -21,6 +22,7 @@ class UserStatsService {
   Future<UserStats> getStats() async {
     final favorites = await _favoritesService.getFavoriteIds();
     final userId = _authService.currentAuthUser?.id;
+    final passport = await PassportService().getCollection();
 
     // Cuenta reseñas reales del usuario en TODOS los negocios, no solo el propio.
     final myReviewsCount = userId == null
@@ -31,8 +33,7 @@ class UserStatsService {
               .length;
 
     return UserStats(
-      // Aún no existe flujo de viaje/visita completada, por eso es 0 real, no placeholder.
-      tripsCount: 0,
+      tripsCount: passport.trips.length,
       savedPlacesCount: favorites.length,
       reviewsCount: myReviewsCount,
     );

@@ -7,10 +7,45 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 - **Flutter** 3.44.5 / **Dart** ^3.12.2 (ver `flutter --version`).
 - **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`). Credenciales en `lib/core/supabase/supabase_config.dart`. Hubo un cuarto rol `auditor` hasta el 2026-08-27 — se definió al inicio del proyecto pero nunca se usó en la práctica (nadie llegó a registrarse con él) y se retiró del sistema de permisos. **La frase "nada depende de él" fue falsa hasta el 2026-10-05**: los tres RPC de revisión de `019` seguían aceptándolo como rol autorizado, así que una fila con ese valor podía aprobar negocios, fundaciones y jornadas. `034` lo cierra; el valor sigue en el tipo `user_role` de Postgres y ahora sí es inofensivo (quitarlo de un enum obliga a recrear la columna de cuentas y sus policies — no vale el riesgo).
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
-- **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
+- **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`), que desde el 2026-10-06 llama a la Edge Function `get-directions` en vez de pegarle directo a Google — mismo patrón que `travel-assistant` (ver abajo). El SDK nativo de mapas (lo que pinta los tiles) es un asunto aparte, con su propia key por plataforma. Detalle completo en "API keys de Google Maps" más abajo.
 - **Notificaciones**: dos capas que no se confunden. **In-app** = tabla `notifications` de Supabase (campanita + listado, `NotificationService`). **Push al teléfono** = Firebase Cloud Messaging, que es *solo el transporte* — Supabase sigue siendo la única fuente de verdad, no hay Firestore ni Realtime Database y no deben agregarse (`pubspec.yaml` trae únicamente `firebase_core` y `firebase_messaging`). La cadena completa: se inserta una fila en `notifications` -> el trigger `on_notification_created` (033) llama a la Edge Function `send-push` -> esa función firma un JWT con la cuenta de servicio, lee `device_push_tokens` y habla con la API HTTP v1 de FCM -> Android dibuja el aviso. Funcionando de punta a punta desde el 2026-10-01.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).
 - **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Sin fuentes empaquetadas — toda la tipografía sale de `google_fonts` (League Spartan + Nunito).
+
+## API keys de Google Maps
+
+Son **3 credenciales distintas** del mismo proyecto de Google Cloud, no una sola — confusión real que vale la pena dejar escrita. Cada una protege algo distinto y se configura distinto:
+
+| Key | Dónde vive | Para qué | Viaja al cliente |
+|---|---|---|---|
+| Directions | Secreto de Supabase (`GOOGLE_MAPS_API_KEY` en la Edge Function `get-directions`) | Calcular rutas reales ("Cómo llegar") | **No** — desde el 2026-10-06, nunca sale del servidor |
+| Android (SDK nativo) | `android/local.properties` → línea `MAPS_API_KEY=...` (gitignored) | Pintar los tiles del mapa en Android | Sí, siempre — la exige el SDK nativo |
+| iOS (SDK nativo) | `ios/Flutter/Maps.xcconfig` → `GOOGLE_MAPS_API_KEY=...` (gitignored) | Pintar los tiles del mapa en iOS | Sí, siempre — la exige el SDK nativo |
+
+### Por qué la de Directions se resolvió distinto de las otras dos
+
+Antes de esto, `DirectionsService` le pegaba directo a la Directions API desde Dart con una key leída de `.env` (vía `flutter_dotenv`, declarada en `--dart-define`-style). El síntoma del cambio de arquitectura: esa key viaja en texto plano dentro del APK compilado — se extrae con herramientas estándar — así que ocultarla en `.gitignore` no protegía nada que no estuviera ya expuesto en cualquier build público. La solución, igual que ya existía para `GEMINI_API_KEY` en `travel-assistant` (`supabase/functions/travel-assistant/index.ts`): una Edge Function (`supabase/functions/get-directions/index.ts`) que guarda la key como secreto de Supabase y nunca la devuelve al cliente. `DirectionsService` ahora llama `_client.functions.invoke('get-directions', ...)` en vez de `http.get` directo a Google; el parseo de la respuesta (incluido el mapeo de `status` a mensajes en español) no cambió, porque la función reenvía el JSON de Google tal cual.
+
+Efecto práctico: `.env`, `dart_defines.json` y `flutter_dotenv` quedaron sin uso real y se retiraron del proyecto (código, `pubspec.yaml`, `.gitignore` sigue ignorándolos por si quedan en disco en alguna máquina, no porque haga falta). Si volvés a ver `MapsConfig` o un import de `flutter_dotenv` en una rama vieja, es código muerto de antes del 2026-10-06.
+
+**Las keys nativas (Android/iOS) no se pueden resolver así.** No son llamadas HTTP que hace nuestro código — las usa el SDK de `google_maps_flutter` para pedir los tiles directo desde el teléfono a los servidores de Google. Tienen que estar compiladas dentro del APK/IPA sí o sí; no hay backend que meter en el medio sin dejar de usar el SDK oficial.
+
+### Configurar la key de Android en una máquina nueva
+
+Es la que explica el síntoma clásico "el mapa no carga, solo aparece el logo de Google en la esquina" — sin ella (o con una inválida) el SDK se inicializa pero no dibuja tiles.
+
+1. **Encontrarla**: en la máquina que ya tiene el proyecto andando, abrí `android/local.properties` — la línea `MAPS_API_KEY=...` (las otras líneas de ese archivo, `sdk.dir`/`flutter.sdk`, son locales de cada máquina y no se copian).
+2. **Pasarla**: por un canal privado (Slack/WhatsApp/Signal), nunca por git ni pegada en una sesión de Claude Code — el hook `SessionEnd` guarda la conversación entera en la bóveda de Obsidian, que es un repo git.
+3. **Configurarla en la máquina nueva**: crear o editar `android/local.properties` (Flutter/Android Studio lo autogeneran con `sdk.dir` al abrir el proyecto, pero sin la línea `MAPS_API_KEY`) y agregar `MAPS_API_KEY=<la_key>`. `android/app/build.gradle.kts` la lee de ahí y la inyecta en `AndroidManifest.xml` vía `manifestPlaceholders`.
+4. Si querés compilar para iOS, lo mismo con `ios/Flutter/Maps.xcconfig` → `GOOGLE_MAPS_API_KEY=<la_key_de_ios>` (es una credencial distinta a la de Android, restringida a bundle ID en vez de paquete+SHA-1).
+
+**Gotcha si después de esto el mapa sigue sin pintar**: la key de Android suele estar restringida en Google Cloud Console por *nombre de paquete + huella SHA-1 del certificado de firma*. Cada máquina genera su propio `debug.keystore` con una huella distinta por defecto, así que una key válida puede seguir siendo rechazada para la huella de la máquina nueva. Mirá el log de Android (`flutter run` en modo verbose, o Logcat) por un mensaje tipo "Authorization failure" / "API key not authorized" — si aparece, hay que entrar a Google Cloud Console → APIs & Services → Credentials → esa key → Application restrictions, y agregar la huella SHA-1 de la máquina nueva (se obtiene con `cd android && ./gradlew signingReport`).
+
+### Por qué NO se versionan las keys nativas (decisión cerrada, 2026-10-07)
+
+Se evaluó sacar `android/local.properties`/`ios/Flutter/Maps.xcconfig` del `.gitignore` y versionarlas con el valor real — el mismo razonamiento que ya se usa para la `anon key` de Supabase ("viaja en el APK de todas formas, así que ocultarla de git no protege nada que no esté ya expuesto"). **Se descartó** por un hecho que ese razonamiento no tenía en cuenta: `github.com/JaBaca67/Nikara-Hackathonic` es un repo **público** (decisión de José por el hackathon, la misma razón por la que `supabase/` entero está gitignored — ver abajo). La diferencia entre "expuesta en un APK compilado" y "expuesta en texto plano en un repo público de GitHub" no es cosmética: hay bots que escanean continuamente los commits públicos de GitHub buscando el patrón `AIzaSy...` y prueban a abusar la key en minutos u horas — no hace falta que nadie la busque a propósito. Decompilar un APK para sacar la key exige esfuerzo humano dirigido; que un bot la encuentre en un `git push` público es automático.
+
+La restricción de Google Cloud Console (paquete + huella SHA-1 para Android) **no cierra este riesgo del todo**: el paquete y la huella SHA-1 del certificado de firma se pueden extraer del propio APK publicado sin necesitar la clave privada, así que un atacante que ya tiene tu APK puede falsificar esos mismos valores en una petición hecha a mano. Esa restricción frena el reuso accidental entre apps, no a un bot dirigido que ya tiene tu key y tu APK. Con esta duda razonable, la decisión fue no arriesgar el presupuesto de la cuenta de Google Cloud: la key de Android/iOS sigue el proceso manual descrito arriba, indefinidamente, no como parche temporal.
 
 ## Arquitectura de carpetas
 
@@ -30,7 +65,7 @@ No todas las features tienen los tres subniveles (`data/domain/presentation`); a
 
 ```bash
 flutter pub get                    # instalar dependencias
-flutter run --dart-define-from-file=dart_defines.json  # levantar con la Directions API key (copia dart_defines.json.example)
+flutter run                        # levantar (la Directions API key ya no es un dart-define, ver "API keys de Google Maps")
 flutter run -d chrome              # levantar en web
 flutter run -d windows             # levantar en Windows desktop
 flutter analyze                    # linting estático (flutter_lints)
@@ -274,7 +309,7 @@ python $S --back
 
 Al terminar de codificar o refactorizar cualquier pantalla, antes de darla por terminada:
 
-1. Levantar la app en el dispositivo: `flutter run -d R5GYB58K0QH --dart-define-from-file=dart_defines.json`.
+1. Levantar la app en el dispositivo: `flutter run -d R5GYB58K0QH`.
 2. Navegar a la pantalla (con `--tap`/`--swipe`, o pidiéndole a José que la abra) y capturar.
 3. Compararla contra el export de Claude Design de esa misma `pantalla` (ver "Flujo Claude Design") o contra el nodo de Figma.
 4. Revisar explícitamente: `RenderFlex overflow`, texto cortado, botones/CTAs mal alineados o fuera del viewport.
@@ -333,7 +368,7 @@ El filtrado en Dart ya no es "preparación": al activar RLS no cambió ningún r
 
 ### Seguridad en Git — qué nunca debe salir del entorno local
 
-- **Bajo ningún concepto** se commitea: `.env`, `dart_defines.json`, `android/local.properties`, `ios/Flutter/Maps.xcconfig`, la carpeta `.claude/`, ni archivos `desktop.ini` (basura de sincronización de OneDrive/Windows, aparecen por decenas en este repo). Todos están en `.gitignore`.
+- **Bajo ningún concepto** se commitea: `android/local.properties`, `ios/Flutter/Maps.xcconfig`, la carpeta `.claude/`, ni archivos `desktop.ini` (basura de sincronización de OneDrive/Windows, aparecen por decenas en este repo). Todos están en `.gitignore`. (`.env`/`dart_defines.json` quedaron sin uso real desde el 2026-10-06 — ver "API keys de Google Maps" — pero se dejan en la regla por si alguien aún los tiene en disco.)
 - `.claude/` está en `.gitignore` pero **no se retiró del tracking** lo que ya estaba versionado antes de esta regla (`settings.json`, los `SKILL.md` de los skills del equipo) — eso se mantiene intencional y visible para el resto del equipo. La regla nueva solo evita que basura futura (logs de sesión, skills experimentales sueltos, `desktop.ini`) se cuele con un `git add .`/`git add -A` descuidado.
 - Antes de cualquier commit, revisa `git status` — si aparece algo de la lista de arriba como `??` o modificado, es señal de que el `.gitignore` no lo está cubriendo y hay que arreglarlo antes de commitear, no ignorarlo manualmente archivo por archivo.
 - La `anon key` de Supabase en `supabase_config.dart` es pública a propósito (ver regla arriba); la `service_role key` nunca debe aparecer en `lib/` bajo ninguna circunstancia, ni pegarse en una sesión de Claude Code (el hook `SessionEnd` guarda la conversación entera en la bóveda, que es un repo git).

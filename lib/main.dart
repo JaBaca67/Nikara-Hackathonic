@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nikara_app/app.dart';
@@ -20,7 +19,6 @@ Future<void> main() async {
   await _configureSystemBars();
   // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
   final isotipoReady = _precacheSplashIsotipo();
-  await dotenv.load(fileName: '.env');
   await Supabase.initialize(
     url: SupabaseConfig.url,
     // "publishableKey" es el nuevo nombre de supabase_flutter para la anon key.

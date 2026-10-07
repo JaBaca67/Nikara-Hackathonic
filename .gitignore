@@ -45,8 +45,9 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Local dart-define values (Google Directions API key) — see
-# lib/core/config/maps_config.dart and dart_defines.json.example.
+# Ya no lo lee ningún código (la Directions API key se movió a un secreto de
+# Supabase, ver CLAUDE.md "API keys de Google Maps") — se deja ignorado por si
+# alguien todavía tiene el archivo en disco, no por necesidad real.
 /dart_defines.json
 
 # Android Studio will place build artifacts here
@@ -54,7 +55,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Archivos de entorno y claves secretas
+# Archivos de entorno y claves secretas. Igual que dart_defines.json arriba,
+# .env ya no lo lee ningún código del cliente desde que la Directions API key
+# vive como secreto de Supabase — ver CLAUDE.md "API keys de Google Maps".
 .env
 *.env
 

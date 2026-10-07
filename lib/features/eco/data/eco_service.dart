@@ -45,7 +45,7 @@ class EcoService {
   /// exactamente lo que pinta la lista — sin email ni teléfono.
   static const _participantsEmbed =
       'eco_participants(user_id, joined_at, '
-      'public_profiles(id, full_name, avatar_url, role))';
+      'public_profiles(id, full_name, avatar_url, role, residence_type, origin_country_code, origin_city, origin_municipality))';
 
   static const _selectWithOrganization =
       '*, $_participantsEmbed, '
@@ -239,7 +239,7 @@ class EcoService {
     try {
       final participants = await _runParticipantsSelect(
         activityId,
-        'user_id, joined_at, public_profiles(id, full_name, avatar_url, role)',
+        'user_id, joined_at, public_profiles(id, full_name, avatar_url, role, residence_type, origin_country_code, origin_city, origin_municipality)',
       );
       return participants.where((p) => !p.isStaff).toList(growable: false);
     } on PostgrestException catch (e) {
@@ -290,6 +290,15 @@ class EcoService {
       if (e.code == '23505') {
         throw const EcoServiceException(
           'Ya estás participando en esta actividad.',
+        );
+      }
+      // Disparado por el trigger `enforce_eco_capacity`
+      // (supabase/sql/039_eco_capacity_guard.sql): el cupo se llenó entre que
+      // se pintó "X disponibles" y que se intentó unir — típicamente otra
+      // persona tomando el último lugar.
+      if (e.message.contains('cupo máximo')) {
+        throw const EcoServiceException(
+          'Esta jornada ya alcanzó su cupo máximo.',
         );
       }
       throw EcoServiceException(

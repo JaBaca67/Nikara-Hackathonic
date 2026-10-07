@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
+import 'package:nikara_app/shared/widgets/user_avatar.dart';
 
 import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/models/user_model.dart';
@@ -8,6 +11,8 @@ import 'package:nikara_app/core/services/permission_service.dart';
 import 'package:nikara_app/features/admin/data/admin_service.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/admin_widgets.dart';
 import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_dialog.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
+import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
@@ -45,6 +50,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
 
   List<EcoParticipant>? _participants;
   bool _loadingParticipants = false;
+
+  List<ReviewModel>? _moments;
+  bool _loadingMoments = false;
+  bool _postingMoment = false;
 
   bool _savingReview = false;
 
@@ -202,6 +211,63 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     }
   }
 
+  Future<void> _loadMoments({bool force = false}) async {
+    if ((_moments != null && !force) || _loadingMoments) return;
+    setState(() => _loadingMoments = true);
+    try {
+      final moments = await ReviewService().getForEcoActivity(_activity.id);
+      if (!mounted) return;
+      setState(() {
+        _moments = moments;
+        _loadingMoments = false;
+      });
+    } on ReviewServiceException {
+      if (!mounted) return;
+      setState(() => _loadingMoments = false);
+    }
+  }
+
+  /// "Comparte tu experiencia": comentario + fotos de quien ya está
+  /// participando, publicado en vivo durante la jornada (no una reseña de
+  /// cierre). Reusa `ReviewService`/`reviews` con `targetType:
+  /// 'eco_activity'` — ver la nota de esa clase.
+  Future<void> _openShareMoment() async {
+    if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
+    if (!mounted) return;
+    final draft = await showModalBottomSheet<_MomentDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => const _ShareMomentSheet(),
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _postingMoment = true);
+    try {
+      await ReviewService().addReview(
+        targetId: _activity.id,
+        targetType: ReviewService.ecoActivityTargetType,
+        // Sin estrellas en el composer: un "Momento" no califica la jornada,
+        // la documenta. El rating queda fijo porque la columna lo exige
+        // (`check (rating between 1 and 5)`), no porque se le pida a quien
+        // participa.
+        rating: 5,
+        comment: draft.comment,
+        mediaFiles: draft.images,
+      );
+      await _loadMoments(force: true);
+      if (!mounted) return;
+      AppSnackbar.showSuccess(context, '¡Gracias por compartir tu momento!');
+    } on ReviewServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _postingMoment = false);
+    }
+  }
+
   void _openDirections() {
     if (!_activity.hasCoordinates) {
       AppSnackbar.showError(
@@ -323,11 +389,12 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   DetailSegmentedTabs(
-                    labels: const ['Información', 'Participantes'],
+                    labels: const ['Información', 'Participantes', 'Momentos'],
                     selected: _tab,
                     onChanged: (tab) {
                       setState(() => _tab = tab);
                       if (tab == 1) unawaited(_loadParticipants());
+                      if (tab == 2) unawaited(_loadMoments());
                     },
                   ),
                   const SizedBox(height: 18),
@@ -335,20 +402,27 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpacing.xs,
                     ),
-                    child: _tab == 0
-                        ? _InformationTab(
-                            activity: activity,
-                            showFullDescription: _showFullDescription,
-                            onToggleDescription: () => setState(
-                              () =>
-                                  _showFullDescription = !_showFullDescription,
-                            ),
-                            onDirections: _openDirections,
-                          )
-                        : _ParticipantsTab(
-                            participants: _participants,
-                            isLoading: _loadingParticipants,
-                          ),
+                    child: switch (_tab) {
+                      0 => _InformationTab(
+                        activity: activity,
+                        showFullDescription: _showFullDescription,
+                        onToggleDescription: () => setState(
+                          () => _showFullDescription = !_showFullDescription,
+                        ),
+                        onDirections: _openDirections,
+                      ),
+                      1 => _ParticipantsTab(
+                        participants: _participants,
+                        isLoading: _loadingParticipants,
+                      ),
+                      _ => _MomentsTab(
+                        moments: _moments,
+                        isLoading: _loadingMoments,
+                        canShare: activity.isJoinedByCurrentUser,
+                        isPosting: _postingMoment,
+                        onShare: _openShareMoment,
+                      ),
+                    },
                   ),
                 ],
               ),
@@ -358,6 +432,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       ),
       bottomNavigationBar: _EcoActionBar(
         status: activity.status,
+        isFull: activity.isFull,
         isSubmitting: _isSubmitting,
         onTap: _toggleJoin,
       ),
@@ -578,6 +653,11 @@ class _ParticipantRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (participant.origin.hasCountry)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 4),
+                        child: OriginBadge(origin: participant.origin),
+                      ),
                     const SizedBox(height: 2),
                     Text(
                       'Se unió el ${formatEcoDateTimeShort(participant.joinedAt)}',
@@ -708,16 +788,25 @@ class _ParticipantsTab extends StatelessWidget {
 class _EcoActionBar extends StatelessWidget {
   const _EcoActionBar({
     required this.status,
+    required this.isFull,
     required this.isSubmitting,
     required this.onTap,
   });
 
   final EcoActivityStatus status;
+
+  /// Cupo lleno (`EcoActivityModel.isFull`) — solo importa en
+  /// [EcoActivityStatus.available]: una jornada sin cupo ya no acepta
+  /// "Unirme". El servidor es quien de verdad lo bloquea (trigger
+  /// `enforce_eco_capacity`, 039); esto solo evita el viaje de red inútil y
+  /// se lo comunica a quien mira antes de que lo intente.
+  final bool isFull;
   final bool isSubmitting;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final blockedByCapacity = status == EcoActivityStatus.available && isFull;
     return DetailBottomBar(
       child: SizedBox(
         height: 48,
@@ -751,6 +840,20 @@ class _EcoActionBar extends StatelessWidget {
                 ? const _ButtonSpinner(color: AppColors.destructive)
                 : const Text('Abandonar actividad'),
           ),
+          EcoActivityStatus.available when blockedByCapacity =>
+            FilledButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.event_busy_rounded, size: 18),
+              label: const Text('Cupo lleno'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.segmentedTrackBg,
+                foregroundColor: AppColors.settingsTextMuted,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                textStyle: AppTextStyles.detailBottomBarPrimary,
+              ),
+            ),
           EcoActivityStatus.available => DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(AppRadius.md),
@@ -778,6 +881,409 @@ class _EcoActionBar extends StatelessWidget {
             ),
           ),
         },
+      ),
+    );
+  }
+}
+
+/// "Momentos": comentarios + fotos que quienes participan comparten durante
+/// la jornada, no una reseña de cierre. [canShare] solo mira si la cuenta
+/// actual está unida — compartir no depende de que la jornada ya terminara.
+class _MomentsTab extends StatelessWidget {
+  const _MomentsTab({
+    required this.moments,
+    required this.isLoading,
+    required this.canShare,
+    required this.isPosting,
+    required this.onShare,
+  });
+
+  final List<ReviewModel>? moments;
+  final bool isLoading;
+  final bool canShare;
+  final bool isPosting;
+  final VoidCallback onShare;
+
+  Widget _composer() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: OutlinedButton.icon(
+        onPressed: isPosting ? null : onShare,
+        icon: isPosting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.oliveText,
+                ),
+              )
+            : const Icon(Icons.add_a_photo_outlined, size: 18),
+        label: const Text('Comparte tu experiencia'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.oliveText,
+          side: const BorderSide(color: AppColors.oliveText),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return Column(
+        children: [
+          if (canShare) _composer(),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary500),
+            ),
+          ),
+        ],
+      );
+    }
+    final list = moments ?? const [];
+    if (list.isEmpty) {
+      return Column(
+        children: [
+          if (canShare) _composer(),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+            child: Text(
+              'Todavía no hay momentos compartidos — ¡sé la primera persona!',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.settingsSubtitle,
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (canShare) _composer(),
+        for (final moment in list) ...[
+          _MomentCard(moment: moment),
+          if (moment != list.last) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+/// Tarjeta de un "Momento" — misma base visual que la reseña de un negocio
+/// (`_ReviewCard` en `business_detail_screen.dart`), sin estrellas porque
+/// acá el rating no se le pide a quien participa (ver [_openShareMoment]).
+class _MomentCard extends StatelessWidget {
+  const _MomentCard({required this.moment});
+
+  final ReviewModel moment;
+
+  String get _relativeDate {
+    final days = DateTime.now().difference(moment.date).inDays;
+    if (days <= 0) return 'hoy';
+    if (days == 1) return 'hace 1 día';
+    if (days < 7) return 'hace $days días';
+    if (days < 30) return 'hace ${(days / 7).floor()} semana(s)';
+    return 'hace ${(days / 30).floor()} mes(es)';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = moment.authorName.trim().isEmpty
+        ? '?'
+        : moment.authorName.trim()[0].toUpperCase();
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppColors.cardShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              UserAvatar(
+                avatarUrl: moment.authorAvatarUrl,
+                initials: initial,
+                size: 32,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      moment.authorName,
+                      style: AppTextStyles.reviewAuthor,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(_relativeDate, style: AppTextStyles.reviewMeta),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (moment.authorOrigin.hasCountry)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 6),
+              child: OriginBadge(origin: moment.authorOrigin),
+            ),
+          if (moment.comment.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(moment.comment, style: AppTextStyles.reviewComment),
+          ],
+          if (moment.mediaPaths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 72,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: moment.mediaPaths.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (context, index) => ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: LocalImage(path: moment.mediaPaths[index]),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Lo que devuelve [_ShareMomentSheet]: comentario + fotos sin subir todavía
+/// (se suben recién al confirmar, en `_openShareMoment`).
+class _MomentDraft {
+  const _MomentDraft({required this.comment, required this.images});
+
+  final String comment;
+  final List<XFile> images;
+}
+
+/// Mismo patrón que `_WriteReviewSheet` de `business_detail_screen.dart`,
+/// sin estrellas y limitado a fotos (no video): acá lo que importa es
+/// documentar el momento, no calificar la jornada.
+class _ShareMomentSheet extends StatefulWidget {
+  const _ShareMomentSheet();
+
+  @override
+  State<_ShareMomentSheet> createState() => _ShareMomentSheetState();
+}
+
+class _ShareMomentSheetState extends State<_ShareMomentSheet> {
+  final _commentController = TextEditingController();
+  final List<XFile> _images = [];
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    final picked = await ImagePicker().pickMultiImage();
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _images.addAll(picked));
+  }
+
+  void _removeImage(int index) => setState(() => _images.removeAt(index));
+
+  void _submit() {
+    final comment = _commentController.text.trim();
+    if (comment.isEmpty && _images.isEmpty) {
+      AppSnackbar.showInfo(
+        context,
+        'Escribe algo o agrega una foto antes de enviar',
+      );
+      return;
+    }
+    Navigator.of(context).pop(_MomentDraft(comment: comment, images: _images));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Comparte tu experiencia',
+                  style: AppTextStyles.detailSectionTitle,
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.segmentedTrackBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      semanticLabel: 'Cerrar',
+                      size: 18,
+                      color: AppColors.settingsTextDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _commentController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'Cuéntanos qué está pasando en la jornada...',
+                hintStyle: AppTextStyles.bodyText2.copyWith(
+                  color: AppColors.neutral600,
+                ),
+                filled: true,
+                fillColor: AppColors.surface100,
+                contentPadding: const EdgeInsets.all(14),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  borderSide: BorderSide(
+                    color: AppColors.neutral600.withValues(alpha: 0.35),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  borderSide: BorderSide(
+                    color: AppColors.neutral600.withValues(alpha: 0.35),
+                  ),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                  borderSide: BorderSide(
+                    color: AppColors.wizardFocus,
+                    width: 1.5,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: _pickImages,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface200.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                    color: AppColors.oliveText.withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      color: AppColors.oliveText,
+                      size: 28,
+                    ),
+                    const SizedBox(height: 6),
+                    Text('Agregar fotos', style: AppTextStyles.subtitle2),
+                  ],
+                ),
+              ),
+            ),
+            if (_images.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _images.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final path = _images[index].path;
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
+                          child: SizedBox(
+                            width: 72,
+                            height: 72,
+                            child: LocalImage(path: path),
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => _removeImage(index),
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: AppColors.removeButtonBackground,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                semanticLabel: 'Quitar foto',
+                                size: 14,
+                                color: AppColors.surface100,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                onPressed: _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.oliveFill,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                ),
+                child: Text(
+                  'Publicar',
+                  style: AppTextStyles.buttonLg.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

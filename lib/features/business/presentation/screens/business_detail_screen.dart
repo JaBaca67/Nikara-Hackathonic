@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
+import 'package:nikara_app/shared/widgets/user_avatar.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -1460,6 +1462,17 @@ class _ReviewCard extends StatelessWidget {
 
   final ReviewModel review;
 
+  void _openAuthor(BuildContext context) {
+    if (review.authorId.isEmpty) return;
+    pushSharedAxis(
+      context,
+      PublicUserProfileScreen(
+        userId: review.authorId,
+        fallbackName: review.authorName,
+      ),
+    );
+  }
+
   String get _relativeDate {
     final days = DateTime.now().difference(review.date).inDays;
     if (days <= 0) return 'hoy';
@@ -1488,24 +1501,35 @@ class _ReviewCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.success,
-                child: Text(
-                  initial,
-                  style: AppTextStyles.reviewAuthor.copyWith(
-                    color: AppColors.surface100,
-                  ),
+              InkWell(
+                onTap: review.authorId.isEmpty
+                    ? null
+                    : () => _openAuthor(context),
+                customBorder: const CircleBorder(),
+                child: UserAvatar(
+                  avatarUrl: review.authorAvatarUrl,
+                  initials: initial,
+                  size: 32,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(review.authorName, style: AppTextStyles.reviewAuthor),
-                    Text(_relativeDate, style: AppTextStyles.reviewMeta),
-                  ],
+                child: InkWell(
+                  onTap: review.authorId.isEmpty
+                      ? null
+                      : () => _openAuthor(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        review.authorName,
+                        style: AppTextStyles.reviewAuthor,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(_relativeDate, style: AppTextStyles.reviewMeta),
+                    ],
+                  ),
                 ),
               ),
               Row(
@@ -1522,6 +1546,11 @@ class _ReviewCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+          if (review.authorOrigin.hasCountry)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: OriginBadge(origin: review.authorOrigin),
+            ),
           Text(review.comment, style: AppTextStyles.reviewComment),
           if (review.mediaPaths.isNotEmpty) ...[
             const SizedBox(height: 8),

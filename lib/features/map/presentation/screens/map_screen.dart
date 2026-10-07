@@ -4,10 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/services/directions_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/core/services/tts_service.dart';
 import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
@@ -20,6 +23,10 @@ import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
+import 'package:nikara_app/features/map/domain/trip_arrival_tracker.dart';
+import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
+import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_bottom_dock.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_business_rating.dart';
@@ -177,6 +184,13 @@ class _MapScreenState extends State<MapScreen>
   bool _isNavigating = false;
   BusinessModel? _navigationTarget;
   DirectionsRoute? _navigationRoute;
+  bool _tripHasBusiness = false;
+  TripArrivalTracker? _arrivalTracker;
+  String? _tripOwnerId;
+  String? _tripId;
+  DateTime? _tripStartedAt;
+  DateTime? _pendingArrivalAt;
+  bool _isCompletingTrip = false;
 
   /// Polyline de la ruta recortada a lo que falta por recorrer —
   /// recalculada en cada fix de GPS (ver [_onPositionUpdate] y
@@ -297,6 +311,7 @@ class _MapScreenState extends State<MapScreen>
 
   @override
   void dispose() {
+    _arrivalTracker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     ReviewService.revision.removeListener(_onReviewsChanged);
     _reviewsPoll?.cancel();
@@ -400,7 +415,23 @@ class _MapScreenState extends State<MapScreen>
     final request = MapFocusController().pendingRoute.value;
     if (request == null) return;
     MapFocusController().pendingRoute.value = null;
-    unawaited(_startTripPreview(_syntheticDestination(request)));
+    unawaited(_openRequestedTrip(request));
+  }
+
+  Future<void> _openRequestedTrip(MapRouteRequest request) async {
+    try {
+      final businesses = await _businessStorageService.getBusinesses();
+      if (!mounted) return;
+      final business = businesses
+          .where((business) => business.id == request.destinationId)
+          .firstOrNull;
+      await _startTripPreview(
+        business ?? _syntheticDestination(request),
+        isBusiness: business != null,
+      );
+    } on BusinessServiceException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
+    }
   }
 
   /// [_startTripPreview] recibe un [BusinessModel] porque todo otro disparador
@@ -1150,7 +1181,10 @@ class _MapScreenState extends State<MapScreen>
   /// [_confirmStartTrip] para Fase 2). Si no se puede obtener una ruta real
   /// (sin key, sin red, sin resultado), muestra la razón en un snackbar y
   /// nunca dibuja una ruta inventada.
-  Future<void> _startTripPreview(BusinessModel business) async {
+  Future<void> _startTripPreview(
+    BusinessModel business, {
+    bool isBusiness = true,
+  }) async {
     debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
     final lat = business.latitude;
     final lng = business.longitude;
@@ -1186,6 +1220,7 @@ class _MapScreenState extends State<MapScreen>
       _tripMode = TravelMode.driving;
       _tripOrigin = origin;
       _navigationTarget = business;
+      _tripHasBusiness = isBusiness;
       _navigationRoute = route;
       _selectedBusinessId = business.id;
     });
@@ -1250,6 +1285,7 @@ class _MapScreenState extends State<MapScreen>
       mode: mode,
     );
     if (!mounted) return;
+
     if (route == null) {
       setState(() => _isChangingTripMode = false);
       return;
@@ -1273,6 +1309,18 @@ class _MapScreenState extends State<MapScreen>
     // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
     if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
     if (!mounted) return;
+
+    final target = _navigationTarget;
+    if (target?.latitude == null || target?.longitude == null) return;
+    final startedAt = DateTime.now().toUtc();
+    _tripOwnerId = AuthService().currentAuthUser?.id;
+    _tripId = const Uuid().v4();
+    _tripStartedAt = startedAt;
+    _pendingArrivalAt = null;
+    _arrivalTracker = TripArrivalTracker(
+      destination: LatLng(target!.latitude!, target.longitude!),
+      startedAt: startedAt,
+    );
 
     final initialBearing = route.points.length > 1
         ? Geolocator.bearingBetween(
@@ -1311,6 +1359,7 @@ class _MapScreenState extends State<MapScreen>
         bearing: initialBearing,
       ),
     );
+    if (!mounted || !_isNavigating) return;
 
     if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
       unawaited(TtsService().speak(route.steps.first.instruction));
@@ -1343,6 +1392,7 @@ class _MapScreenState extends State<MapScreen>
   /// "Cancelar viaje" — limpia la ruta y vuelve a Estado 19a/19b con el
   /// destino aún seleccionado, para no dejar un mapa en blanco.
   Future<void> _stopNavigation() async {
+    _arrivalTracker?.cancel();
     await _positionSub?.cancel();
     _positionSub = null;
     _vehicleLerpController.stop();
@@ -1352,6 +1402,12 @@ class _MapScreenState extends State<MapScreen>
     final target = _navigationTarget;
     setState(() {
       _isNavigating = false;
+      _arrivalTracker = null;
+      _tripOwnerId = null;
+      _tripId = null;
+      _tripStartedAt = null;
+      _pendingArrivalAt = null;
+      _tripHasBusiness = false;
       _isCameraLocked = true;
       _navigationTarget = null;
       _navigationRoute = null;
@@ -1434,6 +1490,13 @@ class _MapScreenState extends State<MapScreen>
   /// recorta la ruta dibujada, avanza/anuncia la maniobra y actualiza el
   /// velocímetro.
   void _onPositionUpdate(Position position) {
+    if (!mounted || !_isNavigating || _isCompletingTrip) return;
+    final arrival = _arrivalTracker?.update(position, now: DateTime.now());
+    if (arrival != null) {
+      _pendingArrivalAt = arrival;
+      unawaited(_completeNavigation());
+      return;
+    }
     final newPos = LatLng(position.latitude, position.longitude);
     final previous = _vehicleDisplayPosition;
     var targetBearing = _vehicleDisplayBearing;
@@ -1532,6 +1595,95 @@ class _MapScreenState extends State<MapScreen>
       );
     }
   }
+
+  Future<void> _completeNavigation() async {
+    final target = _navigationTarget;
+    final arrivedAt = _pendingArrivalAt;
+    if (!_isNavigating ||
+        _isCompletingTrip ||
+        target == null ||
+        arrivedAt == null) {
+      return;
+    }
+    setState(() => _isCompletingTrip = true);
+    try {
+      TravelPostcard? postcard;
+      final ownerId = _tripOwnerId;
+      if (_tripHasBusiness && ownerId != null) {
+        postcard = await PassportService().recordCompletedTrip(
+          tripId: _tripId!,
+          ownerId: ownerId,
+          business: target,
+          startedAt: _tripStartedAt!,
+          completedAt: arrivedAt,
+        );
+      }
+      await _stopNavigation();
+      if (!mounted) return;
+      if (postcard == null) {
+        AppSnackbar.showInfo(
+          context,
+          '¡Llegaste a ${target.name}! Viaje completado.',
+        );
+        return;
+      }
+      await _showEarnedPostcard(postcard);
+    } on PassportServiceException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
+    } finally {
+      if (mounted) setState(() => _isCompletingTrip = false);
+    }
+  }
+
+  Future<void> _showEarnedPostcard(
+    TravelPostcard postcard,
+  ) => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: AppColors.surface,
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('¡Viaje completado!', style: AppTextStyles.heading),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                postcard.title,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(
+                width: 120,
+                height: 64,
+                child: PostcardSeal(postcard: postcard),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'Tu postal está en el pasaporte.\n'
+                'Sellada el ${postcard.sealDateLabel} a las ${postcard.sealTimeLabel}.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  PassportService.openRequested.value = true;
+                  MainTabController().switchTo(4);
+                },
+                child: const Text('Ver mi pasaporte'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 
   /// ETA de lo que falta: duración total de la ruta escalada por la
   /// fracción de distancia restante. Deliberadamente derivada de la única
@@ -1822,7 +1974,11 @@ class _MapScreenState extends State<MapScreen>
           remainingLabel: _remainingDistanceLabel,
           voiceEnabled: _voiceGuidanceEnabled,
           onToggleVoice: _toggleVoiceGuidance,
-          onCancel: _stopNavigation,
+          onCancel: _isCompletingTrip ? null : _stopNavigation,
+          isCompleting: _isCompletingTrip,
+          onRetryCompletion: !_isCompletingTrip && _pendingArrivalAt != null
+              ? _completeNavigation
+              : null,
         ),
       );
     } else if (filtered.isNotEmpty) {
@@ -2502,6 +2658,8 @@ class _NavigationPanel extends StatelessWidget {
     required this.voiceEnabled,
     required this.onToggleVoice,
     required this.onCancel,
+    this.isCompleting = false,
+    this.onRetryCompletion,
   });
 
   final String destinationName;
@@ -2509,7 +2667,9 @@ class _NavigationPanel extends StatelessWidget {
   final String remainingLabel;
   final bool voiceEnabled;
   final VoidCallback onToggleVoice;
-  final VoidCallback onCancel;
+  final VoidCallback? onCancel;
+  final bool isCompleting;
+  final VoidCallback? onRetryCompletion;
 
   @override
   Widget build(BuildContext context) {
@@ -2615,7 +2775,9 @@ class _NavigationPanel extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: onCancel,
                     icon: const Icon(Icons.close_rounded, size: 16),
-                    label: const Text('Cancelar viaje'),
+                    label: Text(
+                      isCompleting ? 'Sellando postal…' : 'Cancelar viaje',
+                    ),
                     style: ElevatedButton.styleFrom(
                       // Alerta suave, no un bloque rojo sólido: fondo coral
                       // pálido con el tinte destructivo canónico del texto/ícono.
@@ -2638,6 +2800,14 @@ class _NavigationPanel extends StatelessWidget {
               ),
             ],
           ),
+          if (onRetryCompletion != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: onRetryCompletion,
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: const Text('Reintentar guardar la postal'),
+            ),
+          ],
         ],
       ),
     );

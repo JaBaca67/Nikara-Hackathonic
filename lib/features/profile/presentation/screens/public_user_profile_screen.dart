@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nikara_app/features/profile/presentation/screens/edit_public_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -90,7 +92,7 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
   }
 
   String get _displayName {
-    final name = _profile?.fullName.trim();
+    final name = _profile?.publicName.trim();
     if (name != null && name.isNotEmpty) return name;
     final fallback = widget.fallbackName?.trim();
     return (fallback == null || fallback.isEmpty) ? 'Organizador' : fallback;
@@ -104,6 +106,13 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
 
   int get _volunteers =>
       _activities.fold(0, (total, a) => total + a.participantCount);
+
+  Future<void> _edit() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await pushSharedAxis(context, EditPublicProfileScreen(profile: profile));
+    if (mounted) await _load();
+  }
 
   Future<void> _openActivity(EcoActivityModel activity) async {
     await pushSharedAxis(context, EcoDetailScreen(activity: activity));
@@ -119,6 +128,7 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
       // Mismo fondo que EcoDetailScreen/BusinessDetailScreen: este perfil se
       // abre siempre desde una de esas pantallas.
       backgroundColor: AppColors.settingsBackground,
+      appBar: _isLoading ? AppBar(title: const Text('Perfil público')) : null,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary500),
@@ -128,20 +138,48 @@ class _PublicUserProfileScreenState extends State<PublicUserProfileScreen> {
               children: [
                 PublicProfileHeader(
                   name: _displayName,
-                  accent: AppColors.oliveText,
+                  accent: AppColors.neutral1100,
+                  circularAvatar: true,
+                  banner: Container(color: AppColors.goldPaleFill),
                   badgeIcon: Icons.hiking_rounded,
                   badgeLabel: _roleLabel,
                   contextLine: _isCurrentUser ? 'Este eres tú' : null,
                   onBack: () => Navigator.of(context).maybePop(),
+                  action: _isCurrentUser && _profile != null
+                      ? OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.neutral1100,
+                            backgroundColor: AppColors.surface100,
+                          ),
+                          onPressed: _edit,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Editar'),
+                        )
+                      : null,
+                  details: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_profile?.bio.isNotEmpty == true) ...[
+                        Text(
+                          _profile!.bio,
+                          style: AppTextStyles.body.copyWith(
+                            color: AppColors.neutral800,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_profile != null)
+                        OriginBadge(origin: _profile!.publicOrigin),
+                    ],
+                  ),
                   avatar: UserAvatar(
                     avatarUrl: _profile?.avatarUrl,
-                    initials: _profile?.initials ?? _fallbackInitials,
-                    borderRadius: BorderRadius.circular(25),
-                    background: AppColors.detailActivityIconBg,
-                    foreground: AppColors.oliveText,
+                    initials: _fallbackInitials,
+                    background: AppColors.surface100,
+                    foreground: AppColors.neutral1100,
                     initialsStyle: AppTextStyles.sectionTitle.copyWith(
                       fontSize: 28,
-                      color: AppColors.oliveText,
+                      color: AppColors.neutral1100,
                     ),
                   ),
                 ),
@@ -259,6 +297,7 @@ class _PublicBusinessRow extends StatelessWidget {
                         : '${business.category} · ${business.city}',
                     style: AppTextStyles.settingsSubtitle.copyWith(
                       fontSize: 11.5,
+                      color: AppColors.neutral800,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -345,7 +384,10 @@ class _EmptySection extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 12.5),
+            style: AppTextStyles.settingsSubtitle.copyWith(
+              fontSize: 12.5,
+              color: AppColors.neutral800,
+            ),
           ),
         ],
       ),

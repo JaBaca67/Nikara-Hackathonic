@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:nikara_app/features/profile/presentation/screens/edit_public_profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -7,6 +10,7 @@ import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
@@ -15,8 +19,10 @@ import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/passport_collection_screen.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
+import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
@@ -62,6 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isSavingAvatar = false;
   List<DestinationModel> _favoriteDestinations = const [];
   List<BusinessModel> _favoriteBusinesses = const [];
+  List<TravelPostcard> _postcards = const [];
   UserStats _stats = const UserStats(
     tripsCount: 0,
     savedPlacesCount: 0,
@@ -75,6 +82,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Mantienen la pantalla sincronizada sin refresco manual, incluso mientras Profile está inerte en el IndexedStack de MainLayout.
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
+    PassportService.revision.addListener(_onDataChanged);
+    PassportService.openRequested.addListener(_onPassportRequested);
+    if (PassportService.openRequested.value) _onPassportRequested();
     EcoService.revision.addListener(_onDataChanged);
     ProfileFaceService.revision.addListener(_onFacesChanged);
     _loadAll();
@@ -84,6 +94,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _favoritesService.idsNotifier.removeListener(_onDataChanged);
     BusinessStorageService.revision.removeListener(_onDataChanged);
+    PassportService.revision.removeListener(_onDataChanged);
+    PassportService.openRequested.removeListener(_onPassportRequested);
     EcoService.revision.removeListener(_onDataChanged);
     ProfileFaceService.revision.removeListener(_onFacesChanged);
     super.dispose();
@@ -92,6 +104,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _onDataChanged() {
     if (!mounted) return;
     _loadAll();
+  }
+
+  void _onPassportRequested() {
+    if (!mounted || !PassportService.openRequested.value) return;
+    setState(() => _activeTab = 1);
+    PassportService.openRequested.value = false;
   }
 
   /// Un cambio de cara no recarga favoritos ni estadísticas: solo cambia qué
@@ -108,6 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final favoriteIds = await _favoritesService.getFavoriteIds();
       final stats = await _userStatsService.getStats();
       final allBusinesses = await _businessStorageService.getBusinesses();
+      final passport = await PassportService().getCollection();
       if (!mounted) return;
 
       // Los favoritos mezclan ids de DestinationModel y de BusinessModel en el mismo set: hay que cruzar ambas fuentes o se pierden los negocios favoritos.
@@ -129,10 +148,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _profile = profile;
         _favoriteDestinations = favoriteDestinations;
         _favoriteBusinesses = favoriteBusinesses;
+        _postcards = passport.postcards;
         _stats = stats;
         _isLoading = false;
       });
     } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    } on PassportServiceException catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = e.message;
@@ -178,6 +204,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _openSettings() {
     pushSharedAxis(context, const SettingsScreen());
+  }
+
+  Future<void> _editPublicProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await pushSharedAxis(context, EditPublicProfileScreen(profile: profile));
+    if (mounted) await _loadAll();
+  }
+
+  Future<void> _viewPublicProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await pushSharedAxis(context, PublicUserProfileScreen(userId: profile.id));
+    if (mounted) await _loadAll();
   }
 
   /// Control provisional de cambio de cara — ver el docstring de la pantalla.
@@ -439,7 +479,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ProfileHeaderIconButton(
                           label: 'Editar perfil',
                           icon: Icons.edit_outlined,
-                          onTap: _openSettings,
+                          onTap: _editPublicProfile,
                         ),
                         ProfileHeaderIconButton(
                           label: 'Ajustes',
@@ -487,6 +527,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onChanged: (tab) => setState(() => _activeTab = tab),
                       ),
                     ),
+                    if (_profile != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: OriginBadge(origin: _profile!.publicOrigin),
+                      ),
+                    TextButton.icon(
+                      onPressed: _viewPublicProfile,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.neutral1100,
+                      ),
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: const Text('Ver mi perfil público'),
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       // Cross-fade en vez de cambio instantáneo; la key por índice es lo que hace que AnimatedSwitcher detecte el cambio de tab.
@@ -505,7 +558,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 onExplore: widget.onExploreRequested,
                               )
                             : _activeTab == 1
-                            ? const PassportTab(key: ValueKey('pasaporte'))
+                            ? PassportTab(
+                                key: const ValueKey('pasaporte'),
+                                postcards: _postcards,
+                                onViewAll: () => pushSharedAxis(
+                                  context,
+                                  PassportCollectionScreen(
+                                    postcards: _postcards,
+                                  ),
+                                ),
+                              )
                             : _BadgesTab(
                                 key: const ValueKey('insignias'),
                                 badges: badges,

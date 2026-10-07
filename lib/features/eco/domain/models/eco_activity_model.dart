@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/core/utils/search_normalize.dart';
 
 /// Estados 1/2/3 de "fases-pantalla-eco"; derivado siempre desde [EcoActivityModel.status], nunca almacenado.
@@ -27,6 +28,7 @@ class EcoParticipant {
     this.fullName,
     this.avatarUrl,
     this.isStaff = false,
+    this.origin = const UserOrigin(),
   });
 
   final String userId;
@@ -35,6 +37,7 @@ class EcoParticipant {
   /// Nulo si `profiles` no fue legible (invitado) o falta la migración 013.
   final String? fullName;
   final String? avatarUrl;
+  final UserOrigin origin;
 
   /// `true` si `profiles.role` es `admin`. Una cuenta del equipo puede
   /// unirse a una jornada como cualquier turista, pero su identidad no debe
@@ -67,6 +70,7 @@ class EcoParticipant {
       joinedAt: DateTime.parse(row['joined_at'] as String).toLocal(),
       fullName: profile?['full_name'] as String?,
       avatarUrl: profile?['avatar_url'] as String?,
+      origin: UserOrigin.fromRow(profile ?? const {}),
       isStaff: role == 'admin',
     );
   }

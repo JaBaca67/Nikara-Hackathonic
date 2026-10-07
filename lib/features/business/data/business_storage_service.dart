@@ -374,12 +374,14 @@ class BusinessStorageService {
   /// Delega en [ReviewService]: las reseñas viven en la tabla `reviews` desde
   /// que se conectó ese servicio, no en el cache local del dispositivo.
   ///
-  /// Sigue viviendo acá para no cambiar a quien ya la llamaba, pero no escribe
-  /// nada de `businesses`. `mediaPaths` no viaja — ver la nota de
-  /// [ReviewService].
+  /// Sigue viviendo acá para no cambiar a quien ya la llamaba. `mediaPaths`
+  /// tampoco viaja desde este call site a propósito: las fotos de "Escribir
+  /// una reseña" se adjuntan como rutas locales de `image_picker`, no como
+  /// `XFile` (ver [ReviewService.addReview]) — subirlas de verdad queda fuera
+  /// de este cambio, igual que antes de la migración 040.
   Future<void> addReview(BusinessModel business, ReviewModel review) async {
     await ReviewService().addReview(
-      businessId: business.id,
+      targetId: business.id,
       rating: review.rating,
       comment: review.comment,
     );

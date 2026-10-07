@@ -1,7 +1,11 @@
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 
@@ -37,11 +41,13 @@ class RatingSummary {
 /// del negocio no tenía forma de saber cómo lo estaban calificando. Este
 /// servicio es lo que las vuelve un dato real y compartido.
 ///
-/// **Lo que se pierde en el viaje**: `ReviewModel.mediaPaths` (las fotos que se
-/// adjuntaban en "Escribir una reseña") no tiene columna en la tabla ni bucket
-/// en Storage, así que no se persiste. Tampoco se perdía nada usable: eran
-/// rutas del sistema de archivos del autor, ilegibles desde cualquier otro
-/// teléfono.
+/// `target_type` ya admitía `'eco_activity'` desde la 013, pero este servicio
+/// lo tenía fijo a `'business'` — [getForEcoActivity]/[addReview] (con
+/// `targetType: ecoActivityTargetType`) es lo que lo habilita de verdad, para
+/// "Momentos" en `EcoDetailScreen`.
+///
+/// `media_urls` (migración 040) es lo que [addReview] usa para persistir las
+/// fotos que antes se perdían por completo — ver la nota en esa migración.
 class ReviewService {
   factory ReviewService() => instance;
 
@@ -55,9 +61,14 @@ class ReviewService {
 
   static const _table = 'reviews';
 
+  /// Bucket público de Storage para las fotos adjuntas a una reseña/momento
+  /// (supabase/sql/040_review_media_and_eco_target.sql).
+  static const mediaBucket = 'reviews';
+
   /// `reviews.target_id` apunta a `businesses.id` o a `eco_activities.id`
-  /// según `target_type`; hoy la app solo escribe reseñas de negocios.
-  static const _targetType = 'business';
+  /// según `target_type`.
+  static const businessTargetType = 'business';
+  static const ecoActivityTargetType = 'eco_activity';
 
   SupabaseClient get _client => Supabase.instance.client;
 
@@ -86,9 +97,14 @@ class ReviewService {
   /// devuelve `null` para el autor de cualquier reseña ajena — es decir,
   /// todas. La vista expone el nombre y el avatar sin el email ni el
   /// teléfono.
-  static const _columns =
+  static const _baseColumns =
       'id, user_id, target_id, rating, comment, created_at, '
-      'public_profiles(full_name)';
+      'public_profiles(full_name, avatar_url, residence_type, origin_country_code, origin_city, origin_municipality)';
+
+  /// `media_urls` es de la migración 040 — se pide aparte y con fallback
+  /// (ver [_getForTargets]) para no romper proyectos que todavía no la
+  /// corrieron.
+  static const _columnsWithMedia = '$_baseColumns, media_urls';
 
   /// Las reseñas de un negocio, de la más nueva a la más vieja.
   ///
@@ -112,28 +128,60 @@ class ReviewService {
   /// Postgres, no un cambio en quien llama.
   Future<Map<String, List<ReviewModel>>> getForBusinesses(
     List<String> businessIds,
-  ) async {
-    if (businessIds.isEmpty) return const {};
+  ) => _getForTargets(businessIds, targetType: businessTargetType);
+
+  /// Los "Momentos" (comentario + fotos) que participantes compartieron de
+  /// una jornada ECO mientras la vivían — misma tabla, mismo modelo, otro
+  /// `target_type` (antes fijo a `'business'`, nunca usado por jornadas).
+  Future<List<ReviewModel>> getForEcoActivity(String activityId) async {
+    final byActivity = await getForEcoActivities([activityId]);
+    return byActivity[activityId] ?? const [];
+  }
+
+  Future<Map<String, List<ReviewModel>>> getForEcoActivities(
+    List<String> activityIds,
+  ) => _getForTargets(activityIds, targetType: ecoActivityTargetType);
+
+  Future<Map<String, List<ReviewModel>>> _getForTargets(
+    List<String> targetIds, {
+    required String targetType,
+  }) async {
+    if (targetIds.isEmpty) return const {};
     try {
-      final rows = await _client
-          .from(_table)
-          .select(_columns)
-          .eq('target_type', _targetType)
-          .inFilter('target_id', businessIds)
-          .order('created_at', ascending: false);
+      List<dynamic> rows;
+      try {
+        rows = await _client
+            .from(_table)
+            .select(_columnsWithMedia)
+            .eq('target_type', targetType)
+            .inFilter('target_id', targetIds)
+            .order('created_at', ascending: false);
+      } on PostgrestException catch (e) {
+        final missingMediaColumn =
+            (e.code == 'PGRST204' || e.code == '42703') &&
+            e.message.contains('media_urls');
+        if (!missingMediaColumn) rethrow;
+        rows = await _client
+            .from(_table)
+            .select(_baseColumns)
+            .eq('target_type', targetType)
+            .inFilter('target_id', targetIds)
+            .order('created_at', ascending: false);
+      }
       final grouped = <String, List<ReviewModel>>{};
-      for (final row in (rows as List<dynamic>).cast<Map<String, dynamic>>()) {
+      for (final row in rows.cast<Map<String, dynamic>>()) {
         final targetId = row['target_id'] as String? ?? '';
         if (targetId.isEmpty) continue;
         (grouped[targetId] ??= []).add(_fromRow(row));
       }
       return grouped;
     } on PostgrestException catch (e) {
-      // 42P01 = migración 013 sin correr. El negocio se sigue mostrando sin
-      // reseñas en vez de romper el feed entero por una tabla ausente.
+      // 42P01 = migración 013 sin correr. El negocio/jornada se sigue
+      // mostrando sin reseñas en vez de romper el feed entero por una tabla
+      // ausente.
       if (e.code == '42P01') {
         debugPrint(
-          '[ReviewService] getForBusinesses: falta la tabla `reviews` '
+          '[ReviewService] _getForTargets: falta la tabla `reviews` '
           '(013_final_schema_additions.sql) — se muestran sin reseñas.',
         );
         return const {};
@@ -163,14 +211,19 @@ class ReviewService {
     );
   }
 
-  /// Publica una reseña a nombre de la sesión activa.
+  /// Publica una reseña (o "Momento" de jornada ECO) a nombre de la sesión
+  /// activa.
   ///
-  /// `user_id` se estampa con `currentUser.id` y nunca con un valor recibido de
-  /// la UI: es la columna de dueño de esta tabla.
+  /// `user_id` se estampa con `currentUser.id` y nunca con un valor recibido
+  /// de la UI: es la columna de dueño de esta tabla. [mediaFiles] se sube al
+  /// bucket [mediaBucket] antes del insert; si la subida falla, no se publica
+  /// una reseña a medias.
   Future<void> addReview({
-    required String businessId,
+    required String targetId,
     required double rating,
     required String comment,
+    String targetType = businessTargetType,
+    List<XFile> mediaFiles = const [],
   }) async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
@@ -181,14 +234,32 @@ class ReviewService {
     // La columna es `integer check (rating between 1 and 5)`; redondear acá
     // evita un 400 críptico de Postgres si alguna pantalla manda 4.5.
     final safeRating = rating.round().clamp(1, 5);
+
+    final mediaUrls = mediaFiles.isEmpty
+        ? const <String>[]
+        : await _uploadMedia(userId, mediaFiles);
+
+    final row = {
+      'user_id': userId,
+      'target_type': targetType,
+      'target_id': targetId,
+      'rating': safeRating,
+      'comment': sanitizeMultilineText(comment),
+      'media_urls': mediaUrls,
+    };
     try {
-      await _client.from(_table).insert({
-        'user_id': userId,
-        'target_type': _targetType,
-        'target_id': businessId,
-        'rating': safeRating,
-        'comment': sanitizeMultilineText(comment),
-      });
+      try {
+        await _client.from(_table).insert(row);
+      } on PostgrestException catch (e) {
+        // `media_urls` es de la 040, corrida aparte de la 013 que crea la
+        // tabla — si todavía no corrió, se reintenta sin esa columna en vez
+        // de bloquear toda reseña nueva.
+        final missingMediaColumn =
+            (e.code == 'PGRST204' || e.code == '42703') &&
+            e.message.contains('media_urls');
+        if (!missingMediaColumn) rethrow;
+        await _client.from(_table).insert(row..remove('media_urls'));
+      }
       revision.value++;
     } on PostgrestException catch (e) {
       throw ReviewServiceException(
@@ -201,6 +272,43 @@ class ReviewService {
     }
   }
 
+  /// Sube cada foto a `<user_id>/<uuid>.<ext>` en [mediaBucket] y devuelve
+  /// sus URLs públicas en el mismo orden — mismo patrón que
+  /// `EcoService.uploadActivityImage`.
+  Future<List<String>> _uploadMedia(String userId, List<XFile> files) async {
+    final urls = <String>[];
+    for (final file in files) {
+      final format = resolveImageUploadFormat(
+        file.name,
+        reportedMimeType: file.mimeType,
+      );
+      final objectPath = '$userId/${const Uuid().v4()}.${format.extension}';
+      try {
+        final bytes = await file.readAsBytes();
+        await _client.storage
+            .from(mediaBucket)
+            .uploadBinary(
+              objectPath,
+              bytes,
+              fileOptions: FileOptions(
+                contentType: format.mimeType,
+                upsert: false,
+              ),
+            );
+        urls.add(_client.storage.from(mediaBucket).getPublicUrl(objectPath));
+      } on StorageException catch (e) {
+        if (e.statusCode == '404') {
+          throw const ReviewServiceException(
+            'Falta crear el almacenamiento de fotos de reseñas. Corre '
+            'supabase/sql/040_review_media_and_eco_target.sql en Supabase.',
+          );
+        }
+        throw ReviewServiceException('No se pudo subir una foto: ${e.message}');
+      }
+    }
+    return urls;
+  }
+
   ReviewModel _fromRow(Map<String, dynamic> row) {
     final profile = row['public_profiles'] as Map<String, dynamic>?;
     final name = (profile?['full_name'] as String? ?? '').trim();
@@ -208,13 +316,15 @@ class ReviewService {
       id: row['id'] as String,
       authorId: row['user_id'] as String? ?? '',
       authorName: name.isEmpty ? 'Viajero' : name,
+      authorAvatarUrl: profile?['avatar_url'] as String?,
+      authorOrigin: UserOrigin.fromRow(profile ?? const {}),
       rating: (row['rating'] as num?)?.toDouble() ?? 0,
       comment: row['comment'] as String? ?? '',
       date:
           DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
-      // Sin columna ni bucket: ver la nota de la clase.
-      mediaPaths: const [],
+      mediaPaths:
+          (row['media_urls'] as List<dynamic>?)?.cast<String>() ?? const [],
     );
   }
 }

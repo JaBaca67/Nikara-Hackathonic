@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/features/auth/presentation/widgets/origin_completion_gate.dart';
 import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_main_screen.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
@@ -142,6 +143,10 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   Widget build(BuildContext context) {
+    return OriginCompletionGate(child: Builder(builder: _buildShell));
+  }
+
+  Widget _buildShell(BuildContext context) {
     return Scaffold(
       // Sin esto, las pantallas de atrás se detendrían antes del margen de la nav bar flotante, dejando ver el fondo del Scaffold.
       extendBody: true,

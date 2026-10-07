@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 import 'package:nikara_app/core/models/saved_account.dart';
 import 'package:nikara_app/core/models/user_model.dart';
+import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/core/services/account_switcher_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/profile_face_service.dart';
@@ -110,12 +111,18 @@ class AuthService {
     required String email,
     required String password,
     required String phone,
+    required UserOrigin origin,
   }) async {
+    if (!origin.isComplete) {
+      return const AuthResult.failure(
+        'Completa tu procedencia para crear la cuenta.',
+      );
+    }
     try {
       final response = await _client.auth.signUp(
         email: email,
         password: password,
-        data: {'full_name': fullName, 'phone': phone},
+        data: {'full_name': fullName, 'phone': phone, ...origin.toRow()},
       );
       if (response.user == null) {
         return const AuthResult.failure(
@@ -396,6 +403,55 @@ class AuthService {
     } catch (_) {
       return const AuthResult.failure(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
+  Future<UserModel> updatePublicProfile({
+    required UserOrigin origin,
+    String? publicDisplayName,
+    String? bio,
+    bool? showOrigin,
+    bool? showOriginDetails,
+  }) async {
+    final userId = currentAuthUser?.id;
+    if (userId == null) {
+      throw const AuthServiceException('Inicia sesión para editar tu perfil.');
+    }
+    if (!origin.isComplete) {
+      throw const AuthServiceException(
+        'Completa tu país, ciudad y municipio según tu procedencia.',
+      );
+    }
+    if ((publicDisplayName?.trim().length ?? 0) > 80 ||
+        (bio?.trim().length ?? 0) > 300) {
+      throw const AuthServiceException(
+        'El nombre admite 80 caracteres y la presentación 300.',
+      );
+    }
+    try {
+      final row = await _client
+          .from('profiles')
+          .update({
+            ...origin.toRow(),
+            if (publicDisplayName != null)
+              'public_display_name': publicDisplayName.trim(),
+            if (bio != null) 'bio': bio.trim(),
+            'show_origin': ?showOrigin,
+            'show_origin_details': ?showOriginDetails,
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+      ProfileFaceService().invalidate();
+      return UserModel.fromRow(row);
+    } on PostgrestException {
+      throw const AuthServiceException(
+        'No se pudo guardar tu perfil. Intenta de nuevo.',
+      );
+    } catch (_) {
+      throw const AuthServiceException(
+        'No se pudo guardar tu perfil. Verifica tu conexión.',
       );
     }
   }

@@ -1,10 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
-
-import 'package:nikara_app/core/config/maps_config.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DirectionsServiceException implements Exception {
   const DirectionsServiceException(this.message);
@@ -112,7 +108,9 @@ class DirectionsRoute {
   }
 }
 
-/// Llama a la Google Directions API directamente desde el cliente usando [MapsConfig.directionsApiKey].
+/// Llama a la Edge Function `get-directions`, que a su vez le pega a la Google
+/// Directions API — la API key vive como secreto de Supabase, nunca en el
+/// cliente (mismo motivo y mismo patrón que `AssistantService`/`travel-assistant`).
 class DirectionsService {
   factory DirectionsService() => instance;
 
@@ -120,8 +118,9 @@ class DirectionsService {
 
   static final DirectionsService instance = DirectionsService._internal();
 
-  static const _endpoint =
-      'https://maps.googleapis.com/maps/api/directions/json';
+  static const _functionName = 'get-directions';
+
+  SupabaseClient get _client => Supabase.instance.client;
 
   /// Trae una ruta real sobre calles para [mode]; lanza [DirectionsServiceException] (mensaje en español) si la API no puede devolver waypoints reales, en vez de dibujar algo inventado.
   Future<DirectionsRoute> getRoute({
@@ -129,51 +128,49 @@ class DirectionsService {
     required LatLng destination,
     TravelMode mode = TravelMode.driving,
   }) async {
-    final key = MapsConfig.directionsApiKey;
-    debugPrint(
-      '[DirectionsService] key configured: ${key.isNotEmpty} '
-      '(length=${key.length}), mode=${mode.apiValue}',
-    );
-    if (key.isEmpty) {
-      throw const DirectionsServiceException(
-        'La ruta en la app no está configurada todavía.',
-      );
-    }
-    final uri = Uri.parse(_endpoint).replace(
-      queryParameters: {
-        'origin': '${origin.latitude},${origin.longitude}',
-        'destination': '${destination.latitude},${destination.longitude}',
-        'mode': mode.apiValue,
-        // Sin esto la API responde en inglés por defecto.
-        'language': 'es',
-        // Unidades métricas explícitas: sin esto Google puede responder en
-        // millas según la región de la key, y el texto de la maniobra
-        // ("En 0.2 mi") se lee tal cual por TTS.
-        'units': 'metric',
-        'key': key,
+    final payload = <String, dynamic>{
+      'origin': {'lat': origin.latitude, 'lng': origin.longitude},
+      'destination': {
+        'lat': destination.latitude,
+        'lng': destination.longitude,
       },
-    );
+      'mode': mode.apiValue,
+    };
 
-    final http.Response response;
+    final Map<String, dynamic> body;
     try {
-      response = await http.get(uri).timeout(const Duration(seconds: 12));
-    } catch (e) {
-      debugPrint('[DirectionsService] HTTP request failed: $e');
-      throw const DirectionsServiceException(
-        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
-      );
-    }
-    debugPrint('[DirectionsService] HTTP ${response.statusCode}');
-
-    if (response.statusCode != 200) {
+      final response = await _client.functions
+          .invoke(_functionName, body: payload)
+          .timeout(const Duration(seconds: 12));
+      final data = response.data;
+      if (data is! Map<String, dynamic>) {
+        throw const DirectionsServiceException(
+          'No se pudo calcular la ruta en este momento.',
+        );
+      }
+      body = data;
+    } on FunctionException catch (e) {
+      // `FunctionException` trae el cuerpo de la respuesta de error, que es
+      // donde la función puso su mensaje en español.
+      final details = e.details;
+      if (details is Map && details['error'] is String) {
+        throw DirectionsServiceException(details['error'] as String);
+      }
+      debugPrint('[DirectionsService] FunctionException ${e.status}: $details');
       throw const DirectionsServiceException(
         'No se pudo calcular la ruta en este momento.',
+      );
+    } on DirectionsServiceException {
+      rethrow;
+    } catch (e) {
+      debugPrint('[DirectionsService] error al llamar get-directions: $e');
+      throw const DirectionsServiceException(
+        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
       );
     }
 
     // Todo el parseo va envuelto porque no controlamos la forma exacta de la respuesta de Google.
     try {
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
       final status = body['status'] as String?;
       if (status != 'OK') {
         // error_message trae la razón real (útil para depurar REQUEST_DENIED por key restringida), aunque el mensaje al usuario se queda genérico.
