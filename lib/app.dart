@@ -14,11 +14,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Supabase.initialize() and GuestSessionService().load() (both called
-    // in main(), before runApp) already restore any persisted real session
-    // or guest state synchronously by the time this builds, so there's no
-    // async gate needed here — the branded Splash below is a real branded
-    // pause, not a loading gate for that state.
+    // Supabase.initialize() (en main(), antes de runApp) ya restauró la sesión
+    // real, así que no hace falta una compuerta async aquí — el Splash de
+    // abajo es una pausa de marca, no una carga. El invitado nunca se
+    // restaura: arranca en false, por eso un invitado reabre en Login.
     final hasAccess = AuthService().isLoggedIn || GuestSessionService().isGuest;
     return MaterialApp(
       navigatorKey: rootNavigatorKey,
@@ -27,6 +26,7 @@ class MyApp extends StatelessWidget {
           false, // Esto quita la fea cinta roja de "DEBUG"
       theme: AppTheme.lightTheme,
       home: SplashTransitionScreen(
+        showIsotipoOnly: true,
         nextPage: hasAccess ? const MainLayout() : const LoginScreen(),
       ),
     );

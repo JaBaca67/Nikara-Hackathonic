@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,6 +17,9 @@ import 'package:nikara_app/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await _configureSystemBars();
+  // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
+  final isotipoReady = _precacheSplashIsotipo();
   await dotenv.load(fileName: '.env');
   await Supabase.initialize(
     url: SupabaseConfig.url,
@@ -23,12 +29,56 @@ Future<void> main() async {
   // Mantiene la lista de "Cambiar de cuenta" al día (incluida la rotación del
   // refresh token); debe quedar suscrito antes de que se emita initialSession.
   AuthService().startTrackingSessions();
-  // Deja isGuest disponible de forma síncrona antes de construir la UI.
+  // Borra la marca de invitado que versiones anteriores dejaban en disco.
   await GuestSessionService().load();
   // Limpieza única del avatar local pre-015, que ya nadie lee.
   await LocalProfileExtrasService().clearLegacyAvatar();
   await _initPush();
+  await isotipoReady;
   runApp(const MyApp());
+}
+
+/// Barras del sistema transparentes e iconos oscuros (fondos amarillo y beige). Sin el
+/// `systemNavigationBarContrastEnforced: false`, Android 10+ pone un velo oscuro translúcido tras la
+/// barra de gestos; ningún widget de la app declara estilo propio, así que el framework nunca lo
+/// anula. Va antes que cualquier otro `await` para que aplique desde el primer frame.
+Future<void> _configureSystemBars() async {
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ),
+  );
+}
+
+/// `precacheImage` exige un BuildContext y aún no hay árbol; resolver el proveedor con
+/// [ImageConfiguration.empty] llena el mismo `imageCache`, así el `Image.asset` del splash
+/// (misma key: sin `cacheWidth`, sin variantes por densidad) sale sincrónico en el primer frame
+/// en vez de aparecer un instante después sobre el fondo vacío.
+Future<void> _precacheSplashIsotipo() {
+  final completer = Completer<void>();
+  final stream = const AssetImage(
+    'assets/images/isotipo_nikara_splash.png',
+  ).resolve(ImageConfiguration.empty);
+  late final ImageStreamListener listener;
+  listener = ImageStreamListener(
+    (_, _) {
+      stream.removeListener(listener);
+      completer.complete();
+    },
+    onError: (Object error, StackTrace? _) {
+      stream.removeListener(listener);
+      // Sin precarga el splash sigue funcionando (el isotipo carga async); no vale tumbar el arranque.
+      debugPrint('Precarga del isotipo del splash falló: $error');
+      completer.complete();
+    },
+  );
+  stream.addListener(listener);
+  return completer.future;
 }
 
 /// Firebase (Cloud Messaging) es solo la capa de entrega de push — ver

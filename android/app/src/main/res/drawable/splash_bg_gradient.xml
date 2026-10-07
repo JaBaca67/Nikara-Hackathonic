@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Réplica de AppGradients.authBackground* (lib/theme/app_theme.dart): vertical, 4 stops.
+     Un <gradient> de shape solo admite 3 colores, por eso es un vector. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path android:pathData="M0,0h100v100h-100z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="0"
+                android:endY="100">
+                <item android:offset="0.0" android:color="@color/splash_grad_0" />
+                <item android:offset="0.32" android:color="@color/splash_grad_1" />
+                <item android:offset="0.68" android:color="@color/splash_grad_2" />
+                <item android:offset="1.0" android:color="@color/splash_grad_3" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/auth/auth_logo_geometry.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
 import 'package:nikara_app/theme/app_motion.dart';
@@ -9,17 +10,14 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 /// Estados de reposo del sheet: 0.10 es seguro porque el handle vive dentro del Scrollable; si vuelve a chocar con el gesto "swipe up" de Android, subir este valor (no reubicar el handle).
 const double _kSheetHiddenSize = 0.10;
-const double _kSheetOpenSize = 0.72;
+const double _kSheetOpenSize = kAuthSheetOpenSize;
 
 /// Rango de arrastre tras [_kSheetHiddenSize] en el que el contenido se desvanece, para que quede invisible en reposo sin depender de los píxeles exactos que deja esa fracción.
 const double _kContentFadeSpan = 0.08;
 
-/// Gap fijo entre el logo y el borde superior del sheet cuando este lo alcanza.
-const double _kLogoToSheetGap = 20.0;
-
 /// Ancho/alto del asset del eslogan ya recortado a su contenido visible (sin
 /// el padding transparente que traía el export original). Igual que
-/// [_kLogoAspectRatio], fijarlo evita depender del tamaño del PNG en disco.
+/// [AuthLogoGeometry.aspectRatio], fijarlo evita depender del tamaño del PNG en disco.
 const double _kSloganAspectRatio = 2110 / 448;
 
 /// Separación entre el logo y el eslogan "Descubre. Conecta. Vive." cuando
@@ -31,24 +29,19 @@ const double _kSloganAspectRatio = 2110 / 448;
 /// (que ya está centrado correctamente).
 const double _kLogoToSloganGap = -8.0;
 
-/// Techo de altura del logo. En la práctica casi nunca manda: a los anchos de
-/// teléfono reales el limitante es [_kLogoSidePadding] vía la relación de aspecto.
-const double _kLogoMaxHeight = 210.0;
-
-/// Ancho/alto del asset del logo. Fijarlo permite saber la altura que el logo
-/// va a ocupar *antes* de renderizarlo, que es lo que necesita el cálculo de
-/// posición: usar [_kLogoMaxHeight] ahí dejaba un hueco fantasma de ~87dp
-/// entre el logo y el sheet. Actualizar si se cambia el asset.
-const double _kLogoAspectRatio = 2117 / 677;
-
-/// Sube este valor para achicar el logo: es el que decide su ancho real.
-const double _kLogoSidePadding = 40.0;
-
 /// Shell compartido por las pantallas de Auth (Login + los 3 pasos de Register): fondo "Sunset" animado, logo, y un bottom sheet arrastrable con [child]. La altura de [child] decide el tamaño del sheet — un `AnimatedSwitcher` de contenido variable debe top-align el suyo propio.
 class AuthBottomSheetLayout extends StatefulWidget {
-  const AuthBottomSheetLayout({super.key, required this.child, this.onBack});
+  const AuthBottomSheetLayout({
+    super.key,
+    required this.child,
+    this.onBack,
+    this.showIllustrations = true,
+  });
 
   final Widget child;
+
+  /// Ver [AuthSceneBackdrop.showIllustrations].
+  final bool showIllustrations;
 
   /// Sin botón de back propio: un círculo flotante sobre el gradiente animado no se leía como tappable. Pantallas que necesitan uno lo agregan dentro de [child].
   final VoidCallback? onBack;
@@ -84,29 +77,26 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
           builder: (context, constraints) {
             final availableHeight = constraints.maxHeight;
             final safeTop = MediaQuery.paddingOf(context).top;
-            final logoWidth = math.min(
-              constraints.maxWidth - _kLogoSidePadding * 2,
-              _kLogoMaxHeight * _kLogoAspectRatio,
-            );
-            final logoHeight = logoWidth / _kLogoAspectRatio;
+            final logoWidth = AuthLogoGeometry.widthFor(constraints.maxWidth);
+            final logoHeight = AuthLogoGeometry.heightFor(logoWidth);
 
             return Stack(
               children: [
-                const Positioned.fill(child: AuthSceneBackdrop()),
+                Positioned.fill(
+                  child: AuthSceneBackdrop(
+                    showIllustrations: widget.showIllustrations,
+                  ),
+                ),
                 AnimatedBuilder(
                   animation: _sheetController,
                   builder: (context, _) {
                     final extent = _extent;
-                    final sheetTopY = availableHeight * (1 - extent);
-                    // El logo se centra en la franja libre (borde seguro -> techo
-                    // del sheet), no en la pantalla entera: asi queda a media
-                    // altura de lo que realmente se ve y sigue al sheet cuando
-                    // este baja, en vez de quedar colgando de su borde.
-                    final topLimit = safeTop + 8;
-                    final bandBottom = sheetTopY - _kLogoToSheetGap;
-                    final logoTop =
-                        (topLimit + (bandBottom - topLimit - logoHeight) / 2)
-                            .clamp(topLimit, availableHeight);
+                    final logoTop = AuthLogoGeometry.topFor(
+                      availableHeight: availableHeight,
+                      safeTop: safeTop,
+                      logoHeight: logoHeight,
+                      sheetExtent: extent,
+                    );
                     final sloganOpacity = ((0.58 - extent) / 0.18).clamp(
                       0.0,
                       1.0,
@@ -196,8 +186,10 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                             ),
                           ],
                         ),
+                        // Sin `bottom`: con barra de sistema transparente, un SafeArea inferior recorta el scroll en el borde del inset y deja una franja opaca de color tarjeta; el inset se aplica como relleno del contenido (más abajo).
                         child: SafeArea(
                           top: false,
+                          bottom: false,
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => FocusScope.of(context).unfocus(),
@@ -238,11 +230,14 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                                       );
                                     },
                                     child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
+                                      padding: EdgeInsets.fromLTRB(
                                         22,
                                         6,
                                         22,
-                                        18,
+                                        18 +
+                                            MediaQuery.paddingOf(
+                                              context,
+                                            ).bottom,
                                       ),
                                       child: widget.child,
                                     ),
