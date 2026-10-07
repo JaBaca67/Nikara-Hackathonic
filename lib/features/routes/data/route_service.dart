@@ -79,15 +79,14 @@ class RouteService {
             ),
           );
       return _client.storage.from(imageBucket).getPublicUrl(objectPath);
-    } on StorageException catch (e) {
-      // La ruta se acaba de generar, así que un 404 solo puede ser el bucket.
-      if (e.statusCode == '404') {
-        throw const RouteServiceException(
-          'Falta crear el almacenamiento de rutas. Corre '
-          'supabase/sql/027_routes_photos_storage.sql en Supabase.',
-        );
-      }
-      throw RouteServiceException('No se pudo subir la foto: ${e.message}');
+    } on StorageException {
+      // La ruta se acaba de generar, así que un 404 solo puede ser el bucket
+      // (falta correr supabase/sql/027_routes_photos_storage.sql). Eso es
+      // cosa del equipo, no de quien usa la app: el mensaje al usuario es
+      // genérico y el motivo queda aquí.
+      throw const RouteServiceException(
+        'No se pudo subir la foto. Intenta de nuevo en un momento.',
+      );
     } catch (_) {
       throw const RouteServiceException(
         'No se pudo subir la foto. Verifica tu internet e intenta de nuevo.',
@@ -209,8 +208,10 @@ class RouteService {
       final saved = await _insertStops(routeId, stops);
       revision.value++;
       return RouteModel.fromRow(row).copyWith(stops: saved);
-    } on PostgrestException catch (e) {
-      throw RouteServiceException('No se pudo guardar la ruta: ${e.message}');
+    } on PostgrestException {
+      throw const RouteServiceException(
+        'No se pudo guardar la ruta. Intenta de nuevo en un momento.',
+      );
     } on RouteServiceException {
       rethrow;
     } catch (_) {
@@ -275,9 +276,9 @@ class RouteService {
       // lo que impide editar la ruta de otra persona.
       await _updateRoute(routeId, userId, changes);
       revision.value++;
-    } on PostgrestException catch (e) {
-      throw RouteServiceException(
-        'No se pudieron guardar los cambios: ${e.message}',
+    } on PostgrestException {
+      throw const RouteServiceException(
+        'No se pudieron guardar los cambios. Intenta de nuevo en un momento.',
       );
     } catch (_) {
       throw const RouteServiceException(
@@ -328,9 +329,9 @@ class RouteService {
       final saved = await _insertStops(routeId, stops);
       revision.value++;
       return saved;
-    } on PostgrestException catch (e) {
-      throw RouteServiceException(
-        'No se pudieron guardar las paradas: ${e.message}',
+    } on PostgrestException {
+      throw const RouteServiceException(
+        'No se pudieron guardar las paradas. Intenta de nuevo en un momento.',
       );
     } on RouteServiceException {
       rethrow;
