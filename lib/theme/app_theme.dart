@@ -772,7 +772,7 @@ abstract class AppTextStyles {
     fontWeight: FontWeight.w800,
   );
 
-  /// Línea de ubicación de tarjeta en Destacados/Cerca de ti (sin ícono de pin).
+  /// Línea de ubicación de tarjeta en Destacados/Cerca de ti (ciudad + distancia, junto a un pin gris).
   static TextStyle get homeCardLocation => GoogleFonts.nunito(
     color: AppColors.settingsTextMuted,
     fontSize: 10.5,

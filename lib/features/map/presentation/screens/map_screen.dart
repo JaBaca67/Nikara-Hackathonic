@@ -9,7 +9,9 @@ import 'package:nikara_app/core/services/directions_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
 import 'package:nikara_app/core/services/tts_service.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
@@ -19,6 +21,8 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
+import 'package:nikara_app/features/map/presentation/widgets/map_bottom_dock.dart';
+import 'package:nikara_app/features/map/presentation/widgets/map_business_rating.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
@@ -47,6 +51,13 @@ const String _kAllCategories = 'Todos';
 /// Chip propio para las jornadas ECO: no sale de `businesses.category` como
 /// los demás, porque no son negocios sino filas de `eco_activities`.
 const String _kEcoCategory = 'Jornadas ECO';
+
+bool _hasEcoBadge(BusinessModel business) =>
+    business.ecoSealRequested ||
+    business.category.toLowerCase().contains('eco') ||
+    business.activities.any(
+      (activity) => activityLabel(activity).toLowerCase().contains('eco'),
+    );
 
 /// Margen extra sobre el viewport visible al consultar negocios (ver
 /// [_MapScreenState._loadBusinessesInViewport]/[_MapScreenState._paddedBounds]).
@@ -79,7 +90,8 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _businessStorageService = BusinessStorageService();
   GoogleMapController? _mapController;
 
@@ -127,6 +139,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// dispositivo registra/edita un negocio) — ver
   /// [BusinessStorageService.subscribeToBusinessChanges].
   Future<void> Function()? _unsubscribeBusinessChanges;
+  Future<void> Function()? _unsubscribeReviews;
+  Timer? _reviewsPoll;
+  Timer? _reviewsDebounce;
+  bool _refreshingReviews = false;
+  bool _reviewsRefreshPending = false;
 
   /// Junta una ráfaga de eventos realtime (una edición multi-fila dispara
   /// uno por fila) en un solo reload.
@@ -246,6 +263,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ReviewService.revision.addListener(_onReviewsChanged);
     // Se lee antes de suscribirse para no re-disparar _onFocusRequested con
     // lo que ya se acaba de tomar.
     _pendingFocus =
@@ -278,6 +297,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ReviewService.revision.removeListener(_onReviewsChanged);
+    _reviewsPoll?.cancel();
+    _reviewsDebounce?.cancel();
+    unawaited(_unsubscribeReviews?.call() ?? Future<void>.value());
     MapFocusController().pendingFocus.removeListener(_onFocusRequested);
     MapFocusController().pendingRoute.removeListener(_onRouteRequested);
     MapFocusController().navigationActive.value = false;
@@ -293,6 +317,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _mapController?.dispose();
     unawaited(TtsService().stop());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onReviewsChanged();
+  }
+
+  void _onReviewsChanged() {
+    _reviewsDebounce?.cancel();
+    _reviewsDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) unawaited(_refreshReviews());
+    });
+  }
+
+  Future<void> _refreshReviews() async {
+    if (!mounted || _businesses.isEmpty) return;
+    if (_refreshingReviews) {
+      _reviewsRefreshPending = true;
+      return;
+    }
+    _refreshingReviews = true;
+    try {
+      do {
+        _reviewsRefreshPending = false;
+        final ids = _businesses.map((b) => b.id).toList();
+        final reviews = await ReviewService().getForBusinesses(ids);
+        if (!mounted) return;
+        // Solo cambia reseñas: conserva selección, cámara, ruta y datos que
+        // pudieron llegar durante la consulta desde otro refresh de negocios.
+        setState(() {
+          _businesses = [
+            for (final business in _businesses)
+              if (ids.contains(business.id))
+                business.copyWith(reviews: reviews[business.id] ?? const [])
+              else
+                business,
+          ];
+        });
+      } while (_reviewsRefreshPending);
+    } on ReviewServiceException catch (e) {
+      // Un fallo de red conserva la última valoración conocida.
+      debugPrint('[MapScreen] No se actualizaron las reseñas: ${e.message}');
+    } finally {
+      _refreshingReviews = false;
+    }
   }
 
   /// Se agregó/editó/eliminó un negocio desde este dispositivo — recarga y
@@ -386,11 +455,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Altura objetivo del carrusel — expandida (Estado 19b) con card
-  /// seleccionada, compacta (Estado 19a) si no. Alimenta tanto el
-  /// [AnimatedContainer] del carrusel como el offset del botón de
-  /// recentrar, para que ninguno salte al cambiar la selección.
+  /// seleccionada, compacta (Estado 19a) si no. El dock coloca los controles
+  /// encima de esa altura sin calcular offsets por separado.
   double get _carouselHeight => _selectedBusinessId == null
-      ? _kCarouselCompactHeight
+      ? _kCarouselCompactHeight +
+            (_filteredBusinesses.any(_hasEcoBadge) ? 32 : 0)
       : _kCarouselExpandedHeight;
 
   /// Con el chip de jornadas activo el mapa muestra solo esas: los negocios
@@ -1016,6 +1085,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       // que no llegan aquí, sin una conexión viva que cerrar).
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onRemoteBusinessesChanged);
+      _unsubscribeReviews ??= ReviewService().subscribeToChanges(
+        _onReviewsChanged,
+      );
+      // También sincroniza si la publicación Realtime aún no está habilitada
+      // o se perdió un evento durante una desconexión.
+      _reviewsPoll ??= Timer.periodic(const Duration(seconds: 15), (_) {
+        if (WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          unawaited(_refreshReviews());
+        }
+      });
       // Una solicitud de foco pendiente gana sobre el encuadre general —
       // si no, la cámara encuadraría todo y luego volaría al pin pedido.
       if (_pendingFocus != null) {
@@ -1672,6 +1753,108 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildRecommendationsCarousel(List<BusinessModel> filtered) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedContainer(
+          // Al expandir hay que reservar toda la altura antes de mostrar los
+          // botones de la tarjeta. Al colapsar sí puede animarse el espacio.
+          duration: _selectedBusinessId == null
+              ? AppMotion.respect(context, AppMotion.standardDuration)
+              : Duration.zero,
+          curve: AppMotion.decelerate,
+          height: _carouselHeight,
+          child: PageView.builder(
+            controller: _carouselController,
+            padEnds: false,
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              final business = filtered[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _BusinessCarouselCard(
+                    business: business,
+                    expanded: business.id == _selectedBusinessId,
+                    distanceKm: LocationService.distanceKm(
+                      _userPosition,
+                      business.latitude,
+                      business.longitude,
+                    ),
+                    onTap: () => _onCarouselCardTapped(business),
+                    onNavigate: () => _startTripPreview(business),
+                    onViewProfile: () => pushSharedAxis(
+                      context,
+                      BusinessDetailScreen(business: business),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomDock(List<BusinessModel> filtered) {
+    Widget? panel;
+    if (_isPreviewingTrip && _navigationTarget != null) {
+      panel = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: _TripPreviewPanel(
+          destinationName: _navigationTarget!.name,
+          distanceLabel: _tripPreviewDistanceLabel,
+          etaLabel: _remainingEtaLabel,
+          arrivalLabel: _tripPreviewArrivalLabel,
+          onStart: _confirmStartTrip,
+        ),
+      );
+    } else if (_isNavigating && _navigationTarget != null) {
+      panel = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: _NavigationPanel(
+          destinationName: _navigationTarget!.name,
+          etaLabel: _remainingEtaLabel,
+          remainingLabel: _remainingDistanceLabel,
+          voiceEnabled: _voiceGuidanceEnabled,
+          onToggleVoice: _toggleVoiceGuidance,
+          onCancel: _stopNavigation,
+        ),
+      );
+    } else if (filtered.isNotEmpty) {
+      panel = _buildRecommendationsCarousel(filtered);
+    }
+
+    return MapBottomDock(
+      recommendationLabel:
+          !_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty
+          ? const _CarouselHeaderLabel()
+          : null,
+      leading: _isNavigating && _currentSpeedKmh != null
+          ? _SpeedometerBadge(speedKmh: _currentSpeedKmh!)
+          : null,
+      locationControl: !_isNavigating || !_isCameraLocked
+          ? _RecenterButton(
+              isLoading: _isNavigating ? false : _locatingUser,
+              icon: _isNavigating
+                  ? Icons.center_focus_strong_rounded
+                  : Icons.my_location_rounded,
+              onPressed: _isNavigating
+                  ? _recenterNavigationCamera
+                  : () => _locateUser(animate: true),
+            )
+          : null,
+      assistantControl: !_isNavigating && !_isPreviewingTrip
+          ? const AssistantFab()
+          : null,
+      panel: panel,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredBusinesses;
@@ -1848,104 +2031,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
-          // Carrusel persistente "Recomendaciones destacadas" (Pantalla 2a):
-          // scrollear es solo navegar, no selecciona ni mueve la cámara —
-          // solo tocar una card o su pin lo hace.
-          if (!_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(
-                          left: AppSpacing.md,
-                          bottom: AppSpacing.sm,
-                        ),
-                        child: _CarouselHeaderLabel(),
-                      ),
-                      AnimatedContainer(
-                        // Al expandir, el contenedor salta directo a su
-                        // altura final: si animara igual que al colapsar, el
-                        // primer frame deja la card ya "expanded" (contenido
-                        // completo) dentro de un contenedor que todavía mide
-                        // lo mismo que compacto, y el `Column` de
-                        // `_BusinessCarouselCard` desborda (RenderFlex
-                        // overflow real, confirmado en el teléfono). Al
-                        // colapsar no hay ese riesgo — el contenido encoge
-                        // de inmediato, así que sí puede animarse suave.
-                        duration: _selectedBusinessId == null
-                            ? AppMotion.standardDuration
-                            : Duration.zero,
-                        curve: AppMotion.decelerate,
-                        height: _carouselHeight,
-                        child: PageView.builder(
-                          controller: _carouselController,
-                          padEnds: false,
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final business = filtered[index];
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: _BusinessCarouselCard(
-                                  business: business,
-                                  expanded: business.id == _selectedBusinessId,
-                                  distanceKm: LocationService.distanceKm(
-                                    _userPosition,
-                                    business.latitude,
-                                    business.longitude,
-                                  ),
-                                  onTap: () => _onCarouselCardTapped(business),
-                                  onNavigate: () => _startTripPreview(business),
-                                  onViewProfile: () {
-                                    pushSharedAxis(
-                                      context,
-                                      BusinessDetailScreen(business: business),
-                                    );
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          // Fase 1 — panel inferior del preview: distancia, ETA, hora de
-          // llegada y botón "Iniciar viaje" (ver [_confirmStartTrip]).
-          if (_isPreviewingTrip && _navigationTarget != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _TripPreviewPanel(
-                    destinationName: _navigationTarget!.name,
-                    distanceLabel: _tripPreviewDistanceLabel,
-                    etaLabel: _remainingEtaLabel,
-                    arrivalLabel: _tripPreviewArrivalLabel,
-                    onStart: _confirmStartTrip,
-                  ),
-                ),
-              ),
-            ),
           // Fase 2 — banner de maniobra (siguiente giro + distancia, ícono
           // derivado de `maneuver` de Directions, ver [_maneuverIcon]).
           // `Positioned` explícito por la misma razón que el de arriba: sin
@@ -1964,70 +2049,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 distanceLabel: _maneuverDistanceLabel,
               ),
             ),
-          // Estado 19c — panel inferior con ETA, distancia restante y
-          // acciones Voz/Cancelar. El bottom nav de MainLayout está oculto
-          // mientras se muestra (ver _confirmStartTrip).
-          if (_isNavigating && _navigationTarget != null)
+          // El dock respeta la barra inferior y coloca controles y tarjetas
+          // en el mismo flujo. Al escribir una búsqueda libera el mapa.
+          if (MediaQuery.viewInsetsOf(context).bottom == 0)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _NavigationPanel(
-                    destinationName: _navigationTarget!.name,
-                    etaLabel: _remainingEtaLabel,
-                    remainingLabel: _remainingDistanceLabel,
-                    voiceEnabled: _voiceGuidanceEnabled,
-                    onToggleVoice: _toggleVoiceGuidance,
-                    onCancel: _stopNavigation,
-                  ),
-                ),
-              ),
-            ),
-          // Fase 2 — velocímetro, abajo a la izquierda para no solaparse
-          // con el botón de recentrar ni el panel inferior.
-          if (_isNavigating && _currentSpeedKmh != null)
-            Positioned(
-              left: 16,
-              bottom: _kNavigationPanelHeight + 16,
-              child: SafeArea(
-                top: false,
-                bottom: false,
-                child: _SpeedometerBadge(speedKmh: _currentSpeedKmh!),
-              ),
-            ),
-          // Oculto por completo mientras navega con la cámara ya bloqueada
-          // al vehículo — nada que recentrar. Al arrastrar el mapa (ver
-          // `onCameraMoveStarted`) se vuelve el botón de mira "Recentrar".
-          if (!_isNavigating || !_isCameraLocked)
-            AnimatedPositioned(
-              duration: AppMotion.standardDuration,
-              curve: AppMotion.decelerate,
-              right: 16,
-              // Se posiciona justo encima de lo que ocupe el fondo de la
-              // pantalla (panel de navegación, panel de preview, o carrusel).
-              bottom: _isNavigating
-                  ? _kNavigationPanelHeight + 16
-                  : _isPreviewingTrip
-                  ? _kTripPreviewPanelHeight + 16
-                  : (filtered.isEmpty ? 16 : _carouselHeight + 16),
-              child: SafeArea(
-                top: false,
-                bottom: false,
-                child: _isNavigating
-                    ? _RecenterButton(
-                        isLoading: false,
-                        icon: Icons.center_focus_strong_rounded,
-                        onPressed: _recenterNavigationCamera,
-                      )
-                    : _RecenterButton(
-                        isLoading: _locatingUser,
-                        onPressed: () => _locateUser(animate: true),
-                      ),
-              ),
+              child: _buildBottomDock(filtered),
             ),
         ],
       ),
@@ -2045,22 +2074,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
 /// Altura del carrusel sin card seleccionada (Estado 19a) — con margen
 /// extra para redondeo de fuente, evita overflow de `RenderFlex`.
-const double _kCarouselCompactHeight = 108;
+const double _kCarouselCompactHeight = 112;
 
 /// Altura del carrusel con card expandida y "Cómo llegar"/"Ver perfil"
 /// (Estado 19b), Pantalla 2a.
-const double _kCarouselExpandedHeight = 168;
-
-/// Altura fija de la línea de badge en la card compacta — reservada haya
-/// o no badge, para que todas las cards midan igual.
-const double _kCompactBadgeSlotHeight = 26;
-
-/// Espacio que ocupa [_NavigationPanel] al fondo — lo que el botón de
-/// recentrar debe despejar mientras navega.
-const double _kNavigationPanelHeight = 132;
-
-/// Espacio que ocupa [_TripPreviewPanel] al fondo durante el preview.
-const double _kTripPreviewPanelHeight = 170;
+const double _kCarouselExpandedHeight = 196;
 
 /// Mapea el `maneuver` de Directions al ícono correspondiente; `null`
 /// (paso sin maniobra especial, típicamente el primero de la ruta) cae a
@@ -2682,6 +2700,7 @@ class _CarouselHeaderLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
+      heightFactor: 1,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -2705,11 +2724,12 @@ class _CarouselHeaderLabel extends StatelessWidget {
               color: AppColors.primary500,
             ),
             const SizedBox(width: 5),
-            Text(
-              'Recomendaciones destacadas',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                fontSize: 12,
-                color: AppColors.settingsTextDark,
+            Flexible(
+              child: Text(
+                'Recomendaciones destacadas',
+                style: AppTextStyles.mapRowTitle.copyWith(
+                  color: AppColors.settingsTextDark,
+                ),
               ),
             ),
           ],
@@ -3048,31 +3068,27 @@ class _BusinessCarouselCard extends StatelessWidget {
     final locationLabel = km == null
         ? business.city
         : '${business.city} · a ${km.toStringAsFixed(0)} km';
-    final rating = business.averageRating;
     final firstActivity = business.activities.isNotEmpty
         ? activityLabel(business.activities.first)
         : null;
     // Aún no existe columna `is_eco` — el opt-in real del dueño (Sello ECO,
     // Pantalla 4c) tiene prioridad; category/activities es solo fallback
     // para negocios guardados antes de ese campo.
-    final isEco =
-        business.ecoSealRequested ||
-        business.category.toLowerCase().contains('eco') ||
-        business.activities.any(
-          (a) => activityLabel(a).toLowerCase().contains('eco'),
-        );
+    final isEco = _hasEcoBadge(business);
 
     final header = GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: expanded
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(expanded ? 16 : 12),
             child: SizedBox(
-              width: expanded ? 78 : 52,
-              height: expanded ? 78 : 52,
+              width: expanded ? 78 : 64,
+              height: expanded ? 78 : 64,
               child: LocalImage(
                 path: imagePath,
                 fallbackIcon: Icons.storefront_outlined,
@@ -3102,7 +3118,7 @@ class _BusinessCarouselCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: expanded ? 3 : AppSpacing.xs),
                 Row(
                   children: [
                     Icon(
@@ -3123,8 +3139,13 @@ class _BusinessCarouselCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                if (expanded)
+                const SizedBox(height: AppSpacing.xs),
+                MapBusinessRating(
+                  average: business.averageRating,
+                  count: business.reviews.length,
+                ),
+                if (expanded && (firstActivity != null || isEco)) ...[
+                  const SizedBox(height: AppSpacing.xs),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
@@ -3137,36 +3158,12 @@ class _BusinessCarouselCard extends StatelessWidget {
                           bordered: true,
                         ),
                       if (isEco) const EcoBadge(),
-                      if (rating > 0)
-                        _MapTag(
-                          label: '★ ${rating.toStringAsFixed(1)}',
-                          background: AppColors.settingsBackground,
-                          textColor: AppColors.settingsTextDark,
-                          bordered: true,
-                        ),
                     ],
-                  )
-                // El layout compacto muestra a lo sumo un badge (ECO
-                // primero) en un slot de altura fija (vacío si no aplica
-                // ninguno) — dejar esta línea opcional antes causaba
-                // overflow/desalineación entre cards con y sin badge.
-                else
-                  SizedBox(
-                    height: _kCompactBadgeSlotHeight,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: isEco
-                          ? const EcoBadge()
-                          : rating > 0
-                          ? _MapTag(
-                              label: '★ ${rating.toStringAsFixed(1)}',
-                              background: AppColors.settingsBackground,
-                              textColor: AppColors.settingsTextDark,
-                              bordered: true,
-                            )
-                          : const SizedBox.shrink(),
-                    ),
                   ),
+                ] else if (!expanded && isEco) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  const EcoBadge(),
+                ],
               ],
             ),
           ),

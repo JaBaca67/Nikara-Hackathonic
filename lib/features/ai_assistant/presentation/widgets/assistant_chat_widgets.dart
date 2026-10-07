@@ -43,6 +43,15 @@ class AssistantMessageBubble extends StatelessWidget {
             ? CrossAxisAlignment.end
             : CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Text(
+              isUser ? 'Vos' : 'Níkara IA',
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.settingsTextMuted,
+              ),
+            ),
+          ),
           Row(
             mainAxisAlignment: isUser
                 ? MainAxisAlignment.end
@@ -50,6 +59,9 @@ class AssistantMessageBubble extends StatelessWidget {
             children: [
               Flexible(
                 child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.lg,
                     vertical: AppSpacing.md,
@@ -75,10 +87,17 @@ class AssistantMessageBubble extends StatelessWidget {
                                 ? AppColors.error
                                 : AppColors.border,
                           ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.textPrimary.withValues(alpha: 0.04),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Text(
                     message.text,
-                    style: AppTextStyles.body.copyWith(
+                    style: AppTextStyles.bodyText1.copyWith(
                       color: message.isError
                           ? AppColors.error
                           : AppColors.textPrimary,
@@ -116,39 +135,41 @@ class AssistantTypingBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
-            ),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(AppRadius.md),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.oliveText,
-                  ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(AppRadius.md),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.oliveText,
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Text(
-                  'Pensando…',
-                  style: AppTextStyles.caption.copyWith(
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Flexible(
+                child: Text(
+                  'Buscando ideas para tu viaje…',
+                  style: AppTextStyles.body.copyWith(
                     color: AppColors.settingsTextMuted,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -211,77 +232,80 @@ class AssistantComposer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Scaffold ya reserva el espacio del teclado. Sumar viewInsets otra vez
+    // desplazaba el campo y podía dejar el chat sin espacio visible.
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.md + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: enabled,
-              textInputAction: TextInputAction.send,
-              onSubmitted: onSubmit,
-              minLines: 1,
-              maxLines: 4,
-              style: AppTextStyles.inputText.copyWith(
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Preguntale a Níkara IA…',
-                hintStyle: AppTextStyles.inputText.copyWith(
-                  color: AppColors.settingsTextMuted,
-                ),
-                filled: true,
-                fillColor: AppColors.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.md,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  borderSide: BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  borderSide: BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  borderSide: const BorderSide(color: AppColors.oliveText),
-                ),
-              ),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.sm),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.textPrimary.withValues(alpha: 0.07),
+              blurRadius: 24,
+              offset: const Offset(0, 6),
             ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          // 48x48 para cumplir el mínimo de target táctil accesible.
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: Material(
-              color: enabled
-                  ? AppColors.oliveFill
-                  : AppColors.oliveFill.withValues(alpha: 0.5),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: enabled ? () => onSubmit(controller.text) : null,
-                child: Icon(
-                  Icons.arrow_upward,
-                  size: 20,
-                  // Ningún Fill de marca lleva ícono blanco encima: los tres
-                  // son claros (regla del sistema de diseño).
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                enabled: enabled,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.send,
+                onSubmitted: enabled ? onSubmit : null,
+                minLines: 1,
+                maxLines: 4,
+                style: AppTextStyles.bodyText1.copyWith(
                   color: AppColors.textPrimary,
-                  semanticLabel: 'Enviar mensaje',
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Preguntale a tu guía…',
+                  hintStyle: AppTextStyles.body.copyWith(
+                    color: AppColors.settingsTextMuted,
+                  ),
+                  filled: false,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.md,
+                    vertical: AppSpacing.md,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
                 ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: AppSpacing.xs),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, _) {
+                final canSend = enabled && value.text.trim().isNotEmpty;
+                return IconButton.filled(
+                  onPressed: canSend ? () => onSubmit(controller.text) : null,
+                  tooltip: 'Enviar mensaje',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size.square(48),
+                    backgroundColor: AppColors.goldFill,
+                    foregroundColor: AppColors.textPrimary,
+                    disabledBackgroundColor: AppColors.background,
+                    disabledForegroundColor: AppColors.settingsTextMuted,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                  ),
+                  icon: const Icon(Icons.arrow_upward_rounded, size: 24),
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -269,9 +269,8 @@ class AssistantItineraryCard extends StatelessWidget {
                             children: [
                               Text(
                                 place.name,
-                                style: AppTextStyles.body.copyWith(
+                                style: AppTextStyles.subtitle2.copyWith(
                                   color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.w600,
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,

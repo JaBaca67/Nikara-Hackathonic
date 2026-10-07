@@ -1,48 +1,28 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_theme.dart';
 
-/// Estado de ánimo de la mascota. Cambia el ritmo del aleteo y la postura, no
-/// el dibujo: es la misma mariposa en distintos momentos.
-enum ButterflyMood {
-  /// En reposo: aletea lento y flota. Es el estado por defecto.
-  idle,
+/// Cambia el ritmo y la amplitud del aleteo de la mascota.
+enum ButterflyMood { idle, thinking, happy }
 
-  /// El asistente está consultando al modelo — aletea rápido, como ocupada.
-  thinking,
-
-  /// Acaba de responder algo bueno (una ruta guardada): un aleteo amplio.
-  happy,
-}
-
-/// La mascota de Níkara: el isotipo convertido en mariposa.
-///
-/// ## Por qué está dibujada en código y no es el SVG
-///
-/// El isotipo ya **es** una mariposa — las dos hojas que acompañan a la "N"
-/// son alas. Pero en un SVG esas hojas son dos paths dentro de una sola
-/// figura, así que animarlas por separado obligaría a parsear y recomponer el
-/// archivo. Dibujarla con un [CustomPainter] permite que cada ala se mueva
-/// sola, que es lo único que distingue una mascota viva de un logo que se mece.
-///
-/// ## Colores
-///
-/// Usa los tres colores del isotipo (`assets/images/isotipo_nikara.svg`), no
-/// los tokens de UI: el marrón `#491B00`, el naranja `#FC4403` y el verde
-/// `#5B821C`. Es deliberado y es la única excepción del módulo — un isotipo
-/// tiene sus colores propios igual que el logotipo en Auth; no son acentos de
-/// marca sueltos sobre una pantalla, son la identidad misma.
+/// Mariposa vectorizada de Mascota-Icono.jpg, con cuatro alas independientes.
+/// Las seis piezas comparten lienzo y conservan los colores del isotipo.
 class NikaraButterfly extends StatefulWidget {
   const NikaraButterfly({
     super.key,
     this.size = 96,
     this.mood = ButterflyMood.idle,
+    this.animated = true,
   });
 
   final double size;
   final ButterflyMood mood;
+  final bool animated;
 
   @override
   State<NikaraButterfly> createState() => _NikaraButterflyState();
@@ -56,8 +36,8 @@ class _NikaraButterflyState extends State<NikaraButterfly>
   );
 
   static Duration _durationFor(ButterflyMood mood) => switch (mood) {
-    ButterflyMood.idle => const Duration(milliseconds: 2600),
-    ButterflyMood.thinking => const Duration(milliseconds: 900),
+    ButterflyMood.idle => const Duration(milliseconds: 2200),
+    ButterflyMood.thinking => const Duration(milliseconds: 850),
     ButterflyMood.happy => const Duration(milliseconds: 1200),
   };
 
@@ -70,24 +50,22 @@ class _NikaraButterflyState extends State<NikaraButterfly>
   @override
   void didUpdateWidget(NikaraButterfly oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.mood != widget.mood) {
-      _controller.duration = _durationFor(widget.mood);
+    if (oldWidget.mood != widget.mood ||
+        oldWidget.animated != widget.animated) {
       _syncAnimation();
     }
   }
 
-  /// El aleteo es una animación continua, así que respeta "Eliminar
-  /// animaciones" del sistema: con el ajuste activo la mariposa queda en una
-  /// pose fija en vez de moverse sin parar. Se consulta acá y no en
-  /// `initState` para que reaccione si el ajuste cambia con la pantalla
-  /// abierta.
   void _syncAnimation() {
-    if (AppMotion.reduced(context)) {
+    if (!widget.animated || AppMotion.reduced(context)) {
       _controller.stop();
-      _controller.value = 0.35;
+      _controller.value = 0;
       return;
     }
-    if (!_controller.isAnimating) _controller.repeat();
+    // repeat crea su simulación con este período; hay que renovarla cuando
+    // cambia el estado, aunque el controlador ya esté animándose.
+    _controller.duration = _durationFor(widget.mood);
+    _controller.repeat(period: _durationFor(widget.mood));
   }
 
   @override
@@ -98,212 +76,150 @@ class _NikaraButterflyState extends State<NikaraButterfly>
 
   @override
   Widget build(BuildContext context) {
+    final still = !widget.animated || AppMotion.reduced(context);
+    final width = widget.size * 1024 / 1028;
+    final wings = [
+      _piece('ala_inferior_izquierda'),
+      _piece('ala_inferior_derecha'),
+      _piece('ala_superior_izquierda'),
+      _piece('ala_superior_derecha'),
+    ];
+    final body = _piece('cuerpo');
+    final antennae = _piece('antenas');
+
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final phase = _controller.value;
-          // Una sinusoide da el ir y venir del ala sin saltos entre ciclos.
-          final wave = math.sin(phase * 2 * math.pi);
+      child: SizedBox.square(
+        dimension: widget.size,
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final phase = _controller.value * 2 * math.pi;
+              final lift = still ? 0.0 : (1 - math.cos(phase)) / 2;
+              final shadowBlur = widget.size * (0.025 + lift * 0.015);
+              final range = switch (widget.mood) {
+                ButterflyMood.idle => 0.95,
+                ButterflyMood.thinking => 1.10,
+                ButterflyMood.happy => 1.22,
+              };
+              final floatOffset = still || widget.mood == ButterflyMood.thinking
+                  ? 0.0
+                  : math.sin(phase) * widget.size * 0.025;
 
-          final flapRange = switch (widget.mood) {
-            ButterflyMood.idle => 0.16,
-            ButterflyMood.thinking => 0.34,
-            ButterflyMood.happy => 0.46,
-          };
-          // 1.0 es el ala abierta de frente; al cerrarse se acorta en
-          // horizontal, que es como se ve un aleteo real en perspectiva.
-          final flap = 1 - flapRange * (0.5 + 0.5 * wave);
-
-          // Flota: sube y baja la mitad de rápido que el aleteo, para que los
-          // dos movimientos no queden sincronizados y se vea mecánico.
-          final floatOffset = widget.mood == ButterflyMood.thinking
-              ? 0.0
-              : math.sin(phase * math.pi) * widget.size * 0.035;
-
-          return SizedBox(
-            width: widget.size,
-            height: widget.size,
-            child: Transform.translate(
-              offset: Offset(0, -floatOffset),
-              child: CustomPaint(
-                painter: _ButterflyPainter(flap: flap),
-                size: Size.square(widget.size),
-              ),
-            ),
-          );
-        },
+              return Transform.translate(
+                offset: Offset(0, -floatOffset),
+                child: Transform(
+                  alignment: const Alignment(-0.075, 0.167),
+                  transform: Matrix4.identity()
+                    ..rotateZ(still ? 0 : math.sin(phase) * 0.035),
+                  child: SizedBox(
+                    width: width,
+                    height: widget.size,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      clipBehavior: Clip.none,
+                      children: [
+                        if (widget.animated)
+                          IgnorePointer(
+                            child: Transform.translate(
+                              offset: Offset(
+                                widget.size * 0.025,
+                                widget.size * (0.045 + lift * 0.025),
+                              ),
+                              child: ImageFiltered(
+                                imageFilter: ui.ImageFilter.blur(
+                                  sigmaX: shadowBlur,
+                                  sigmaY: shadowBlur,
+                                ),
+                                child: ColorFiltered(
+                                  colorFilter: ColorFilter.mode(
+                                    AppColors.textPrimary.withValues(
+                                      alpha: 0.24 - lift * 0.08,
+                                    ),
+                                    BlendMode.srcIn,
+                                  ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      for (var i = 0; i < wings.length; i++)
+                                        _wing(
+                                          wings[i],
+                                          i,
+                                          phase,
+                                          range,
+                                          still,
+                                          shadow: true,
+                                        ),
+                                      body,
+                                      antennae,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        for (var i = 0; i < wings.length; i++)
+                          _wing(wings[i], i, phase, range, still),
+                        body,
+                        antennae,
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }
-}
 
-class _ButterflyPainter extends CustomPainter {
-  const _ButterflyPainter({required this.flap});
-
-  /// Qué tan abierta está el ala en horizontal: 1 = de frente, <1 = cerrándose.
-  final double flap;
-
-  // Los tres colores del isotipo. Ver la nota de la clase pública.
-  static const _brown = Color(0xFF491B00);
-  static const _orange = Color(0xFFFC4403);
-  static const _green = Color(0xFF5B821C);
-  static const _paper = Color(0xFFFFFFFF);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = size.width;
-
-    // Todo se define en coordenadas 0..1 y se escala: así la mariposa se ve
-    // igual a 32px que a 200px.
-    Offset p(double x, double y) => Offset(x * s, y * s);
-
-    final bodyCenter = p(0.5, 0.52);
-
-    // --- Alas -------------------------------------------------------------
-    // Cada par se dibuja con el eje X escalado alrededor del cuerpo, lo que
-    // produce el aleteo sin recalcular la geometría.
-    void withFlap(void Function() draw) {
-      canvas.save();
-      canvas.translate(bodyCenter.dx, 0);
-      canvas.scale(flap, 1);
-      canvas.translate(-bodyCenter.dx, 0);
-      draw();
-      canvas.restore();
+  Widget _wing(
+    Widget child,
+    int index,
+    double phase,
+    double range,
+    bool still, {
+    bool shadow = false,
+  }) {
+    final lower = index < 2;
+    final side = index.isEven ? -1.0 : 1.0;
+    // Las alas inferiores siguen a las superiores con un pequeño retraso.
+    final closed = still
+        ? 0.0
+        : (1 - math.cos(phase - (lower ? 0.22 : 0.0))) / 2;
+    final angle = closed * range * (lower ? 0.88 : 1.0);
+    final transform = Matrix4.identity();
+    if (!still && widget.size > 0) {
+      // La perspectiva se adapta al tamaño del widget. Ambas alas pliegan
+      // hacia el observador y conservan su unión con el cuerpo.
+      transform
+        ..setEntry(3, 2, -0.65 / widget.size)
+        ..rotateY(side * angle)
+        ..rotateX((lower ? -1 : 1) * angle * 0.10);
     }
-
-    withFlap(() {
-      // Inferiores primero: las superiores se superponen encima, igual que en
-      // el isotipo.
-      _drawWing(canvas, s, p(0.5, 0.58), p(0.16, 0.93), 0.13, _green);
-      _drawWing(canvas, s, p(0.5, 0.58), p(0.84, 0.93), -0.13, _green);
-      _drawWing(canvas, s, p(0.5, 0.45), p(0.10, 0.19), -0.15, _orange);
-      _drawWing(canvas, s, p(0.5, 0.45), p(0.90, 0.19), 0.15, _orange);
-    });
-
-    // --- Cuerpo -----------------------------------------------------------
-    // Afinado hacia abajo en vez de un rectangulo: con lados rectos la mascota
-    // se leia como "dos hojas pegadas a un palo" y no como un insecto.
-    final bodyPaint = Paint()..color = _brown;
-    final halfWidth = s * 0.042;
-
-    canvas.drawPath(
-      Path()
-        ..moveTo(bodyCenter.dx - halfWidth, s * 0.36)
-        ..lineTo(bodyCenter.dx - halfWidth * 0.92, s * 0.58)
-        // Las dos curvas cierran el abdomen en punta redondeada.
-        ..quadraticBezierTo(
-          bodyCenter.dx - halfWidth * 0.75,
-          s * 0.74,
-          bodyCenter.dx,
-          s * 0.75,
-        )
-        ..quadraticBezierTo(
-          bodyCenter.dx + halfWidth * 0.75,
-          s * 0.74,
-          bodyCenter.dx + halfWidth * 0.92,
-          s * 0.58,
-        )
-        ..lineTo(bodyCenter.dx + halfWidth, s * 0.36)
-        ..close(),
-      bodyPaint,
-    );
-
-    // La cabeza va despues de las alas para que asome por encima: es lo que
-    // deja que las antenas nazcan de ella y no del medio del ala.
-    canvas.drawCircle(p(0.5, 0.345), s * 0.058, bodyPaint);
-
-    // --- Antenas ----------------------------------------------------------
-    // Guino a los tres destellos que el isotipo tiene sobre la "N".
-    final antenna = Paint()
-      ..color = _brown
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.026
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawPath(
-      Path()
-        ..moveTo(s * 0.475, s * 0.315)
-        ..quadraticBezierTo(s * 0.40, s * 0.20, s * 0.325, s * 0.125),
-      antenna,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(s * 0.525, s * 0.315)
-        ..quadraticBezierTo(s * 0.60, s * 0.20, s * 0.675, s * 0.125),
-      antenna,
-    );
-    // Las bolitas de la punta son lo que vuelve "antena" a una linea curva.
-    canvas.drawCircle(p(0.325, 0.125), s * 0.026, bodyPaint);
-    canvas.drawCircle(p(0.675, 0.125), s * 0.026, bodyPaint);
-  }
-
-  /// Una hoja del isotipo: dos curvas que se encuentran en las puntas, con el
-  /// doble contorno (blanco por dentro, marrón por fuera) que es la firma
-  /// visual de la marca, y la nervadura central.
-  void _drawWing(
-    Canvas canvas,
-    double s,
-    Offset base,
-    Offset tip,
-    double bulge,
-    Color fill,
-  ) {
-    final axis = tip - base;
-    final perpendicular = Offset(-axis.dy, axis.dx);
-    final length = axis.distance;
-    if (length == 0) return;
-    final unit = perpendicular / length;
-
-    final control1 = base + axis * 0.5 + unit * (bulge * s * 2.4);
-    final control2 = base + axis * 0.5 - unit * (bulge * s * 0.9);
-
-    final wing = Path()
-      ..moveTo(base.dx, base.dy)
-      ..quadraticBezierTo(control1.dx, control1.dy, tip.dx, tip.dy)
-      ..quadraticBezierTo(control2.dx, control2.dy, base.dx, base.dy)
-      ..close();
-
-    // Orden: contorno marrón ancho, contorno blanco encima, relleno al final.
-    // Pintar en este orden evita tener que calcular tres paths distintos.
-    canvas.drawPath(
-      wing,
-      Paint()
-        ..color = _brown
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = s * 0.085
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.drawPath(
-      wing,
-      Paint()
-        ..color = _paper
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = s * 0.048
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.drawPath(wing, Paint()..color = fill);
-
-    // Nervadura: no llega hasta la punta, igual que en el isotipo.
-    final veinEnd = base + axis * 0.78;
-    final veinControl = base + axis * 0.45 + unit * (bulge * s * 0.55);
-    canvas.drawPath(
-      Path()
-        ..moveTo(base.dx, base.dy)
-        ..quadraticBezierTo(
-          veinControl.dx,
-          veinControl.dy,
-          veinEnd.dx,
-          veinEnd.dy,
+    return Transform(
+      key: shadow ? null : ValueKey('butterfly-wing-$index'),
+      alignment: Alignment(
+        2 * (index.isEven ? 437 : 510) / 1024 - 1,
+        2 * 600 / 1028 - 1,
+      ),
+      transform: transform,
+      child: ColorFiltered(
+        colorFilter: ColorFilter.mode(
+          Colors.black.withValues(alpha: closed * (lower ? 0.18 : 0.12)),
+          BlendMode.srcATop,
         ),
-      Paint()
-        ..color = _paper
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = s * 0.022
-        ..strokeCap = StrokeCap.round,
+        child: child,
+      ),
     );
   }
 
-  @override
-  bool shouldRepaint(_ButterflyPainter oldDelegate) => oldDelegate.flap != flap;
+  // Los widgets SVG se construyen fuera del AnimatedBuilder para reutilizar
+  // su renderizado: cada fotograma solo modifica las transformaciones.
+  Widget _piece(String name) => SvgPicture.asset(
+    'assets/images/mascota_nikara_$name.svg',
+    fit: BoxFit.fill,
+    excludeFromSemantics: true,
+  );
 }

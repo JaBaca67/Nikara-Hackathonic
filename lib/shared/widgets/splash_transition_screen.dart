@@ -16,10 +16,17 @@ class SplashTransitionScreen extends StatefulWidget {
     this.duration = const Duration(milliseconds: 1800),
     this.onLoadingTask,
     this.showIsotipoOnly = false,
+    this.ascendToAuth = true,
   });
 
   /// Solo el isotipo, quieto desde el primer frame (sin fade, escala ni pulso), para que el paso desde el splash nativo de Android no tenga saltos.
   final bool showIsotipoOnly;
+
+  /// Solo aplica con [showIsotipoOnly]. `true` (el destino es Login): tras
+  /// abrirse, el logo sube a su posición en el sheet de Auth. `false` (el
+  /// destino es Inicio, ya con sesión): el logo se queda centrado en
+  /// pantalla hasta que navega — no hay sheet al que subir.
+  final bool ascendToAuth;
 
   /// Null para una pausa puramente decorativa sin navegación de seguimiento.
   final Widget? nextPage;
@@ -34,11 +41,19 @@ class SplashTransitionScreen extends StatefulWidget {
   State<SplashTransitionScreen> createState() => _SplashTransitionScreenState();
 }
 
-/// Cuándo arranca la apertura del logo, contado desde que aparece el splash. Con 1300 ms de animación, 450 ms de arranque la termina a los 1750 ms, justo antes de que [SplashTransitionScreen.duration] (1800 ms) navegue.
+/// Cuándo arranca la apertura del logo si las piezas llegan a tiempo, contado desde que aparece el splash. En la práctica casi nunca manda: en dispositivo real las piezas llegan después de este punto (ver [_kOpeningLatest]) y la apertura arranca apenas están listas, no a los 450ms.
 const Duration _kOpeningStart = Duration(milliseconds: 450);
 
 /// Si las piezas llegan más tarde que esto, la apertura se omite en vez de quedar cortada por la navegación.
-const Duration _kOpeningLatest = Duration(milliseconds: 550);
+///
+/// 550ms (valor original de la rama) se quedaba corto en dispositivo real: en
+/// un Samsung A56 las piezas llegaron a los 697-715ms en pruebas repetidas
+/// (cold start y con la app ya tibia), así que la apertura nunca disparaba.
+/// 900ms deja margen sobre ese peor caso medido. Ver también la duración de
+/// [SplashTransitionScreen] pasada en `app.dart`, ajustada para que la
+/// animación completa (hasta 900ms de arranque + 1300ms de duración) quepa
+/// antes de que la navegación corte la pantalla.
+const Duration _kOpeningLatest = Duration(milliseconds: 900);
 
 /// Espera antes de parsear los SVG del logo, para no coincidir con el parseo de la topografía de [SplashBackdrop] (ambos bloquean el hilo principal).
 const Duration _kOpeningLoadDelay = Duration(milliseconds: 250);
@@ -228,6 +243,7 @@ class _SplashTransitionScreenState extends State<SplashTransitionScreen>
                         child: NikaraOpeningLogo(
                           pieces: pieces,
                           progress: _openingController,
+                          ascendToAuth: widget.ascendToAuth,
                         ),
                       ),
                     ),

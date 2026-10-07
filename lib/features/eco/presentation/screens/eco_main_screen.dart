@@ -2,15 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
 
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_discovery_header.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
+import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/shared/widgets/category_icons_row.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -36,6 +40,8 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   List<EcoActivityModel> _activities = const [];
   String _selectedCategory = _kAllCategories;
   Future<void> Function()? _unsubscribe;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   final _featuredController = PageController();
   int _featuredPage = 0;
@@ -51,6 +57,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   void dispose() {
     EcoService.revision.removeListener(_onChanged);
     _featuredController.dispose();
+    _searchController.dispose();
     unawaited(_unsubscribe?.call() ?? Future<void>.value());
     super.dispose();
   }
@@ -78,9 +85,17 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     }
   }
 
-  List<EcoActivityModel> get _filtered => _selectedCategory == _kAllCategories
-      ? _activities
-      : _activities.where((a) => a.category == _selectedCategory).toList();
+  List<EcoActivityModel> get _filtered => _activities.where((activity) {
+    final matchesCategory =
+        _selectedCategory == _kAllCategories ||
+        activity.category == _selectedCategory;
+    final matchesSearch =
+        _searchQuery.isEmpty ||
+        normalizeForSearch(
+          '${activity.title} ${activity.description} ${activity.location} ${activity.category}',
+        ).contains(normalizeForSearch(_searchQuery));
+    return matchesCategory && matchesSearch;
+  }).toList();
 
   int get _joinedCount =>
       _activities.where((a) => a.isJoinedByCurrentUser).length;
@@ -101,6 +116,55 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
       _featuredPage = 0;
     });
     if (_featuredController.hasClients) _featuredController.jumpToPage(0);
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value.trim();
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
+  }
+
+  Future<void> _openFilterSheet() async {
+    final category = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Filtrar actividades', style: AppTextStyles.sectionTitle),
+              const SizedBox(height: AppSpacing.md),
+              for (final category in [_kAllCategories, ...kEcoCategories])
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    category == _kAllCategories
+                        ? Icons.grid_view_rounded
+                        : ecoCategoryIcon(category),
+                  ),
+                  title: Text(category, style: AppTextStyles.body),
+                  trailing: category == _selectedCategory
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: AppColors.oliveText,
+                        )
+                      : null,
+                  onTap: () => Navigator.pop(context, category),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted && category != null) _selectCategory(category);
   }
 
   Future<void> _openDetail(EcoActivityModel activity) async {
@@ -149,184 +213,111 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.oliveText),
-              )
-            : _loadError != null
-            ? _EcoErrorState(message: _loadError!, onRetry: _load)
-            : RefreshIndicator(
-                color: AppColors.oliveText,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    AppSpacing.lg,
-                    AppSpacing.xl,
-                    AppSpacing.xxxl,
-                  ),
-                  children: [
-                    const _EcoHeader(),
-                    const SizedBox(height: 18),
-                    _CategoryFilterRow(
-                      selected: _selectedCategory,
-                      onSelected: _selectCategory,
-                    ),
-                    const SizedBox(height: 16),
-                    if (_joinedCount > 0) ...[
-                      _JoinedBanner(count: _joinedCount),
-                      const SizedBox(height: 16),
-                    ],
-                    if (filtered.isEmpty)
-                      const _EcoEmptyState()
-                    else ...[
-                      if (featured.isNotEmpty) ...[
-                        _FeaturedCarousel(
-                          activities: featured,
-                          controller: _featuredController,
-                          page: _featuredPage,
-                          onPageChanged: (page) =>
-                              setState(() => _featuredPage = page),
-                          onOpen: _openDetail,
-                          onJoin: _toggleJoin,
-                        ),
-                        const SizedBox(height: 22),
-                      ],
-                      Text(
-                        'Todas las actividades',
-                        style: AppTextStyles.sectionTitle.copyWith(
-                          color: AppColors.settingsTextDark,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      for (final (index, activity) in filtered.indexed)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                          child:
-                              EcoActivityCard(
-                                    activity: activity,
-                                    onTap: () => _openDetail(activity),
-                                  )
-                                  .animate(
-                                    delay: AppMotion.microDuration * index,
-                                  )
-                                  .fadeIn(
-                                    duration: AppMotion.standardDuration,
-                                    curve: AppMotion.enter,
-                                  )
-                                  .slideY(
-                                    begin: 0.08,
-                                    duration: AppMotion.standardDuration,
-                                    curve: AppMotion.enter,
-                                  ),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _EcoHeader extends StatelessWidget {
-  const _EcoHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.ecoGreen500.withValues(alpha: 0.25),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.eco_rounded,
-            color: AppColors.oliveText,
-            size: 22,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Actividades Ambientales',
-                style: AppTextStyles.homeGreeting,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Iniciativas verificadas cerca de ti',
-                style: AppTextStyles.settingsSubtitle,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CategoryFilterRow extends StatelessWidget {
-  const _CategoryFilterRow({required this.selected, required this.onSelected});
-
-  final String selected;
-  final ValueChanged<String> onSelected;
-
-  static const _categories = [_kAllCategories, ...kEcoCategories];
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final category = _categories[index];
-          final isSelected = category == selected;
-          return Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.sm),
-            child: GestureDetector(
-              onTap: () => onSelected(category),
-              child: AnimatedContainer(
-                duration: AppMotion.quickDuration,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.sm,
-                ),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.oliveText
-                      : AppColors.surface100,
-                  borderRadius: BorderRadius.circular(AppRadius.pill),
-                  border: isSelected
-                      ? null
-                      : Border.all(color: AppColors.mapControlBorder),
-                ),
-                child: Text(
-                  category,
-                  style: AppTextStyles.mapRowTitle.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? AppColors.surface100
-                        : AppColors.settingsTextMuted,
-                  ),
-                ),
-              ),
+      body: Column(
+        children: [
+          SearchHeaderWidget(
+            headerContent: EcoDiscoveryHeader(
+              availableCount: _isLoading || _loadError != null
+                  ? null
+                  : _activities.length,
             ),
-          );
-        },
+            showNotifications: false,
+            searchHint: 'Buscar actividades ambientales...',
+            controller: _searchController,
+            onSearchChanged: _onSearchChanged,
+            onFilterTap: _openFilterSheet,
+            categoryContent: CategoryIconsRow(
+              categories: kEcoCategories,
+              iconBuilder: ecoCategoryIcon,
+              iconColor: AppColors.oliveText,
+              allLabel: _kAllCategories,
+              selected: _selectedCategory == _kAllCategories
+                  ? null
+                  : _selectedCategory,
+              onSelect: (category) =>
+                  _selectCategory(category ?? _kAllCategories),
+            ),
+          ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.oliveText,
+                      ),
+                    )
+                  : _loadError != null
+                  ? _EcoErrorState(message: _loadError!, onRetry: _load)
+                  : RefreshIndicator(
+                      color: AppColors.oliveText,
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.xl,
+                          AppSpacing.lg,
+                          AppSpacing.xl,
+                          AppSpacing.xxxl,
+                        ),
+                        children: [
+                          if (_joinedCount > 0) ...[
+                            _JoinedBanner(count: _joinedCount),
+                            const SizedBox(height: 16),
+                          ],
+                          if (filtered.isEmpty)
+                            const _EcoEmptyState()
+                          else ...[
+                            if (featured.isNotEmpty) ...[
+                              _FeaturedCarousel(
+                                activities: featured,
+                                controller: _featuredController,
+                                page: _featuredPage,
+                                onPageChanged: (page) =>
+                                    setState(() => _featuredPage = page),
+                                onOpen: _openDetail,
+                                onJoin: _toggleJoin,
+                              ),
+                              const SizedBox(height: 22),
+                            ],
+                            Text(
+                              'Todas las actividades',
+                              style: AppTextStyles.sectionTitle.copyWith(
+                                color: AppColors.settingsTextDark,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            for (final (index, activity) in filtered.indexed)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.md,
+                                ),
+                                child:
+                                    EcoActivityCard(
+                                          activity: activity,
+                                          onTap: () => _openDetail(activity),
+                                        )
+                                        .animate(
+                                          delay:
+                                              AppMotion.microDuration * index,
+                                        )
+                                        .fadeIn(
+                                          duration: AppMotion.standardDuration,
+                                          curve: AppMotion.enter,
+                                        )
+                                        .slideY(
+                                          begin: 0.08,
+                                          duration: AppMotion.standardDuration,
+                                          curve: AppMotion.enter,
+                                        ),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

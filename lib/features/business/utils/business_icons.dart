@@ -302,6 +302,154 @@ MapPinCategory mapPinCategoryFor(String category) {
   return MapPinCategory.general;
 }
 
+/// Catálogo real de categorías con las que se registra un negocio (Paso 1
+/// del wizard). Única fuente de verdad: `register_business_wizard.dart` la
+/// importa de acá en vez de declarar su propia lista, para que la barra de
+/// categorías de Inicio nunca pueda desincronizarse del catálogo real.
+const List<String> kBusinessCategoryPresets = [
+  'Eco-destino',
+  'Restaurante',
+  'Hospedaje',
+  'Tour',
+  'Cultura',
+  'Transporte',
+  'Bienestar',
+  'Eventos',
+  'Compras y mercados',
+  'Agroturismo / Fincas',
+  'Servicios para el viajero',
+];
+
+/// Ícono real por categoría — a diferencia de [mapPinIcon], que agrupa en
+/// las 8 familias visuales del Mapa, esto representa 1:1 el catálogo
+/// completo de [kBusinessCategoryPresets], para el filtro de Inicio.
+IconData businessCategoryIcon(String category) {
+  switch (category) {
+    case 'Eco-destino':
+      return Icons.eco_rounded;
+    case 'Restaurante':
+      return Icons.restaurant_rounded;
+    case 'Hospedaje':
+      return Icons.hotel_rounded;
+    case 'Tour':
+      return Icons.tour_rounded;
+    case 'Cultura':
+      return Icons.palette_rounded;
+    case 'Transporte':
+      return Icons.directions_car_filled_rounded;
+    case 'Bienestar':
+      return Icons.spa_rounded;
+    case 'Eventos':
+      return Icons.celebration_rounded;
+    case 'Compras y mercados':
+      return Icons.storefront_rounded;
+    case 'Agroturismo / Fincas':
+      return Icons.agriculture_rounded;
+    case 'Servicios para el viajero':
+      return Icons.support_agent_rounded;
+    default:
+      return Icons.category_rounded;
+  }
+}
+
+/// Normaliza el texto libre de `businesses.category` a uno de
+/// [kBusinessCategoryPresets]. Cubre tanto los presets actuales del wizard
+/// (match exacto) como categorías legacy de datos semilla con otra
+/// redacción (ej. "Cultura y Patrimonio", "Turismo y Miradores", "Artesanía
+/// y Alfarería", "Lagunas"). Devuelve `null` en vez de adivinar — mismo
+/// criterio que [mapPinCategoryFor] — para que el llamador decida cómo
+/// tratar un negocio sin categoría reconocible (ej. agruparlo en "Otros").
+String? businessCategoryPresetFor(String category) {
+  if (kBusinessCategoryPresets.contains(category)) return category;
+  final key = category.toLowerCase();
+  if (key.contains('restaurant') ||
+      key.contains('comida') ||
+      key.contains('gastro')) {
+    return 'Restaurante';
+  }
+  if (key.contains('hospedaje') ||
+      key.contains('hotel') ||
+      key.contains('hostal') ||
+      key.contains('cabañ') ||
+      key.contains('caban')) {
+    return 'Hospedaje';
+  }
+  if (key.contains('tour') ||
+      key.contains('turismo') ||
+      key.contains('mirador')) {
+    return 'Tour';
+  }
+  if (key.contains('eco') ||
+      key.contains('sender') ||
+      key.contains('bosque') ||
+      key.contains('natural') ||
+      key.contains('laguna') ||
+      key.contains('lago') ||
+      key.contains('playa') ||
+      key.contains('río') ||
+      key.contains('rio') ||
+      key.contains('cascada') ||
+      key.contains('reserva')) {
+    return 'Eco-destino';
+  }
+  if (key.contains('artesan') ||
+      key.contains('cultura') ||
+      key.contains('museo') ||
+      key.contains('galería') ||
+      key.contains('galeria') ||
+      key.contains('patrimonio') ||
+      key.contains('arqueológ') ||
+      key.contains('arqueolog')) {
+    return 'Cultura';
+  }
+  if (key.contains('transporte') ||
+      key.contains('taxi') ||
+      key.contains('shuttle') ||
+      key.contains('traslado') ||
+      key.contains('lancha') ||
+      key.contains('ferry')) {
+    return 'Transporte';
+  }
+  if (key.contains('bienestar') ||
+      key.contains('spa') ||
+      key.contains('masaje') ||
+      key.contains('yoga') ||
+      key.contains('retiro') ||
+      key.contains('temazcal')) {
+    return 'Bienestar';
+  }
+  if (key.contains('evento') ||
+      key.contains('festival') ||
+      key.contains('concierto') ||
+      key.contains('feria')) {
+    return 'Eventos';
+  }
+  if (key.contains('mercado') ||
+      key.contains('tienda') ||
+      key.contains('boutique') ||
+      key.contains('souvenir') ||
+      key.contains('compras')) {
+    return 'Compras y mercados';
+  }
+  if (key.contains('agroturismo') ||
+      key.contains('finca') ||
+      key.contains('cafetalera') ||
+      key.contains('cacaotera') ||
+      key.contains('ganadera') ||
+      key.contains('vivero')) {
+    return 'Agroturismo / Fincas';
+  }
+  if (key.contains('cambio de moneda') ||
+      key.contains('farmacia') ||
+      key.contains('clínica') ||
+      key.contains('clinica') ||
+      key.contains('cajero') ||
+      key.contains('gasolinera')) {
+    return 'Servicios para el viajero';
+  }
+  return null;
+}
+
 /// No hay paquete de miniaturas de video en el proyecto; los llamadores usan esto para elegir entre [LocalImage] y un placeholder genérico.
 bool isVideoPath(String path) {
   final lower = path.toLowerCase();

@@ -27,6 +27,14 @@ class MyApp extends StatelessWidget {
       theme: AppTheme.lightTheme,
       home: SplashTransitionScreen(
         showIsotipoOnly: true,
+        // 2400ms: cubre el peor caso de arranque de la apertura del logo
+        // (hasta 900ms, ver `_kOpeningLatest` en splash_transition_screen.dart)
+        // más sus 1300ms de duración, con margen — si no, la navegación corta
+        // la animación a mitad de camino.
+        duration: const Duration(milliseconds: 2400),
+        // Con sesión, el destino es Inicio (sin sheet de Auth al que subir):
+        // el logo se queda centrado. Sin sesión, sube a su lugar en Login.
+        ascendToAuth: !hasAccess,
         nextPage: hasAccess ? const MainLayout() : const LoginScreen(),
       ),
     );

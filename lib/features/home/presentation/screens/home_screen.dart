@@ -21,6 +21,7 @@ import 'package:nikara_app/features/notifications/data/notification_service.dart
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/shared/widgets/category_icons_row.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
@@ -29,8 +30,6 @@ import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-const String _kAllCategories = 'Todos';
-
 /// Cuántas tarjetas muestra la grilla "Explorá todos" antes de pedir "Cargar
 /// más". Seis son tres filas de dos, suficiente para que se entienda que hay
 /// una grilla sin alargar el scroll de Inicio de entrada.
@@ -38,20 +37,14 @@ const int _kGridPageSize = 6;
 
 enum _SortMode { recientes, cercanos }
 
-/// "a N km" desde [from] al negocio, o `null` si no hay posición disponible (sin permiso, GPS apagado, o [from] aún no resolvió).
+/// "N km" desde [from] al negocio, o `null` si no hay posición disponible (sin permiso, GPS apagado, o [from] aún no resolvió).
 String? _distanceLabel(Position? from, BusinessModel business) {
   final km = LocationService.distanceKm(
     from,
     business.latitude,
     business.longitude,
   );
-  return km == null ? null : 'a ${km.toStringAsFixed(0)} km';
-}
-
-/// "{ciudad} · a N km", o solo "{ciudad}" si no hay distancia disponible.
-String _cityWithDistance(Position? from, BusinessModel business) {
-  final distance = _distanceLabel(from, business);
-  return distance == null ? business.city : '${business.city} · $distance';
+  return km == null ? null : '${km.toStringAsFixed(0)} km';
 }
 
 /// Pantalla "Inicio" (Figma nodo 124:37). Todo debajo del header es 100% dinámico desde [BusinessStorageService] — sin nombres, precios ni distancias mock.
@@ -81,14 +74,16 @@ class _HomeScreenState extends State<HomeScreen> {
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
 
-  /// Familia de categoría seleccionada en el filtro; null es "Todos".
+  /// Categoría real seleccionada en el filtro (una de
+  /// [kBusinessCategoryPresets]); null es "Todos".
   ///
-  /// Se filtra por familia y no por el texto literal de `businesses.category`
-  /// porque esa columna es libre: hoy conviven categorías del wizard actual
-  /// ("Hospedaje", "Eco-destino") con las de los datos semilla ("Artesanía y
-  /// Alfarería", "Cultura y Patrimonio"), así que un filtro por igualdad exacta
-  /// parte en dos un mismo rubro.
-  MapPinCategory? _selectedFamily;
+  /// Se filtra vía [businessCategoryPresetFor] y no por igualdad literal con
+  /// `businesses.category` porque esa columna es libre: hoy conviven las
+  /// categorías del wizard actual ("Hospedaje", "Eco-destino") con las de
+  /// los datos semilla, redactadas distinto ("Artesanía y Alfarería",
+  /// "Cultura y Patrimonio"), así que un filtro por igualdad exacta parte en
+  /// dos un mismo rubro.
+  String? _selectedCategory;
 
   /// Cuántas tarjetas de la grilla están visibles ahora mismo.
   int _gridLimit = _kGridPageSize;
@@ -140,6 +135,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onSearchChanged(String value) {
     setState(() => _searchQuery = value.trim());
+  }
+
+  void _selectCategory(String? category) {
+    setState(() {
+      _selectedCategory = category;
+      _gridLimit = _kGridPageSize;
+    });
   }
 
   void _onBusinessesChanged() {
@@ -255,18 +257,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _openWizard() => openBusinessRegistrationFlow(context);
 
-  /// Las familias que de verdad tienen algún negocio, en el orden fijo del
-  /// enum. Mostrar una familia vacía sería ofrecer un filtro que devuelve
-  /// "no hay nada" — peor que no ofrecerlo.
-  List<MapPinCategory> _availableFamilies(List<BusinessModel> businesses) {
-    final present = businesses
-        .map((b) => mapPinCategoryFor(b.category))
-        .toSet();
-    return MapPinCategory.values
-        .where(present.contains)
-        .toList(growable: false);
-  }
-
   /// Búsqueda básica: coincide si el texto aparece en el nombre, la ciudad o
   /// la categoría, sin distinguir mayúsculas — mismo criterio simple que ya
   /// usa `MapScreen` para su propia barra de búsqueda.
@@ -285,11 +275,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<BusinessModel> _visibleBusinesses(List<BusinessModel> businesses) {
     final searched = _searchFiltered(businesses);
-    final family = _selectedFamily;
-    final filtered = family == null
+    final category = _selectedCategory;
+    final filtered = category == null
         ? searched
         : searched
-              .where((b) => mapPinCategoryFor(b.category) == family)
+              .where((b) => businessCategoryPresetFor(b.category) == category)
               .toList();
     if (_sortMode == _SortMode.recientes) {
       return filtered.reversed.toList(growable: false);
@@ -351,6 +341,20 @@ class _HomeScreenState extends State<HomeScreen> {
             notificationCount: _unreadNotifications,
             onNotificationTap: _openNotifications,
             onFilterTap: _openFilterSheet,
+            // Siempre el catálogo completo, haya o no negocios de esa
+            // categoría hoy: el carrusel representa lo que un negocio
+            // *puede* registrar, no lo que ya existe. Filtrar por presencia
+            // haría que el filtro cambiara de ancho solo porque alguien
+            // registró o borró un negocio, que es peor que mostrar una
+            // categoría sin resultados (pedido explícito de José).
+            categoryContent: businesses == null || businesses.isEmpty
+                ? null
+                : CategoryIconsRow(
+                    categories: kBusinessCategoryPresets,
+                    iconBuilder: businessCategoryIcon,
+                    selected: _selectedCategory,
+                    onSelect: _selectCategory,
+                  ),
           ),
           Expanded(
             child: _loadError != null
@@ -378,7 +382,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final heroIndex = heroBusinesses.isEmpty
         ? 0
         : _heroIndex.clamp(0, heroBusinesses.length - 1);
-    final families = _availableFamilies(businesses);
     final visible = _visibleBusinesses(businesses);
 
     // El realtime de `_unsubscribeBusinessChanges` cubre negocios de otras
@@ -402,21 +405,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
               ),
-            // El filtro va pegado al buscador y por encima del carrusel: los
-            // dos son controles de "qué estoy viendo", así que viven juntos
-            // arriba en vez de quedar uno a cada lado del hero.
-            const SizedBox(height: AppSpacing.md),
-            _CategoryIconsRow(
-              families: families,
-              selected: _selectedFamily,
-              onSelect: (family) => setState(() {
-                _selectedFamily = family;
-                // Cambiar de filtro reinicia la paginación: si no, al pasar
-                // de una familia con 20 negocios a una con 3, la grilla
-                // quedaría "cargada" mostrando menos de lo que cabe.
-                _gridLimit = _kGridPageSize;
-              }),
-            ),
             if (heroBusinesses.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -437,10 +425,10 @@ class _HomeScreenState extends State<HomeScreen> {
               businesses: visible,
               userPosition: _userPosition,
               onTap: _openBusinessDetail,
-              onSeeAll: _selectedFamily == null
+              onSeeAll: _selectedCategory == null
                   ? null
                   : () => setState(() {
-                      _selectedFamily = null;
+                      _selectedCategory = null;
                       _gridLimit = _kGridPageSize;
                     }),
             ),
@@ -594,135 +582,6 @@ class _SortOption extends StatelessWidget {
       trailing: Icon(
         selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
         color: selected ? AppColors.primary500 : AppColors.neutral400,
-      ),
-    );
-  }
-}
-
-/// Filtro por familia de categoría: ícono + etiqueta corta, en scroll
-/// horizontal.
-///
-/// Reemplazó a una fila de pills con el texto literal de `businesses.category`.
-/// El cambio no es estético: esa columna es libre y produce etiquetas como
-/// "Artesanía y Alfarería" o "Cultura y Patrimonio", que no entran en un chip
-/// y se cortaban. Agrupar por familia además alinea este filtro con los pines
-/// del Mapa — el mismo glifo significa lo mismo en las dos pantallas.
-class _CategoryIconsRow extends StatelessWidget {
-  const _CategoryIconsRow({
-    required this.families,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final List<MapPinCategory> families;
-
-  /// null es "Todos".
-  final MapPinCategory? selected;
-  final ValueChanged<MapPinCategory?> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    // Con una sola familia el filtro no filtra nada.
-    if (families.length <= 1) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: 76,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        physics: const ClampingScrollPhysics(),
-        // +1 por "Todos", que no es una familia sino la ausencia de filtro.
-        itemCount: families.length + 1,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.lg),
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return _CategoryIcon(
-              icon: Icons.grid_view_rounded,
-              label: _kAllCategories,
-              isSelected: selected == null,
-              onTap: () => onSelect(null),
-            );
-          }
-          final family = families[index - 1];
-          return _CategoryIcon(
-            icon: mapPinIcon(family),
-            label: mapPinCategoryLabel(family),
-            isSelected: selected == family,
-            onTap: () => onSelect(family),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _CategoryIcon extends StatelessWidget {
-  const _CategoryIcon({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: isSelected,
-      label: 'Filtrar por $label',
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        child: SizedBox(
-          // 56 de ancho deja el target táctil por encima del mínimo accesible
-          // contando el alto de la fila.
-          width: 60,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: AppMotion.quickDuration,
-                curve: AppMotion.standard,
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  // Gold marca la selección, igual que el resto de los
-                  // filtros de la app; sin seleccionar es superficie neutra.
-                  color: isSelected ? AppColors.goldFill : AppColors.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: isSelected
-                      ? null
-                      : Border.all(color: AppColors.border),
-                ),
-                child: Icon(
-                  icon,
-                  size: 22,
-                  // Sobre un relleno de marca va tinta oscura, nunca blanco.
-                  color: isSelected
-                      ? AppColors.textPrimary
-                      : AppColors.settingsTextMuted,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs + 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.homeChipLabel.copyWith(
-                  color: isSelected
-                      ? AppColors.settingsTextDark
-                      : AppColors.settingsTextMuted,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1038,7 +897,7 @@ class _DestacadosSection extends StatelessWidget {
                   final business = businesses[index];
                   return _DestacadoCard(
                     business: business,
-                    locationLabel: _cityWithDistance(userPosition, business),
+                    distanceLabel: _distanceLabel(userPosition, business),
                     onTap: () => onTap(business),
                   );
                 },
@@ -1053,12 +912,16 @@ class _DestacadosSection extends StatelessWidget {
 class _DestacadoCard extends StatelessWidget {
   const _DestacadoCard({
     required this.business,
-    required this.locationLabel,
+    required this.distanceLabel,
     required this.onTap,
   });
 
   final BusinessModel business;
-  final String locationLabel;
+
+  /// "N km", o `null` sin posición disponible. La ciudad se trunca con
+  /// ellipsis si hace falta espacio, pero la distancia nunca — es el dato
+  /// que el usuario necesita ver completo.
+  final String? distanceLabel;
   final VoidCallback onTap;
 
   @override
@@ -1067,7 +930,9 @@ class _DestacadoCard extends StatelessWidget {
     final imagePath = business.localImagePaths.isNotEmpty
         ? business.localImagePaths.first
         : null;
-    final isEco = business.category.toLowerCase().contains('eco');
+    final locationLabel = distanceLabel == null
+        ? business.city
+        : '${business.city} · $distanceLabel';
 
     return Semantics(
       button: true,
@@ -1109,8 +974,37 @@ class _DestacadoCard extends StatelessWidget {
                           path: imagePath,
                           fallbackIcon: Icons.storefront_outlined,
                         ),
-                        if (isEco)
-                          Positioned(left: 8, top: 8, child: const EcoBadge()),
+                        if (business.category.isNotEmpty)
+                          Positioned(
+                            left: 8,
+                            top: 8,
+                            // Reemplaza al EcoBadge genérico: la categoría ya
+                            // dice "Eco-destino" cuando aplica, así que un
+                            // segundo pill "ECO" encima sería redundante.
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 120),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.sm,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.tagGold600,
+                                  borderRadius: BorderRadius.circular(
+                                    AppRadius.pill,
+                                  ),
+                                ),
+                                child: Text(
+                                  business.category,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.homeMiniBadge.copyWith(
+                                    color: AppColors.settingsTextDark,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         Positioned(
                           right: 8,
                           top: 8,
@@ -1135,11 +1029,35 @@ class _DestacadoCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        locationLabel,
-                        style: AppTextStyles.homeCardLocation,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on,
+                            size: 12,
+                            color: AppColors.settingsTextMuted,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              business.city,
+                              style: AppTextStyles.homeCardLocation,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (distanceLabel != null)
+                            Text(
+                              ' · $distanceLabel',
+                              style: AppTextStyles.homeCardLocation,
+                              maxLines: 1,
+                              overflow: TextOverflow.visible,
+                            ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Ver detalle →',
+                            style: AppTextStyles.homeSeeMore,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1231,7 +1149,7 @@ class _CercaDeTiSection extends StatelessWidget {
                 final business = nearest[index];
                 return _DestacadoCard(
                       business: business,
-                      locationLabel: _cityWithDistance(userPosition, business),
+                      distanceLabel: _distanceLabel(userPosition, business),
                       onTap: () => onTap(business),
                     )
                     .animate(delay: AppMotion.microDuration * index)
@@ -1447,6 +1365,7 @@ class _LoadErrorState extends StatelessWidget {
     );
   }
 }
+
 /// "Explorá todos": grilla de dos columnas con paginación, debajo del
 /// carrusel de Destacados.
 ///
@@ -1526,7 +1445,7 @@ class _ExploreGridSection extends StatelessWidget {
                 final business = visible[index];
                 return _ExploreCard(
                   business: business,
-                  subtitle: _cityWithDistance(userPosition, business),
+                  distanceLabel: _distanceLabel(userPosition, business),
                   onTap: () => onTap(business),
                 );
               },
@@ -1568,12 +1487,15 @@ class _ExploreGridSection extends StatelessWidget {
 class _ExploreCard extends StatelessWidget {
   const _ExploreCard({
     required this.business,
-    required this.subtitle,
+    required this.distanceLabel,
     required this.onTap,
   });
 
   final BusinessModel business;
-  final String subtitle;
+
+  /// "N km", o `null` sin posición disponible. Igual que en [_DestacadoCard]:
+  /// la ciudad se trunca con ellipsis si hace falta, la distancia nunca.
+  final String? distanceLabel;
   final VoidCallback onTap;
 
   @override
@@ -1581,7 +1503,8 @@ class _ExploreCard extends StatelessWidget {
     final cover = business.localImagePaths.isNotEmpty
         ? business.localImagePaths.first
         : business.logoUrl;
-    final family = mapPinCategoryFor(business.category);
+    final categoryLabel =
+        businessCategoryPresetFor(business.category) ?? 'Otros';
 
     return Material(
       color: AppColors.surface,
@@ -1602,8 +1525,9 @@ class _ExploreCard extends StatelessWidget {
                     fallbackIcon: Icons.storefront_outlined,
                   ),
                 ),
-                // El badge de familia dice de qué es la tarjeta sin tener que
-                // leer el nombre, con el mismo glifo que su pin en el Mapa.
+                // El badge de categoría dice de qué es la tarjeta sin tener
+                // que leer el nombre — misma categoría real que el filtro de
+                // Inicio, no la familia (más gruesa) de los pines del Mapa.
                 Positioned(
                   top: AppSpacing.sm,
                   left: AppSpacing.sm,
@@ -1620,14 +1544,14 @@ class _ExploreCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          mapPinIcon(family),
+                          businessCategoryIcon(categoryLabel),
                           size: 11,
                           // Sobre un Fill de marca va tinta oscura.
                           color: AppColors.textPrimary,
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          mapPinCategoryLabel(family),
+                          categoryLabel,
                           style: AppTextStyles.homeMiniBadge.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -1678,12 +1602,19 @@ class _ExploreCard extends StatelessWidget {
                         const SizedBox(width: 2),
                         Expanded(
                           child: Text(
-                            subtitle,
+                            business.city,
                             style: AppTextStyles.homeCardLocation,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (distanceLabel != null)
+                          Text(
+                            ' · $distanceLabel',
+                            style: AppTextStyles.homeCardLocation,
+                            maxLines: 1,
+                            overflow: TextOverflow.visible,
+                          ),
                       ],
                     ),
                   ],

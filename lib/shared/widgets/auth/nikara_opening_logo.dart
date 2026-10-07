@@ -133,10 +133,17 @@ class NikaraOpeningLogo extends StatelessWidget {
     super.key,
     required this.pieces,
     required this.progress,
+    this.ascendToAuth = true,
   });
 
   final NikaraLogoPieces pieces;
   final Animation<double> progress;
+
+  /// `true`: tras abrirse, el grupo sube a la posición exacta del logo de
+  /// Auth (el destino es Login). `false`: se queda centrado en pantalla — el
+  /// ascenso es un no-op — porque el destino es Inicio, que no tiene sheet
+  /// al que subir.
+  final bool ascendToAuth;
 
   @override
   Widget build(BuildContext context) {
@@ -158,6 +165,7 @@ class NikaraOpeningLogo extends StatelessWidget {
               progress: progress,
               logoTop: logoTop,
               logoWidth: logoWidth,
+              ascendToAuth: ascendToAuth,
             ),
           ),
         );
@@ -172,12 +180,14 @@ class _OpeningLogoPainter extends CustomPainter {
     required this.progress,
     required this.logoTop,
     required this.logoWidth,
+    required this.ascendToAuth,
   }) : super(repaint: progress);
 
   final NikaraLogoPieces pieces;
   final Animation<double> progress;
   final double logoTop;
   final double logoWidth;
+  final bool ascendToAuth;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -202,9 +212,13 @@ class _OpeningLogoPainter extends CustomPainter {
         _kStartNTopLeftFromCenter.dy -
         _kNTopLeft.dy * _kStartDpPerUnit;
     final centeredY = size.height / 2 - _kContentCenterY * endScale;
+    // Sin ascenso a Auth, el destino del lerp es el mismo punto donde ya
+    // está: el tramo de ascenso queda como un no-op y el grupo se queda
+    // centrado en pantalla.
+    final ascentTarget = ascendToAuth ? logoTop : centeredY;
     final originY = ui.lerpDouble(
       ui.lerpDouble(startY, centeredY, open)!,
-      logoTop,
+      ascentTarget,
       ascent,
     )!;
     final origin = Offset(originX, originY);
@@ -254,5 +268,6 @@ class _OpeningLogoPainter extends CustomPainter {
   bool shouldRepaint(covariant _OpeningLogoPainter oldDelegate) =>
       oldDelegate.pieces != pieces ||
       oldDelegate.logoTop != logoTop ||
-      oldDelegate.logoWidth != logoWidth;
+      oldDelegate.logoWidth != logoWidth ||
+      oldDelegate.ascendToAuth != ascendToAuth;
 }

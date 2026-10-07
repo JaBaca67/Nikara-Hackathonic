@@ -61,6 +61,22 @@ class ReviewService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  /// Complementa `revision` con reseñas escritas en otros dispositivos.
+  Future<void> Function() subscribeToChanges(VoidCallback onChange) {
+    final channel = _client
+        .channel('map:reviews')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _table,
+          callback: (_) => onChange(),
+        )
+        .subscribe((status, error) {
+          if (status == RealtimeSubscribeStatus.subscribed) onChange();
+        });
+    return () => _client.removeChannel(channel);
+  }
+
   /// El nombre del autor no es columna: sale del embed a `public_profiles`,
   /// así la reseña muestra el nombre actual de quien la escribió y no una
   /// copia congelada del día que la publicó.

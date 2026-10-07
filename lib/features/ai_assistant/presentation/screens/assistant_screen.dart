@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:nikara_app/features/ai_assistant/data/assistant_conversation_store.dart';
 import 'package:nikara_app/features/ai_assistant/data/assistant_service.dart';
 import 'package:nikara_app/features/ai_assistant/domain/models/assistant_models.dart';
 import 'package:nikara_app/features/ai_assistant/domain/models/assistant_place.dart';
 import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_chat_widgets.dart';
-import 'package:nikara_app/features/ai_assistant/presentation/widgets/nikara_butterfly.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_travel_background.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_welcome.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
@@ -28,7 +30,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// usuario, CTA de guardar ruta) y Olive (acciones, badges ECO), porque el
 /// oliva acá no decora — distingue qué recomendación es ecológica. La mascota
 /// es aparte: usa los colores del isotipo, que son identidad de marca y no
-/// acentos de UI (ver [NikaraButterfly]).
+/// acentos de UI.
 ///
 /// ## Por qué pantalla y no hoja inferior
 ///
@@ -51,7 +53,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
     '¿Qué hay cerca de mí?',
     'Armame una ruta',
     'Solo lugares ECO',
-    '¿Quién creó Níkara?',
+    'Una escapada de fin de semana',
   ];
 
   final _service = AssistantService();
@@ -336,55 +338,69 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _Header(
-              isThinking: _isSending,
-              onBack: () => Navigator.of(context).pop(),
-              onHistory: _openHistory,
-              onNew: _isEmpty ? null : _startNewConversation,
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: AppColors.surface,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemStatusBarContrastEnforced: false,
+      ),
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: AssistantTravelBackground(
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                _Header(
+                  isThinking: _isSending,
+                  onBack: () => Navigator.of(context).pop(),
+                  onHistory: _openHistory,
+                  onNew: _isEmpty || _isSending ? null : _startNewConversation,
+                ),
+                Expanded(
+                  child: _isEmpty
+                      ? AssistantWelcome(
+                          onQuickReply: _send,
+                          replies: _quickReplies,
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg,
+                            vertical: AppSpacing.md,
+                          ),
+                          itemCount: _messages.length + (_isSending ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= _messages.length) {
+                              return const AssistantTypingBubble();
+                            }
+                            return AssistantMessageBubble(
+                              message: _messages[index],
+                              places: _places,
+                              onOpenProfile: _openProfile,
+                              onShowOnMap: _showOnMap,
+                              onSaveItinerary: _saveItinerary,
+                              savingItinerary: _savingItinerary,
+                              savedItineraries: _savedItineraries,
+                            );
+                          },
+                        ),
+                ),
+                if (!_isEmpty)
+                  AssistantQuickReplies(
+                    replies: _quickReplies,
+                    enabled: !_isSending,
+                    onTap: _send,
+                  ),
+                AssistantComposer(
+                  controller: _controller,
+                  enabled: !_isSending,
+                  onSubmit: _send,
+                ),
+              ],
             ),
-            Expanded(
-              child: _isEmpty
-                  ? _Welcome(onQuickReply: _send, replies: _quickReplies)
-                  : ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.lg,
-                        vertical: AppSpacing.md,
-                      ),
-                      itemCount: _messages.length + (_isSending ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= _messages.length) {
-                          return const AssistantTypingBubble();
-                        }
-                        return AssistantMessageBubble(
-                          message: _messages[index],
-                          places: _places,
-                          onOpenProfile: _openProfile,
-                          onShowOnMap: _showOnMap,
-                          onSaveItinerary: _saveItinerary,
-                          savingItinerary: _savingItinerary,
-                          savedItineraries: _savedItineraries,
-                        );
-                      },
-                    ),
-            ),
-            if (!_isEmpty)
-              AssistantQuickReplies(
-                replies: _quickReplies,
-                enabled: !_isSending,
-                onTap: _send,
-              ),
-            AssistantComposer(
-              controller: _controller,
-              enabled: !_isSending,
-              onSubmit: _send,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -406,35 +422,36 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border(
+          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.06)),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        AppSpacing.sm,
+        AppSpacing.md + MediaQuery.paddingOf(context).top,
         AppSpacing.lg,
-        AppSpacing.sm,
+        AppSpacing.md,
       ),
       child: Row(
         children: [
           CircleBackButton(onTap: onBack),
           const SizedBox(width: AppSpacing.md),
-          NikaraButterfly(
-            size: 36,
-            mood: isThinking ? ButterflyMood.thinking : ButterflyMood.idle,
-          ),
-          const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Níkara IA',
-                  style: AppTextStyles.cardTitle.copyWith(
+                  style: AppTextStyles.heading.copyWith(
                     color: AppColors.textPrimary,
                   ),
                 ),
                 Text(
                   isThinking ? 'Pensando…' : 'Tu guía de viaje',
-                  style: AppTextStyles.caption.copyWith(
+                  style: AppTextStyles.body.copyWith(
                     color: AppColors.settingsTextMuted,
                   ),
                 ),
@@ -453,74 +470,6 @@ class _Header extends StatelessWidget {
             color: AppColors.oliveText,
             tooltip: 'Empezar una conversación nueva',
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Portada: la mascota en grande y el saludo, hasta que el usuario escribe.
-class _Welcome extends StatelessWidget {
-  const _Welcome({required this.onQuickReply, required this.replies});
-
-  final void Function(String) onQuickReply;
-  final List<String> replies;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
-      child: Column(
-        children: [
-          const SizedBox(height: AppSpacing.xxl),
-          const NikaraButterfly(size: 140),
-          const SizedBox(height: AppSpacing.xl),
-          Text(
-            'Soy tu guía en Níkara',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.sectionTitle.copyWith(
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Puedo recomendarte lugares, armarte un plan para tu viaje '
-            'o explicarte cómo usar la app.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.body.copyWith(
-              color: AppColors.settingsTextMuted,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.xxl),
-          // En columna y no en fila horizontal: acá son el contenido
-          // principal, no un accesorio del composer.
-          for (final reply in replies)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => onQuickReply(reply),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: AppColors.surface,
-                    side: BorderSide(color: AppColors.border),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.md,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.pill),
-                    ),
-                  ),
-                  child: Text(
-                    reply,
-                    style: AppTextStyles.body.copyWith(
-                      color: AppColors.oliveText,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(height: AppSpacing.lg),
         ],
       ),
     );

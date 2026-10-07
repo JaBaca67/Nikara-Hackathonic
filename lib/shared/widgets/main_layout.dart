@@ -108,10 +108,9 @@ class _MainLayoutState extends State<MainLayout> {
     4: GuestFeature.perfil,
   };
 
-  /// Tabs donde aparece el lanzador del asistente: Inicio y Mapa. Son las dos
-  /// donde recomendar un lugar tiene contexto; en Rutas, ECO y Perfil el botón
-  /// competiría con los CTA propios de esas pantallas.
-  static const _assistantTabs = {0, _mapTabIndex};
+  /// Mapa coloca su lanzador junto a sus controles para reservarle espacio.
+  /// Aquí solo se coloca el de Inicio.
+  static const _assistantTabs = {0};
 
   void _onNavTap(int index) {
     final gated = _guestGatedTabs[index];
@@ -162,11 +161,7 @@ class _MainLayoutState extends State<MainLayout> {
             navigating ? const SizedBox.shrink() : child!,
         child: MainNavigationBar(currentIndex: _currentIndex, onTap: _onNavTap),
       ),
-      // El lanzador del asistente vive acá y no dentro de Inicio/Mapa por dos
-      // razones: `map_screen` ya maneja cinco capas de chrome flotante con sus
-      // propios estados (navegación, preview de viaje, carrusel) y meterle un
-      // botón más es buscar un conflicto de layout; y así la regla de "en qué
-      // tabs aparece" se lee en un solo lugar.
+      // En Mapa el asistente vive en su dock, encima de las recomendaciones.
       floatingActionButton: ValueListenableBuilder<bool>(
         valueListenable: MapFocusController().navigationActive,
         builder: (context, navigating, _) {

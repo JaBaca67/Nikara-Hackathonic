@@ -22,20 +22,6 @@ import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-const List<String> _kCategoryPresets = [
-  'Eco-destino',
-  'Restaurante',
-  'Hospedaje',
-  'Tour',
-  'Cultura',
-  'Transporte',
-  'Bienestar',
-  'Eventos',
-  'Compras y mercados',
-  'Agroturismo / Fincas',
-  'Servicios para el viajero',
-];
-
 const List<String> _kAmenityPresets = [
   'Wifi',
   'Estacionamiento',
@@ -462,7 +448,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _descriptionController = TextEditingController();
   final _accessDetailsController = TextEditingController();
   final _otherNotesController = TextEditingController();
-  String _category = _kCategoryPresets.first;
+  String _category = kBusinessCategoryPresets.first;
   String _subcategory = '';
   String _countryCode = _kCountryCodes.first;
   final _phoneController = TextEditingController();
@@ -537,7 +523,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _accessDetailsController.text = business.accessDetails;
     _otherNotesController.text = business.otherNotes;
     _category = business.category.isEmpty
-        ? _kCategoryPresets.first
+        ? kBusinessCategoryPresets.first
         : business.category;
     _subcategory = business.subcategory;
     _dayPassEnabled = business.dayPassEnabled;
@@ -1068,7 +1054,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                       runSpacing: 8,
                       children: [
                         for (final category in {
-                          ..._kCategoryPresets,
+                          ...kBusinessCategoryPresets,
                           _category,
                         })
                           _WizardChip(
