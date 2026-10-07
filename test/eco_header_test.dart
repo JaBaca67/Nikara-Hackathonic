@@ -56,7 +56,7 @@ void main() {
       expect(find.text('Actividades Ambientales'), findsOneWidget);
       expect(find.text('2 disponibles'), findsOneWidget);
       expect(find.text('2 iniciativas verificadas'), findsOneWidget);
-      expect(find.text('Todas las actividades'), findsOneWidget);
+      expect(find.text('Descubre más'), findsOneWidget);
       expect(find.text('Limpieza del río'), findsWidgets);
       await tester.enterText(find.byType(TextField), 'rio');
       await tester.pumpAndSettle();

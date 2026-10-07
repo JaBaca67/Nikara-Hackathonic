@@ -16,6 +16,7 @@ import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
@@ -66,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     savedPlacesCount: 0,
     reviewsCount: 0,
   );
-  int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
+  int _activeTab = 0; // 0 = Favoritos, 1 = Pasaporte, 2 = Insignias
 
   @override
   void initState() {
@@ -503,6 +504,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 onToggleFavorite: _toggleFavorite,
                                 onExplore: widget.onExploreRequested,
                               )
+                            : _activeTab == 1
+                            ? const PassportTab(key: ValueKey('pasaporte'))
                             : _BadgesTab(
                                 key: const ValueKey('insignias'),
                                 badges: badges,
@@ -633,9 +636,10 @@ class _ProfileTabSelector extends StatelessWidget {
   final int activeTab;
   final ValueChanged<int> onChanged;
 
-  static const _labels = ['Favoritos', 'Insignias'];
+  static const _labels = ['Favoritos', 'Pasaporte', 'Insignias'];
   static const _icons = [
     Icons.favorite_border_rounded,
+    Icons.menu_book_outlined,
     Icons.workspace_premium_outlined,
   ];
 
@@ -663,11 +667,9 @@ class _ProfileTabSelector extends StatelessWidget {
               child: AnimatedAlign(
                 duration: AppMotion.largeDuration,
                 curve: AppMotion.overshoot,
-                alignment: activeTab == 0
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
+                alignment: Alignment(-1.0 + activeTab, 0),
                 child: FractionallySizedBox(
-                  widthFactor: 0.5,
+                  widthFactor: 1 / _labels.length,
                   heightFactor: 1,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -734,12 +736,14 @@ class _ProfileTabButton extends StatelessWidget {
               child: Icon(
                 icon,
                 key: ValueKey(selected),
-                size: 24,
+                size: 20,
                 color: selected ? AppColors.textPrimary : AppColors.neutral700,
               ),
             ),
-            const SizedBox(width: 6),
-            Text(label),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
           ],
         ),
       ),

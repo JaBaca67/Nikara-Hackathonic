@@ -96,7 +96,7 @@ class _NikaraButterflyState extends State<NikaraButterfly>
             builder: (context, _) {
               final phase = _controller.value * 2 * math.pi;
               final lift = still ? 0.0 : (1 - math.cos(phase)) / 2;
-              final shadowBlur = widget.size * (0.025 + lift * 0.015);
+              final shadowBlur = widget.size * (0.025 + lift * 0.020);
               final range = switch (widget.mood) {
                 ButterflyMood.idle => 0.95,
                 ButterflyMood.thinking => 1.10,
@@ -104,67 +104,84 @@ class _NikaraButterflyState extends State<NikaraButterfly>
               };
               final floatOffset = still || widget.mood == ButterflyMood.thinking
                   ? 0.0
-                  : math.sin(phase) * widget.size * 0.025;
+                  : math.sin(phase - 0.35) * widget.size * 0.04;
+              final flightTransform = Matrix4.identity();
+              if (!still && widget.size > 0) {
+                flightTransform
+                  ..setEntry(3, 2, -0.45 / widget.size)
+                  ..rotateX(-0.10 - lift * 0.10)
+                  ..rotateY(math.sin(phase) * 0.14)
+                  ..rotateZ(math.sin(phase) * 0.045);
+              }
 
-              return Transform.translate(
-                offset: Offset(0, -floatOffset),
-                child: Transform(
-                  alignment: const Alignment(-0.075, 0.167),
-                  transform: Matrix4.identity()
-                    ..rotateZ(still ? 0 : math.sin(phase) * 0.035),
-                  child: SizedBox(
-                    width: width,
-                    height: widget.size,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      clipBehavior: Clip.none,
-                      children: [
-                        if (widget.animated)
-                          IgnorePointer(
-                            child: Transform.translate(
-                              offset: Offset(
-                                widget.size * 0.025,
-                                widget.size * (0.045 + lift * 0.025),
+              return SizedBox(
+                width: width,
+                height: widget.size,
+                child: Stack(
+                  fit: StackFit.expand,
+                  clipBehavior: Clip.none,
+                  children: [
+                    if (widget.animated)
+                      IgnorePointer(
+                        child: Transform.translate(
+                          offset: Offset(
+                            widget.size * 0.025,
+                            widget.size * (0.045 + lift * 0.035),
+                          ),
+                          child: ImageFiltered(
+                            imageFilter: ui.ImageFilter.blur(
+                              sigmaX: shadowBlur,
+                              sigmaY: shadowBlur,
+                            ),
+                            child: ColorFiltered(
+                              colorFilter: ColorFilter.mode(
+                                AppColors.textPrimary.withValues(
+                                  alpha: 0.32 - lift * 0.09,
+                                ),
+                                BlendMode.srcIn,
                               ),
-                              child: ImageFiltered(
-                                imageFilter: ui.ImageFilter.blur(
-                                  sigmaX: shadowBlur,
-                                  sigmaY: shadowBlur,
-                                ),
-                                child: ColorFiltered(
-                                  colorFilter: ColorFilter.mode(
-                                    AppColors.textPrimary.withValues(
-                                      alpha: 0.24 - lift * 0.08,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  for (var i = 0; i < wings.length; i++)
+                                    _wing(
+                                      wings[i],
+                                      i,
+                                      phase,
+                                      range,
+                                      still,
+                                      shadow: true,
                                     ),
-                                    BlendMode.srcIn,
-                                  ),
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      for (var i = 0; i < wings.length; i++)
-                                        _wing(
-                                          wings[i],
-                                          i,
-                                          phase,
-                                          range,
-                                          still,
-                                          shadow: true,
-                                        ),
-                                      body,
-                                      antennae,
-                                    ],
-                                  ),
-                                ),
+                                  body,
+                                  antennae,
+                                ],
                               ),
                             ),
                           ),
-                        for (var i = 0; i < wings.length; i++)
-                          _wing(wings[i], i, phase, range, still),
-                        body,
-                        antennae,
-                      ],
+                        ),
+                      ),
+                    Transform.translate(
+                      offset: Offset(
+                        still ? 0 : math.sin(phase) * widget.size * 0.012,
+                        -floatOffset,
+                      ),
+                      child: Transform(
+                        key: const ValueKey('butterfly-flight'),
+                        alignment: const Alignment(-0.075, 0.167),
+                        transform: flightTransform,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          clipBehavior: Clip.none,
+                          children: [
+                            for (var i = 0; i < wings.length; i++)
+                              _wing(wings[i], i, phase, range, still),
+                            body,
+                            antennae,
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               );
             },
@@ -207,7 +224,9 @@ class _NikaraButterflyState extends State<NikaraButterfly>
       transform: transform,
       child: ColorFiltered(
         colorFilter: ColorFilter.mode(
-          Colors.black.withValues(alpha: closed * (lower ? 0.18 : 0.12)),
+          Colors.black.withValues(
+            alpha: closed * (lower ? 0.20 : 0.14) * (index.isEven ? 1.0 : 0.65),
+          ),
           BlendMode.srcATop,
         ),
         child: child,

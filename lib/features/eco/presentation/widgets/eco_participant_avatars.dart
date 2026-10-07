@@ -129,19 +129,21 @@ class _Avatar extends StatelessWidget {
         border: Border.all(color: borderColor, width: 2),
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasPhoto
-          ? LocalImage(path: avatarUrl, fallbackIcon: Icons.person)
-          : (person == null
-                ? null
-                : Center(
-                    child: Text(
-                      person.initials,
-                      style: AppTextStyles.mapRowTitle.copyWith(
-                        fontSize: size * 0.36,
-                        color: AppColors.surface100,
+      child: ClipOval(
+        child: hasPhoto
+            ? LocalImage(path: avatarUrl, fallbackIcon: Icons.person)
+            : (person == null
+                  ? null
+                  : Center(
+                      child: Text(
+                        person.initials,
+                        style: AppTextStyles.mapRowTitle.copyWith(
+                          fontSize: size * 0.36,
+                          color: AppColors.surface100,
+                        ),
                       ),
-                    ),
-                  )),
+                    )),
+      ),
     );
   }
 }

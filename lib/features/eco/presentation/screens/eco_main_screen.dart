@@ -24,7 +24,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todas';
 
-/// El carrusel promociona, no reemplaza el listado: las mismas actividades siguen apareciendo abajo en "Todas las actividades".
+/// El carrusel promociona, no reemplaza el listado: las mismas actividades siguen apareciendo abajo en "Descubre más".
 const int _kFeaturedCount = 3;
 
 class EcoMainScreen extends StatefulWidget {
@@ -280,7 +280,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                               const SizedBox(height: 22),
                             ],
                             Text(
-                              'Todas las actividades',
+                              'Descubre más',
                               style: AppTextStyles.sectionTitle.copyWith(
                                 color: AppColors.settingsTextDark,
                                 fontSize: 15,
@@ -457,14 +457,6 @@ class _FeaturedCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(AppRadius.xl),
-        border: Border.all(color: AppColors.mapControlBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.mapCardShadow,
-            offset: Offset(0, 8),
-            blurRadius: 26,
-          ),
-        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
