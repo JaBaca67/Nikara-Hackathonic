@@ -22,30 +22,7 @@ abstract class AppConfirmDialog {
     String cancelLabel = 'Cancelar',
     bool destructive = true,
   }) async {
-    final choice = await showChoice(
-      context,
-      title: title,
-      message: message,
-      confirmLabel: confirmLabel,
-      cancelLabel: cancelLabel,
-      destructive: destructive,
-    );
-    return choice ?? false;
-  }
-
-  /// Igual que [show], pero distingue las tres salidas: `true` (confirmar),
-  /// `false` (el botón de cancelar) y `null` (se cerró con el atrás del
-  /// sistema). Sirve cuando el botón de cancelar es en sí una acción —p. ej.
-  /// "Retroceder"— y un atrás accidental no debe ejecutarla.
-  static Future<bool?> showChoice(
-    BuildContext context, {
-    required String title,
-    required String message,
-    required String confirmLabel,
-    String cancelLabel = 'Cancelar',
-    bool destructive = true,
-  }) {
-    return showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       animationStyle: AppMotion.reduced(context)
@@ -64,6 +41,7 @@ abstract class AppConfirmDialog {
         destructive: destructive,
       ),
     );
+    return confirmed ?? false;
   }
 }
 

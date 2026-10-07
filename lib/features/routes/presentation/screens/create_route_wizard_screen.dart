@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/routes/data/route_catalog_service.dart';
 import 'package:nikara_app/features/routes/data/route_service.dart';
@@ -22,6 +21,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 const int _kMaxDays = 30;
 const int _kMaxCoverPhotos = 3;
+const int _kMaxTitleLength = 60;
 
 /// Lado mínimo de cualquier zona tocable (Material/WCAG: 48dp).
 const double _kMinTouchTarget = 48;
@@ -93,10 +93,15 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
 
   bool get _isEditing => widget.initialRoute != null;
 
-  /// Mismas reglas que el resto de la app para un título (3–120 caracteres y
-  /// al menos una letra, ver `validateTitle`); el mensaje que se muestra es
-  /// uno solo y concreto para esta pantalla.
-  bool get _titleIsValid => validateTitle(_titleController.text) == null;
+  /// Mínimo 3 caracteres y al menos una letra (las reglas de `validateTitle`,
+  /// que el resto de la app comparte) y máximo [_kMaxTitleLength]: el campo ya
+  /// no deja escribir más, pero un texto pegado se recorta y se revalida aquí.
+  /// Se muestra un único mensaje concreto para esta pantalla.
+  bool get _titleIsValid {
+    final title = _titleController.text;
+    return validateTitle(title) == null &&
+        title.trim().length <= _kMaxTitleLength;
+  }
 
   /// Evita abrir dos selectores de galería con toques seguidos.
   bool _pickingPhoto = false;
@@ -327,54 +332,112 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   /// se vino (`_stopsAtEntry[0]` = al salir del paso 1).
   final Map<int, List<RouteStopModel>> _stopsAtEntry = {};
 
-  /// Evita apilar diálogos si se toca atrás varias veces seguidas.
-  bool _confirmingExit = false;
+  /// Evita apilar diálogos si se toca atrás o la X varias veces seguidas.
+  bool _dialogOpen = false;
 
-  /// Flecha de la cabecera y atrás del sistema: nunca salen ni retroceden en
-  /// silencio, siempre preguntan.
-  Future<void> _handleBack() async {
-    if (_isSaving || _confirmingExit) return;
-    _confirmingExit = true;
-    try {
-      if (_step == 0) {
-        final exit = await AppConfirmDialog.show(
-          context,
-          title: '¿Salir sin guardar?',
-          message: 'Perderás el progreso de tu ruta.',
-          confirmLabel: 'Salir',
-          cancelLabel: 'Continuar',
-        );
-        if (exit && mounted) Navigator.of(context).pop();
-        return;
+  /// Lo único que se captura en los pasos 2 y 3 son las paradas (el buscador
+  /// y el filtro del paso 2 son solo una vista), así que "cambió algo" es
+  /// "las paradas ya no son las de cuando se entró al paso".
+  bool get _stepHasChanges {
+    final entry = _stopsAtEntry[_step - 1];
+    if (entry == null) return false;
+    if (entry.length != _stops.length) return true;
+    for (var i = 0; i < entry.length; i++) {
+      if (entry[i].sourceKey != _stops[i].sourceKey ||
+          entry[i].dayNumber != _stops[i].dayNumber ||
+          entry[i].position != _stops[i].position) {
+        return true;
       }
-      // `null` = se cerró con el atrás del sistema: la persona se queda.
-      final exit = await AppConfirmDialog.showChoice(
-        context,
-        title: '¿Qué quieres hacer?',
-        message: _step == 1
-            ? 'Si retrocedes, se descartan los lugares que agregaste en este '
-                  'paso. Si sales, se pierde todo el progreso de tu ruta.'
-            : 'Si retrocedes, se descartan los cambios de organización de '
-                  'este paso. Si sales, se pierde todo el progreso de tu ruta.',
-        confirmLabel: 'Salir',
-        cancelLabel: 'Retroceder',
-      );
-      if (!mounted || exit == null) return;
-      if (exit) {
-        Navigator.of(context).pop();
-        return;
-      }
-      setState(() {
-        _stops = _stopsAtEntry[_step - 1] ?? _stops;
-        if (_step == 1) {
-          _searchController.clear();
-          _categoryFilter = null;
-        }
-        _step--;
-      });
-    } finally {
-      _confirmingExit = false;
     }
+    return false;
+  }
+
+  /// Pregunta y devuelve `true` solo si se confirmó. Un cierre de cualquier
+  /// otra forma (atrás del sistema sobre la alerta) deja a la persona donde
+  /// está.
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required String cancelLabel,
+    bool destructive = true,
+  }) async {
+    _dialogOpen = true;
+    try {
+      final confirmed = await AppConfirmDialog.show(
+        context,
+        title: title,
+        message: message,
+        confirmLabel: confirmLabel,
+        cancelLabel: cancelLabel,
+        destructive: destructive,
+      );
+      return confirmed && mounted;
+    } finally {
+      _dialogOpen = false;
+    }
+  }
+
+  /// Salida real a Rutas: `pop()` explícito (el `PopScope` no lo bloquea) y
+  /// solo después de una confirmación.
+  void _leave() => Navigator.of(context).pop();
+
+  /// Flecha de la cabecera y atrás del sistema. En el paso 1 no hay a dónde
+  /// retroceder, así que sale (con confirmación); en los pasos 2 y 3
+  /// retrocede un paso — directo si no se cambió nada, con confirmación si
+  /// se perdería algo.
+  Future<void> _onBack() async {
+    if (_isSaving || _dialogOpen) return;
+    if (_step == 0) {
+      final exit = await _confirm(
+        title: '¿Salir sin guardar?',
+        message: 'Perderás el progreso de tu ruta.',
+        confirmLabel: 'Salir',
+        cancelLabel: 'Continuar',
+      );
+      if (exit) _leave();
+      return;
+    }
+    if (!_stepHasChanges) {
+      _goBackOneStep();
+      return;
+    }
+    final back = await _confirm(
+      title: '¿Volver al paso anterior?',
+      message:
+          'Perderás lo que editaste en este paso. Lo del paso anterior se '
+          'conserva.',
+      confirmLabel: 'Retroceder',
+      cancelLabel: 'Cancelar',
+      destructive: false,
+    );
+    if (back) _goBackOneStep();
+  }
+
+  /// La X de los pasos 2 y 3: siempre pregunta, haya cambios o no.
+  Future<void> _onExit() async {
+    if (_isSaving || _dialogOpen) return;
+    final exit = await _confirm(
+      title: '¿Salir de crear ruta?',
+      message: 'Perderás todo el progreso de tu ruta y volverás a Rutas.',
+      confirmLabel: 'Salir',
+      cancelLabel: 'Continuar',
+    );
+    if (exit) _leave();
+  }
+
+  /// Vuelve un paso descartando solo lo del paso actual: las paradas regresan
+  /// a como estaban al entrar; el nombre, los días y las fotos (paso 1) no se
+  /// tocan.
+  void _goBackOneStep() {
+    setState(() {
+      _stops = [...(_stopsAtEntry[_step - 1] ?? _stops)];
+      if (_step == 1) {
+        _searchController.clear();
+        _categoryFilter = null;
+      }
+      _step--;
+    });
   }
 
   Future<void> _save() async {
@@ -449,12 +512,12 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   @override
   Widget build(BuildContext context) {
     // `canPop: false`: el atrás del sistema hace lo mismo que la flecha de la
-    // cabecera (confirmar y retroceder/salir); la salida real es el
-    // `Navigator.pop()` explícito de `_handleBack`, que PopScope no bloquea.
+    // cabecera (`_onBack`); la salida real a Rutas es el `Navigator.pop()`
+    // explícito de `_leave`, que PopScope no bloquea.
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) unawaited(_handleBack());
+        if (!didPop) unawaited(_onBack());
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
@@ -464,7 +527,12 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
               _WizardHeader(
                 title: _isEditing ? 'Editar ruta' : 'Nueva ruta',
                 subtitle: 'Paso ${_step + 1} de 3 · ${_stepSubtitles[_step]}',
-                onBack: () => unawaited(_handleBack()),
+                onBack: () => unawaited(_onBack()),
+                backLabel: _step == 0
+                    ? 'Salir de crear ruta'
+                    : 'Volver al paso anterior',
+                enabled: !_isSaving,
+                onExit: _step == 0 ? null : () => unawaited(_onExit()),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -520,16 +588,32 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   }
 }
 
+/// Cabecera del wizard: flecha de la izquierda y, desde el paso 2, una X para
+/// salir. Son dos acciones distintas (retroceder un paso / abandonar), cada
+/// una con su propia alerta, así que son dos botones separados.
 class _WizardHeader extends StatelessWidget {
   const _WizardHeader({
     required this.title,
     required this.subtitle,
     required this.onBack,
+    required this.backLabel,
+    required this.enabled,
+    this.onExit,
   });
 
   final String title;
   final String subtitle;
   final VoidCallback onBack;
+
+  /// Qué hace la flecha en este paso: en el primero sale del wizard, en los
+  /// demás vuelve al paso anterior.
+  final String backLabel;
+
+  /// Falso mientras se guarda: los botones se ven atenuados y no responden.
+  final bool enabled;
+
+  /// `null` en el paso 1, donde la flecha ya es la salida.
+  final VoidCallback? onExit;
 
   @override
   Widget build(BuildContext context) {
@@ -542,29 +626,11 @@ class _WizardHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
+          _HeaderIconButton(
+            icon: Icons.arrow_back,
+            label: backLabel,
+            enabled: enabled,
             onTap: onBack,
-            child: SizedBox.square(
-              dimension: _kMinTouchTarget,
-              child: Center(
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: AppColors.profileDivider,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.arrow_back,
-                    semanticLabel: 'Volver',
-                    size: 20,
-                    color: AppColors.settingsTextDark,
-                  ),
-                ),
-              ),
-            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -588,7 +654,72 @@ class _WizardHeader extends StatelessWidget {
               ],
             ),
           ),
+          if (onExit != null) ...[
+            const SizedBox(width: 10),
+            _HeaderIconButton(
+              icon: Icons.close_rounded,
+              label: 'Salir de crear ruta',
+              enabled: enabled,
+              onTap: onExit!,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// Botón circular de la cabecera: círculo de 44 dentro de una zona tocable de
+/// 48, con tooltip (long-press / hover) y etiqueta para lectores de pantalla.
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: enabled ? onTap : null,
+          child: SizedBox.square(
+            dimension: _kMinTouchTarget,
+            child: Center(
+              child: Opacity(
+                opacity: enabled ? 1 : 0.4,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.profileDivider,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: AppColors.settingsTextDark,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -736,7 +867,7 @@ class _StepName extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Elegí un nombre y cuántos días va a durar.',
+          'Elige un nombre y cuántos días va a durar.',
           style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 14),
         ),
         const SizedBox(height: 18),
@@ -760,7 +891,7 @@ class _StepName extends StatelessWidget {
                 onChanged: (_) => onTitleChanged(),
                 textInputAction: TextInputAction.done,
                 inputFormatters: [
-                  LengthLimitingTextInputFormatter(InputLimits.name),
+                  LengthLimitingTextInputFormatter(_kMaxTitleLength),
                 ],
                 style: AppTextStyles.settingsSubtitle.copyWith(
                   fontSize: 15,
