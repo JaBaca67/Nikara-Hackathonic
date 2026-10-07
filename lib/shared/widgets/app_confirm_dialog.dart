@@ -10,6 +10,10 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// cambia el contenido. Devuelve `true` únicamente si el usuario pulsa el
 /// botón de confirmar: cerrar con el botón atrás del sistema cuenta como
 /// cancelar (nunca se confirma por accidente). No se cierra al tocar fuera.
+///
+/// Movimiento: entra con fade + escala de 0.95 a 1.0 (250 ms) y sale más
+/// rápido (200 ms), sin rebote. Con "Eliminar animaciones" activo aparece y
+/// desaparece al instante.
 abstract class AppConfirmDialog {
   /// [destructive] pinta el botón de confirmar con `AppColors.destructive`
   /// (eliminar, cerrar sesión, salir perdiendo progreso). Con `false` usa el
@@ -22,26 +26,81 @@ abstract class AppConfirmDialog {
     String cancelLabel = 'Cancelar',
     bool destructive = true,
   }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      animationStyle: AppMotion.reduced(context)
-          ? AnimationStyle.noAnimation
-          : AnimationStyle(
-              duration: AppMotion.standardDuration,
-              reverseDuration: AppMotion.quickDuration,
-              curve: AppMotion.enter,
-              reverseCurve: AppMotion.exit,
+    final navigator = Navigator.of(context, rootNavigator: true);
+    // Como hace `showDialog`: conserva los temas locales del llamador.
+    final themes = InheritedTheme.capture(from: context, to: navigator.context);
+    final barrierLabel = MaterialLocalizations.of(
+      context,
+    ).modalBarrierDismissLabel;
+    final reduced = AppMotion.reduced(context);
+
+    final confirmed = await navigator.push<bool>(
+      _AppDialogRoute<bool>(
+        enterDuration: reduced ? Duration.zero : AppMotion.standardDuration,
+        exitDuration: reduced ? Duration.zero : AppMotion.quickDuration,
+        barrierLabel: barrierLabel,
+        pageBuilder: (_, _, _) => themes.wrap(
+          SafeArea(
+            child: _ConfirmDialogContent(
+              title: title,
+              message: message,
+              confirmLabel: confirmLabel,
+              cancelLabel: cancelLabel,
+              destructive: destructive,
             ),
-      builder: (_) => _ConfirmDialogContent(
-        title: title,
-        message: message,
-        confirmLabel: confirmLabel,
-        cancelLabel: cancelLabel,
-        destructive: destructive,
+          ),
+        ),
       ),
     );
     return confirmed ?? false;
+  }
+}
+
+/// Ruta del diálogo con entrada y salida de distinta duración.
+///
+/// `showDialog` no sirve para esto: su `DialogRoute` solo respeta
+/// `AnimationStyle.duration` y usa la misma duración al salir (se midió: la
+/// salida tardaba lo mismo que la entrada aunque se pasara `reverseDuration`).
+class _AppDialogRoute<T> extends RawDialogRoute<T> {
+  _AppDialogRoute({
+    required super.pageBuilder,
+    required super.barrierLabel,
+    required Duration enterDuration,
+    required this.exitDuration,
+  }) : super(
+         barrierDismissible: false,
+         barrierColor: AppColors.textPrimary.withValues(alpha: 0.5),
+         transitionDuration: enterDuration,
+         transitionBuilder: _transition,
+       );
+
+  final Duration exitDuration;
+
+  @override
+  Duration get reverseTransitionDuration => exitDuration;
+
+  /// Fade + escala de 0.95 a 1.0 con curva desacelerada al entrar y
+  /// acelerada al salir. Sin sobrepaso: nada pasa de 1.0.
+  static Widget _transition(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (AppMotion.reduced(context)) return child;
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: AppMotion.enter,
+      reverseCurve: AppMotion.exit,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: ScaleTransition(
+        key: const ValueKey('confirm-dialog-scale'),
+        scale: Tween<double>(begin: 0.95, end: 1).animate(curved),
+        child: child,
+      ),
+    );
   }
 }
 
