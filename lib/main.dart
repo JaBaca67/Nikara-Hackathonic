@@ -20,7 +20,14 @@ Future<void> main() async {
   await _configureSystemBars();
   // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
   final isotipoReady = _precacheSplashIsotipo();
-  await dotenv.load(fileName: '.env');
+  // Antes de cualquier pantalla: el mapa y "Cómo llegar" leen la clave de aquí.
+  // Si `.env` no carga no se tumba el arranque; `MapsConfig.hasApiKey` queda en
+  // falso y el mapa avisa con un mensaje claro en vez de quedar en blanco.
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    debugPrint('No se pudo cargar .env: $e');
+  }
   await Supabase.initialize(
     url: SupabaseConfig.url,
     // "publishableKey" es el nuevo nombre de supabase_flutter para la anon key.

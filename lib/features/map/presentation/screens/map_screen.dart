@@ -19,6 +19,7 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.d
 import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
+import 'package:nikara_app/core/config/maps_config.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
@@ -274,6 +275,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _loadCategories();
     // La primera carga de negocios ocurre cuando el mapa reporta su región
     // visible inicial — ver onMapCreated en build().
+    WidgetsBinding.instance.addPostFrameCallback((_) => _warnIfNoMapsKey());
+  }
+
+  /// Sin clave el SDK dibuja solo el logo de Google sobre un lienzo vacío y no
+  /// da ningún error visible; este aviso es lo único que explica por qué.
+  void _warnIfNoMapsKey() {
+    if (!mounted || MapsConfig.hasApiKey) return;
+    AppSnackbar.showError(
+      context,
+      'El mapa no está configurado: falta la clave de Google Maps '
+      '(MAPS_API_KEY en el archivo .env).',
+    );
   }
 
   @override

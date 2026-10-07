@@ -131,8 +131,8 @@ class DirectionsService {
   }) async {
     final key = MapsConfig.directionsApiKey;
     debugPrint(
-      '[DirectionsService] key configured: ${key.isNotEmpty} '
-      '(length=${key.length}), mode=${mode.apiValue}',
+      '[DirectionsService] key configured: ${key.isNotEmpty}, '
+      'mode=${mode.apiValue}',
     );
     if (key.isEmpty) {
       throw const DirectionsServiceException(
