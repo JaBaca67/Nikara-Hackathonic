@@ -8,11 +8,10 @@ import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_participation.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
-import 'package:nikara_app/shared/widgets/app_snackbar.dart';
-import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
-import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -107,37 +106,49 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     await pushSharedAxis(context, EcoDetailScreen(activity: activity));
   }
 
-  Future<void> _toggleJoin(EcoActivityModel activity) async {
-    if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
-    if (!mounted) return;
-    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
-    if (!mounted) return;
-    final joining = !activity.isJoinedByCurrentUser;
-    _applyOptimistic(activity.id, joining: joining);
+  /// Actividades cuyo "Unirme"/"Unido" está en curso: bloquean el segundo
+  /// toque de esa tarjeta y muestran su spinner.
+  final Set<String> _joiningIds = {};
+
+  /// Unirse o salir según el estado actual. Los avisos, la confirmación al
+  /// salir y los casos especiales viven en [EcoParticipation]. El estado de la
+  /// tarjeta solo cambia con lo que devuelve el servidor: no se finge antes.
+  Future<void> _toggleJoin(
+    EcoActivityModel activity, {
+    bool confirmedLeave = false,
+  }) async {
+    if (_joiningIds.contains(activity.id)) return;
+    setState(() => _joiningIds.add(activity.id));
     try {
-      if (joining) {
-        await EcoService().joinActivity(activity.id);
-      } else {
-        await EcoService().leaveActivity(activity.id);
+      // El reintento parte de la copia más reciente, no de la que se tocó.
+      void retry({bool leaving = false}) {
+        final latest = _activities.firstWhere(
+          (a) => a.id == activity.id,
+          orElse: () => activity,
+        );
+        unawaited(_toggleJoin(latest, confirmedLeave: leaving));
       }
-    } on EcoServiceException catch (e) {
-      _applyOptimistic(activity.id, joining: !joining);
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
+
+      final updated = activity.isJoinedByCurrentUser
+          ? await EcoParticipation.leave(
+              context,
+              activity,
+              confirmed: confirmedLeave,
+              onRetry: () => retry(leaving: true),
+            )
+          : await EcoParticipation.join(context, activity, onRetry: retry);
+      if (!mounted || updated == null) return;
+      _replaceActivity(updated);
+    } finally {
+      if (mounted) setState(() => _joiningIds.remove(activity.id));
     }
   }
 
-  void _applyOptimistic(String activityId, {required bool joining}) {
+  void _replaceActivity(EcoActivityModel updated) {
     setState(() {
       _activities = [
         for (final a in _activities)
-          if (a.id == activityId)
-            a.withParticipation(
-              isJoined: joining,
-              participantCount: a.participantCount + (joining ? 1 : -1),
-            )
-          else
-            a,
+          if (a.id == updated.id) updated else a,
       ];
     });
   }
@@ -190,6 +201,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                               setState(() => _featuredPage = page),
                           onOpen: _openDetail,
                           onJoin: _toggleJoin,
+                          joiningIds: _joiningIds,
                         ),
                         const SizedBox(height: 22),
                       ],
@@ -387,6 +399,7 @@ class _FeaturedCarousel extends StatelessWidget {
     required this.onPageChanged,
     required this.onOpen,
     required this.onJoin,
+    required this.joiningIds,
   });
 
   static const _cardHeight = 340.0;
@@ -396,7 +409,10 @@ class _FeaturedCarousel extends StatelessWidget {
   final int page;
   final ValueChanged<int> onPageChanged;
   final ValueChanged<EcoActivityModel> onOpen;
-  final ValueChanged<EcoActivityModel> onJoin;
+  final Future<void> Function(EcoActivityModel) onJoin;
+
+  /// Actividades con un "Unirme"/"Unido" en curso (spinner y sin segundo toque).
+  final Set<String> joiningIds;
 
   @override
   Widget build(BuildContext context) {
@@ -418,6 +434,7 @@ class _FeaturedCarousel extends StatelessWidget {
                   activity: activity,
                   onTap: () => onOpen(activity),
                   onJoin: () => onJoin(activity),
+                  isJoining: joiningIds.contains(activity.id),
                 ),
               );
             },
@@ -454,11 +471,13 @@ class _FeaturedCard extends StatelessWidget {
     required this.activity,
     required this.onTap,
     required this.onJoin,
+    required this.isJoining,
   });
 
   final EcoActivityModel activity;
   final VoidCallback onTap;
-  final VoidCallback onJoin;
+  final Future<void> Function() onJoin;
+  final bool isJoining;
 
   @override
   Widget build(BuildContext context) {
@@ -557,35 +576,18 @@ class _FeaturedCard extends StatelessWidget {
                       Expanded(
                         child: SizedBox(
                           height: 46,
-                          child: ElevatedButton(
+                          // Mismo CTA que el detalle: dorado con tinta oscura
+                          // (el módulo ECO puede combinar Gold y Olive), con
+                          // spinner y sin segundo toque mientras se guarda.
+                          child: AppLoadingButton(
+                            label: activity.isJoinedByCurrentUser
+                                ? 'Unido'
+                                : 'Unirme',
+                            isLoading: isJoining,
                             onPressed:
                                 activity.status == EcoActivityStatus.completed
                                 ? null
                                 : onJoin,
-                            style: ElevatedButton.styleFrom(
-                              // Mismo par que el CTA del detalle: el estado
-                              // "disponible" del modelo especifica "Unirme"
-                              // en dorado, y sobre un Fill de marca va tinta
-                              // oscura, nunca blanco.
-                              backgroundColor: AppColors.primary500,
-                              foregroundColor: AppColors.settingsTextDark,
-                              disabledBackgroundColor:
-                                  AppColors.settingsBackground,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AppRadius.md,
-                                ),
-                              ),
-                              textStyle: AppTextStyles.mapRowTitle.copyWith(
-                                fontSize: 14,
-                              ),
-                            ),
-                            child: Text(
-                              activity.isJoinedByCurrentUser
-                                  ? 'Unido'
-                                  : 'Unirme',
-                            ),
                           ),
                         ),
                       ),

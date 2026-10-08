@@ -12,15 +12,15 @@ import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_participant_avatars.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_participation.dart';
 import 'package:nikara_app/features/eco/utils/eco_format.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
-import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
-import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -41,7 +41,9 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   late EcoActivityModel _activity = widget.activity;
   int _tab = 0;
   bool _showFullDescription = false;
-  bool _isSubmitting = false;
+
+  /// Mientras se une o sale de la actividad: bloquea el segundo toque.
+  bool _isJoining = false;
 
   List<EcoParticipant>? _participants;
   bool _loadingParticipants = false;
@@ -152,37 +154,46 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     }
   }
 
-  Future<void> _toggleJoin() async {
-    if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
-    if (!mounted) return;
-    if (!await FaceGuard.allow(context, FaceLimitedAction.ecoJoin)) return;
-    if (!mounted) return;
-    final joining = !_activity.isJoinedByCurrentUser;
-    setState(() {
-      _isSubmitting = true;
-      _activity = _activity.withParticipation(
-        isJoined: joining,
-        participantCount: _activity.participantCount + (joining ? 1 : -1),
-      );
-    });
+  /// Unirse o salir según el estado actual. Los avisos, la confirmación al
+  /// salir y los casos especiales viven en [EcoParticipation].
+  Future<void> _toggleJoin() =>
+      _activity.isJoinedByCurrentUser ? _leave() : _join();
+
+  Future<void> _join() => _runParticipation(
+    () => EcoParticipation.join(
+      context,
+      _activity,
+      onRetry: () => unawaited(_join()),
+    ),
+  );
+
+  Future<void> _leave({bool confirmed = false}) => _runParticipation(
+    () => EcoParticipation.leave(
+      context,
+      _activity,
+      confirmed: confirmed,
+      // Ya se confirmó la primera vez: reintentar no vuelve a preguntar.
+      onRetry: () => unawaited(_leave(confirmed: true)),
+    ),
+  );
+
+  /// Un solo cambio de participación a la vez. El estado de la pantalla solo
+  /// cambia con lo que devuelve el servidor (no se finge antes): al unirse, el
+  /// botón pasa a "Abandonar" y suben los cupos ocupados al instante.
+  Future<void> _runParticipation(
+    Future<EcoActivityModel?> Function() action,
+  ) async {
+    if (_isJoining) return;
+    setState(() => _isJoining = true);
     try {
-      if (joining) {
-        await EcoService().joinActivity(_activity.id);
-      } else {
-        await EcoService().leaveActivity(_activity.id);
-      }
-      _participants = null; // quedó viejo tras unirse/salir — se re-pide.
-    } on EcoServiceException catch (e) {
+      final updated = await action();
+      if (!mounted || updated == null) return;
       setState(() {
-        _activity = _activity.withParticipation(
-          isJoined: !joining,
-          participantCount: _activity.participantCount + (joining ? -1 : 1),
-        );
+        _activity = updated;
+        _participants = null; // quedó viejo tras unirse/salir — se re-pide.
       });
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
     } finally {
-      if (mounted) setState(() => _isSubmitting = false);
+      if (mounted) setState(() => _isJoining = false);
     }
   }
 
@@ -358,7 +369,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
       ),
       bottomNavigationBar: _EcoActionBar(
         status: activity.status,
-        isSubmitting: _isSubmitting,
+        isJoining: _isJoining,
         onTap: _toggleJoin,
       ),
     );
@@ -705,16 +716,20 @@ class _ParticipantsTab extends StatelessWidget {
 }
 
 /// Siempre presente (nunca se oculta) para que el botón principal no cambie de posición entre estados.
+///
+/// [isJoining] es el único estado de carga: mientras dura, "Unirme" muestra su
+/// spinner (`AppLoadingButton`) y "Abandonar actividad" el equivalente
+/// —spinner y deshabilitado—, así que ninguno admite un segundo toque.
 class _EcoActionBar extends StatelessWidget {
   const _EcoActionBar({
     required this.status,
-    required this.isSubmitting,
+    required this.isJoining,
     required this.onTap,
   });
 
   final EcoActivityStatus status;
-  final bool isSubmitting;
-  final VoidCallback onTap;
+  final bool isJoining;
+  final Future<void> Function() onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -737,7 +752,7 @@ class _EcoActionBar extends StatelessWidget {
             ),
           ),
           EcoActivityStatus.joined => OutlinedButton(
-            onPressed: isSubmitting ? null : onTap,
+            onPressed: isJoining ? null : onTap,
             style: OutlinedButton.styleFrom(
               backgroundColor: AppColors.coralPaleFill,
               foregroundColor: AppColors.destructive,
@@ -747,8 +762,8 @@ class _EcoActionBar extends StatelessWidget {
               ),
               textStyle: AppTextStyles.detailBottomBarSecondary,
             ),
-            child: isSubmitting
-                ? const _ButtonSpinner(color: AppColors.destructive)
+            child: isJoining
+                ? const AppSpinner(color: AppColors.destructive)
                 : const Text('Abandonar actividad'),
           ),
           EcoActivityStatus.available => DecoratedBox(
@@ -762,38 +777,16 @@ class _EcoActionBar extends StatelessWidget {
                 ),
               ],
             ),
-            child: FilledButton(
-              onPressed: isSubmitting ? null : onTap,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary500,
-                foregroundColor: AppColors.settingsTextDark,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                ),
-                textStyle: AppTextStyles.detailBottomBarPrimary,
-              ),
-              child: isSubmitting
-                  ? const _ButtonSpinner(color: AppColors.settingsTextDark)
-                  : const Text('Unirme'),
+            // Dorado sobre fondo claro con tinta oscura: el CTA de ECO (ver
+            // CLAUDE.md > Tiers de pantalla, excepción del módulo ECO).
+            child: AppLoadingButton(
+              label: 'Unirme',
+              isLoading: isJoining,
+              onPressed: onTap,
             ),
           ),
         },
       ),
-    );
-  }
-}
-
-class _ButtonSpinner extends StatelessWidget {
-  const _ButtonSpinner({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CircularProgressIndicator(strokeWidth: 2, color: color),
     );
   }
 }
