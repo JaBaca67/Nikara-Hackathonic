@@ -1,4 +1,4 @@
-/// Credenciales del proyecto Supabase; el anon key es público a propósito (RLS deshabilitado en este proyecto) — el service_role key nunca debe aparecer aquí.
+/// Credenciales del proyecto Supabase; el anon key es público a propósito (lo que lo vuelve inofensivo es que RLS está activo) — el service_role key nunca debe aparecer aquí.
 abstract class SupabaseConfig {
   /// URL base del proyecto, NO el endpoint REST — `Supabase.initialize` ya arma `/rest/v1/`, `/auth/v1/`, etc. sobre esto.
   static const url = 'https://taxtvsqfpmrrkvezwwpb.supabase.co';

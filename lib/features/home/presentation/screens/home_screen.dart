@@ -320,6 +320,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _restartPhotoTimer();
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onBusinessesChanged);
+      if (!GuestSessionService().isGuest) {
+        unawaited(NotificationService().ensureDemoNotifications(businesses));
+      }
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);

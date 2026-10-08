@@ -401,6 +401,9 @@ class EcoService {
       'user_id': userId,
     });
     revision.value++;
+    if (AuthService().currentAuthUser?.id == userId) {
+      unawaited(NotificationService().notifyEcoActivityJoined(fresh));
+    }
     return fresh.withParticipation(
       isJoined: true,
       participantCount: fresh.participantCount + 1,

@@ -28,8 +28,8 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// marca visible — el dorado del punto "sin leer", el chip de ícono y el CTA
 /// de los estados vacíos. Sin oliva ni gradientes de marca.
 ///
-/// Alcance: solo in-app. No hay push/FCM; la campana de Inicio y esta
-/// pantalla leen la misma tabla.
+/// La campana de Inicio y esta pantalla leen la misma tabla que alimenta
+/// el webhook de push/FCM.
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 

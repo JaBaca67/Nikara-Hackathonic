@@ -31,6 +31,11 @@ enum NotificationType {
     Icons.gpp_maybe_rounded,
     NotificationTarget.business,
   ),
+  businessRecommendation(
+    'business_recommendation',
+    Icons.storefront_rounded,
+    NotificationTarget.business,
+  ),
   ecoActivityJoined(
     'eco_activity_joined',
     Icons.eco_rounded,
@@ -40,6 +45,16 @@ enum NotificationType {
     'eco_activity_reminder',
     Icons.alarm_rounded,
     NotificationTarget.ecoActivity,
+  ),
+  ecoActivityPreparation(
+    'eco_activity_preparation',
+    Icons.checklist_rounded,
+    NotificationTarget.ecoActivity,
+  ),
+  demoWelcome(
+    'demo_welcome',
+    Icons.waving_hand_rounded,
+    NotificationTarget.none,
   ),
   ecoActivityApproved(
     'eco_activity_approved',
