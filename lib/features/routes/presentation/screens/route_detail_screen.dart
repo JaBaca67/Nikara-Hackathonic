@@ -10,6 +10,8 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/screens/full_screen_map_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_mini_map.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -64,6 +66,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   }
 
   Future<void> _clone() async {
+    if (_isBusy) return;
     setState(() => _isBusy = true);
     try {
       final copy = await RouteService().cloneRoute(_route);
@@ -118,43 +121,25 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
     }
   }
 
+  /// Mientras se elimina: `_isBusy` bloquea Editar/Eliminar/Duplicar y
+  /// `_isDeleting` pone el spinner en el botón de eliminar.
+  bool _isDeleting = false;
+
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text('Eliminar ruta', style: AppTextStyles.detailSectionTitle),
-        content: Text(
-          '¿Seguro que querés eliminar "${_route.title}"? Esta acción no se '
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar ruta',
+      message:
+          '¿Seguro que quieres eliminar "${_route.title}"? Esta acción no se '
           'puede deshacer.',
-          style: AppTextStyles.settingsSubtitle,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancelar',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                color: AppColors.settingsTextMuted,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                color: AppColors.wizardDangerLink,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
+    setState(() {
+      _isBusy = true;
+      _isDeleting = true;
+    });
     try {
       await RouteService().deleteRoute(_route.id);
       if (!mounted) return;
@@ -162,6 +147,20 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
     } on RouteServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo eliminar la ruta. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+          _isDeleting = false;
+        });
+      }
     }
   }
 
@@ -280,6 +279,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
             _DetailActions(
               isOwner: _isOwner,
               isBusy: _isBusy,
+              isDeleting: _isDeleting,
               onEdit: _edit,
               onDelete: _delete,
               onClone: _clone,
@@ -567,6 +567,7 @@ class _DetailActions extends StatelessWidget {
   const _DetailActions({
     required this.isOwner,
     required this.isBusy,
+    required this.isDeleting,
     required this.onEdit,
     required this.onDelete,
     required this.onClone,
@@ -574,6 +575,7 @@ class _DetailActions extends StatelessWidget {
 
   final bool isOwner;
   final bool isBusy;
+  final bool isDeleting;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onClone;
@@ -633,7 +635,7 @@ class _DetailActions extends StatelessWidget {
             child: SizedBox(
               height: 56,
               child: OutlinedButton(
-                onPressed: onEdit,
+                onPressed: isBusy ? null : onEdit,
                 style: OutlinedButton.styleFrom(
                   backgroundColor: AppColors.surface100,
                   foregroundColor: AppColors.settingsTextDark,
@@ -652,7 +654,7 @@ class _DetailActions extends StatelessWidget {
             child: SizedBox(
               height: 56,
               child: OutlinedButton(
-                onPressed: onDelete,
+                onPressed: isBusy ? null : onDelete,
                 style: OutlinedButton.styleFrom(
                   backgroundColor: AppColors.surface100,
                   foregroundColor: AppColors.wizardDangerLink,
@@ -662,7 +664,9 @@ class _DetailActions extends StatelessWidget {
                   ),
                   textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
                 ),
-                child: const Text('Eliminar ruta'),
+                child: isDeleting
+                    ? const AppSpinner(color: AppColors.wizardDangerLink)
+                    : const Text('Eliminar ruta'),
               ),
             ),
           ),

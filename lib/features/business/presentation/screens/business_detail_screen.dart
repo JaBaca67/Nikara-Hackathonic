@@ -25,6 +25,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -160,7 +161,12 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     await AddToRouteBottomSheet.showForBusiness(context, _business);
   }
 
+  /// Desde que la persona toca "Enviar" hasta que la fila queda escrita: con
+  /// esto no se puede abrir otra reseña ni publicar la misma dos veces.
+  bool _isSubmittingReview = false;
+
   Future<void> _openWriteReview() async {
+    if (_isSubmittingReview) return;
     if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
     if (!mounted) return;
     final draft = await showModalBottomSheet<_ReviewDraft>(
@@ -174,39 +180,48 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     );
     if (draft == null || !mounted) return;
 
-    final profile = _currentProfile ?? await _authService.getCurrentProfile();
-    final authorName = profile != null && profile.fullName.trim().isNotEmpty
-        ? profile.fullName
-        : 'Viajero Níkara';
-
-    final review = ReviewModel(
-      id: const Uuid().v4(),
-      authorName: authorName,
-      authorId: _authService.currentAuthUser?.id ?? '',
-      rating: draft.rating,
-      comment: draft.comment,
-      date: DateTime.now(),
-      mediaPaths: draft.mediaPaths,
-    );
-
-    // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
-    // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
-    // mostrarla igual haría creer que quedó publicada para todos.
+    setState(() => _isSubmittingReview = true);
     try {
+      final profile = _currentProfile ?? await _authService.getCurrentProfile();
+      final authorName = profile != null && profile.fullName.trim().isNotEmpty
+          ? profile.fullName
+          : 'Viajero Níkara';
+
+      final review = ReviewModel(
+        id: const Uuid().v4(),
+        authorName: authorName,
+        authorId: _authService.currentAuthUser?.id ?? '',
+        rating: draft.rating,
+        comment: draft.comment,
+        date: DateTime.now(),
+        mediaPaths: draft.mediaPaths,
+      );
+
+      // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
+      // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
+      // mostrarla igual haría creer que quedó publicada para todos.
       await _businessStorageService.addReview(_business, review);
+      if (!mounted) return;
+      setState(() {
+        _businessState = _businessState.copyWith(
+          reviews: [..._businessState.reviews, review],
+        );
+      });
+
+      AppSnackbar.showSuccess(context, '¡Gracias por tu reseña! +20 puntos');
     } on ReviewServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
-      return;
-    }
-    if (!mounted) return;
-    setState(() {
-      _businessState = _businessState.copyWith(
-        reviews: [..._businessState.reviews, review],
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo publicar tu reseña. Verifica tu internet e intenta de '
+        'nuevo.',
       );
-    });
-
-    AppSnackbar.showSuccess(context, '¡Gracias por tu reseña! +20 puntos');
+    } finally {
+      if (mounted) setState(() => _isSubmittingReview = false);
+    }
   }
 
   /// Enfoca el mapa propio de Níkara (no Google Maps externo) porque el mapa in-app ya traza ruta real y sigue el viaje.
@@ -304,6 +319,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         : _ReviewsTab(
                             business: _business,
                             onWriteReview: _openWriteReview,
+                            isSubmitting: _isSubmittingReview,
                           ),
                   ),
                 ],
@@ -1238,10 +1254,17 @@ class _ReportLinkSection extends StatelessWidget {
 }
 
 class _ReviewsTab extends StatelessWidget {
-  const _ReviewsTab({required this.business, required this.onWriteReview});
+  const _ReviewsTab({
+    required this.business,
+    required this.onWriteReview,
+    required this.isSubmitting,
+  });
 
   final BusinessModel business;
   final VoidCallback onWriteReview;
+
+  /// Mientras se publica una reseña: el botón queda deshabilitado con spinner.
+  final bool isSubmitting;
 
   @override
   Widget build(BuildContext context) {
@@ -1251,8 +1274,10 @@ class _ReviewsTab extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: onWriteReview,
-            icon: const Icon(Icons.rate_review_outlined, size: 18),
+            onPressed: isSubmitting ? null : onWriteReview,
+            icon: isSubmitting
+                ? const AppSpinner(size: 18, color: AppColors.primary500)
+                : const Icon(Icons.rate_review_outlined, size: 18),
             label: const Text('Escribir una reseña'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,

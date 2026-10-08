@@ -156,13 +156,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  /// Mientras la galería está abierta (todavía no hay foto que guardar):
+  /// `_isSavingAvatar` solo cubre la subida, y un segundo toque aquí abriría
+  /// otro selector encima.
+  bool _isPickingAvatar = false;
+
   Future<void> _pickAvatar() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      imageQuality: 85,
-    );
+    if (_isSavingAvatar || _isPickingAvatar) return;
+    _isPickingAvatar = true;
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 85,
+      );
+    } on Exception {
+      // Permiso de galería denegado o el selector del sistema falló.
+      _isPickingAvatar = false;
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo abrir tu galería. Revisa los permisos de la app e '
+        'intenta de nuevo.',
+      );
+      return;
+    }
+    _isPickingAvatar = false;
     if (picked == null || !mounted) return;
+
     setState(() => _isSavingAvatar = true);
     try {
       await _authService.updateAvatar(picked);
@@ -170,6 +192,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } on AuthServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo actualizar tu foto. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _isSavingAvatar = false);
     }

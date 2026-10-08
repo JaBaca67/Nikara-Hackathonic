@@ -16,6 +16,8 @@ import 'package:nikara_app/features/my_business/data/my_business_service.dart';
 import 'package:nikara_app/features/my_business/domain/models/managed_item.dart';
 import 'package:nikara_app/features/my_business/presentation/widgets/my_business_widgets.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -218,53 +220,36 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
     if (mounted) await _load();
   }
 
+  /// Mientras se elimina el negocio: el botón queda deshabilitado con un
+  /// spinner, para que un segundo toque no dispare otro `deleteBusiness`.
+  bool _isDeletingBusiness = false;
+
   Future<void> _confirmDeleteBusiness(BusinessModel business) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text(
-          '¿Eliminar negocio?',
-          style: AppTextStyles.settingsTitle.copyWith(
-            fontSize: 18,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        content: Text(
+    if (_isDeletingBusiness) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: '¿Eliminar negocio?',
+      message:
           'Se eliminará "${business.name}" de forma permanente, y con él este '
           'perfil. Esta acción no se puede deshacer.',
-          style: AppTextStyles.body.copyWith(color: AppColors.textPrimary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancelar',
-              style: AppTextStyles.settingsRowValue.copyWith(
-                color: AppColors.settingsTextMuted,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.destructive,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
+    setState(() => _isDeletingBusiness = true);
     try {
       await BusinessStorageService().deleteBusiness(business.id);
     } on BusinessServiceException catch (e) {
       if (mounted) AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (mounted) {
+        AppSnackbar.showError(
+          context,
+          'No se pudo eliminar el negocio. Verifica tu internet e intenta de '
+          'nuevo.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDeletingBusiness = false);
     }
     // Al desaparecer el negocio desaparece su cara; `ProfileFaceService` vuelve
     // a turista sola en la próxima recarga y `ProfileScreen` se encarga.
@@ -499,15 +484,19 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
       const SizedBox(height: AppSpacing.xl),
       Center(
         child: TextButton(
-          onPressed: () => _confirmDeleteBusiness(business),
-          child: Text(
-            'Eliminar este negocio',
-            style: AppTextStyles.body.copyWith(
-              color: AppColors.destructive,
-              decoration: TextDecoration.underline,
-              decorationColor: AppColors.destructive,
-            ),
-          ),
+          onPressed: _isDeletingBusiness
+              ? null
+              : () => _confirmDeleteBusiness(business),
+          child: _isDeletingBusiness
+              ? const AppSpinner(color: AppColors.destructive)
+              : Text(
+                  'Eliminar este negocio',
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.destructive,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.destructive,
+                  ),
+                ),
         ),
       ),
     ];

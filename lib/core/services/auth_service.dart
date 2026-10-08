@@ -520,8 +520,12 @@ class AuthService {
     final userId = currentAuthUser?.id;
     try {
       await _client.rpc('delete_own_user');
-    } on PostgrestException catch (e) {
-      throw AuthServiceException('No se pudo eliminar tu cuenta: ${e.message}');
+    } on PostgrestException {
+      // El texto de Postgrest viene en inglés y habla de la base de datos: la
+      // persona solo necesita saber que no se pudo y que puede reintentar.
+      throw const AuthServiceException(
+        'No se pudo eliminar tu cuenta. Intenta de nuevo en un momento.',
+      );
     } catch (_) {
       throw const AuthServiceException(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',

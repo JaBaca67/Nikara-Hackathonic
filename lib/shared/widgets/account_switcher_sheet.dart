@@ -5,6 +5,7 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -104,44 +105,34 @@ class _AccountSwitcherSheetState extends State<AccountSwitcherSheet> {
   }
 
   Future<void> _confirmForget(SavedAccount account) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text(
-          'Quitar cuenta',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
+    if (_switchingId != null) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Quitar cuenta',
+      message:
           'Se olvidará la sesión de ${account.displayName} en este '
           'dispositivo. La cuenta no se elimina: podrás volver a entrar con '
           'tu contraseña.',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Quitar',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.destructive,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Quitar',
     );
-    if (confirmed != true) return;
-    await _authService.forgetAccount(account.userId);
-    if (!mounted) return;
-    await _load();
+    if (!confirmed || !mounted) return;
+
+    // Se reutiliza `_switchingId`: marca la fila como ocupada (spinner) y
+    // deshabilita el resto de la hoja mientras dura la operación.
+    setState(() => _switchingId = account.userId);
+    try {
+      await _authService.forgetAccount(account.userId);
+      if (!mounted) return;
+      setState(() => _switchingId = null);
+      await _load();
+    } on Exception {
+      if (!mounted) return;
+      setState(() => _switchingId = null);
+      AppSnackbar.showError(
+        context,
+        'No se pudo quitar la cuenta. Intenta de nuevo.',
+      );
+    }
   }
 
   @override
