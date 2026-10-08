@@ -33,3 +33,30 @@ Validación:
 flutter test test/notification_demo_test.dart test/eco_participation_test.dart test/notifications_screen_test.dart
 flutter analyze
 ```
+
+## Verificación de push en Android — 2026-10-08
+
+Se comprobó la entrega real en el Samsung A56 (`R5GYB58K0QH`, Android 16),
+insertando un aviso para la cuenta activa en `notifications` en cada escenario:
+
+| Estado de Níkara | Resultado observado en Android |
+| --- | --- |
+| Abierta | `Prueba push abierta 1791476683`, 10:24:45 |
+| En segundo plano | `Prueba push fondo 1791476700`, 10:25:03 |
+| Sin proceso activo, después de `am kill` | `Prueba push cerrada 1791476744`, 10:25:58 |
+
+Horarios del teléfono (UTC−06:00). Los tres avisos aparecieron como registros
+nativos de `com.nikara.app` en el canal `notifications_default`, con importancia
+4. La prueba usó el webhook existente y FCM; no se generaron avisos mediante
+comandos locales de Android. Los avisos de prueba se conservaron para revisión.
+
+La revisión detectó que el token FCM del teléfono no estaba registrado para
+la cuenta activa. `PushTokenService` ahora registra también la sesión ya
+restaurada al iniciar, serializa los registros concurrentes y, si RLS rechaza
+un token perteneciente a otra cuenta, lo renueva en Firebase antes de guardar
+uno nuevo. Se confirmó que el token local coincide con el registro de la
+cuenta activa en Supabase. Las políticas de acceso permanecen vigentes.
+
+La versión corregida quedó compilada e instalada en el teléfono. Pasaron las
+40 pruebas de notificaciones y participación; el análisis de
+`push_token_service.dart` no encontró problemas.

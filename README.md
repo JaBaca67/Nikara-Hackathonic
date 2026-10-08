@@ -63,7 +63,7 @@ La app es una sola base de código Flutter para **Android, iOS, web y Windows de
 | **Mapa interactivo** | Mapa con marcadores por categoría, búsqueda, filtros conectados al listado, selección de ubicación y ruteo real **"Cómo llegar"** vía Directions API. |
 | **Rutas y modo viaje** | Wizard para armar rutas con paradas (negocios y jornadas ECO), vista de recorrido, seguimiento de progreso y **guía por voz** durante el viaje (`flutter_tts`). |
 | **Pasaporte turístico** | Colección de postales de viaje que se desbloquean al completar recorridos, con lógica de insignias y gamificación. |
-| **Asistente de viaje con IA** | Chat conversacional que recomienda lugares e itinerarios **eligiendo ids del catálogo real** de Níkara (no puede inventar lugares); corre en una Edge Function con Gemini. |
+| **Asistente de viaje con IA** | Chat conversacional sobre **Gemini 3.5 Flash Lite** que recomienda lugares y arma itinerarios por días **eligiendo ids del catálogo real** de Níkara, así que no puede inventar lugares. Detalle de la integración [más abajo](#asistente-de-viaje-con-ia-gemini). |
 | **Negocios** | Registro por wizard con verificación de identidad legal (RUC/cédula), fotos, horarios, subcategoría, *day pass* de hospedaje y canal de **publicaciones** tipo novedades. |
 | **Jornadas ECO** | Fundaciones/organizaciones con perfil propio, creación de jornadas con cupo (**aforo validado en Postgres**), inscripción/baja con confirmación y listado público de participantes. |
 | **Perfiles** | Perfil privado + **perfil público** con nombre público, bio, avatar y **procedencia** (país/ciudad/municipio desde catálogo INIDE) con controles de privacidad por campo. |
@@ -101,7 +101,7 @@ El sistema define **3 roles**, gestionados sobre la tabla `profiles` de Supabase
 | ![Estado](https://img.shields.io/badge/-Estado-02569B?style=flat-square) | Servicios singleton + `setState` | Decisión deliberada: sin Provider/Riverpod/Bloc. Patrón `XService()` con instancia cacheada (referencia: `lib/core/services/auth_service.dart`). |
 | ![Backend](https://img.shields.io/badge/-Backend%20%26%20BD-3ECF8E?style=flat-square&logo=supabase&logoColor=white) | **Supabase** (PostgreSQL + Auth + Storage) | **RLS activo** en todas las tablas del esquema. Las aprobaciones pasan por RPCs de Postgres que validan el rol server-side; PostGIS para consultas geográficas. |
 | ![Edge](https://img.shields.io/badge/-Serverless-3ECF8E?style=flat-square&logo=deno&logoColor=white) | **Edge Functions** (Deno) | `get-directions` (proxy de Directions API), `travel-assistant` (Gemini) y `send-push` (FCM HTTP v1). Guardan las API keys como secretos del servidor. |
-| ![IA](https://img.shields.io/badge/-IA-8E75B2?style=flat-square&logo=googlegemini&logoColor=white) | **Google Gemini** | Asistente de viaje. El modelo solo redacta y elige ids del catálogo; nombres, fotos y coordenadas los pone Supabase. |
+| ![IA](https://img.shields.io/badge/-IA-8E75B2?style=flat-square&logo=googlegemini&logoColor=white) | **Google Gemini 3.5 Flash Lite** (`gemini-3.5-flash-lite`) | Asistente de viaje, vía la **Interactions API** de Google (`generativelanguage.googleapis.com/v1beta/interactions`) con salida JSON forzada por schema. Se consume **solo desde la Edge Function `travel-assistant`**, nunca desde Dart. |
 | ![Mapas](https://img.shields.io/badge/-Mapas-4285F4?style=flat-square&logo=googlemaps&logoColor=white) | `google_maps_flutter`, `geolocator` | Tiles vía SDK nativo + ruteo "Cómo llegar" vía Edge Function. |
 | ![Auth](https://img.shields.io/badge/-Autenticación-DB4437?style=flat-square&logo=google&logoColor=white) | Supabase Auth | Correo/contraseña, Google Sign-In, Apple Sign-In y Facebook (redirect OAuth). |
 | ![Notificaciones](https://img.shields.io/badge/-Notificaciones-FFCA28?style=flat-square&logo=firebase&logoColor=white) | `firebase_messaging`, `flutter_local_notifications` | Firebase es **solo el transporte** del push: no hay Firestore ni Realtime Database, Supabase es la única fuente de verdad. |
@@ -176,6 +176,61 @@ supabase/              # no versionado en este repo (ver "Archivos no versionado
 ```
 
 Cadena completa del push: se inserta una fila en `notifications` → el trigger `on_notification_created` llama a `send-push` → la función firma un JWT con la cuenta de servicio, lee `device_push_tokens` y habla con FCM → el teléfono dibuja el aviso.
+
+### Asistente de viaje con IA (Gemini)
+
+| | |
+|---|---|
+| **Proveedor** | Google AI (Gemini Developer API) |
+| **Modelo** | `gemini-3.5-flash-lite` — fijado como valor por defecto en la función, sobrescribible con la variable de entorno `GEMINI_MODEL` sin publicar una versión nueva de la app |
+| **Endpoint** | `POST https://generativelanguage.googleapis.com/v1beta/interactions` (**Interactions API**, que reemplazó a `generateContent` como estándar en junio de 2026; exige el header `Api-Revision: 2026-05-20`) |
+| **Autenticación** | Header `x-goog-api-key` con el secreto `GEMINI_API_KEY`, que vive **solo** en Supabase |
+| **Dónde corre** | Edge Function `supabase/functions/travel-assistant/index.ts` (Deno) |
+| **Cliente** | `AssistantService` (`lib/features/ai_assistant/data/assistant_service.dart`) — invoca la función con `_client.functions.invoke('travel-assistant', ...)`; **no existe ningún SDK de Gemini en `pubspec.yaml`** |
+
+#### Flujo de una pregunta
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario (Flutter)
+    participant F as Edge Function<br/>travel-assistant
+    participant S as Supabase<br/>(Postgres + RLS)
+    participant G as Gemini 3.5 Flash Lite
+
+    U->>F: invoke({ messages[≤6], city? }) + JWT
+    F->>S: catálogo público (negocios aprobados<br/>+ jornadas ECO futuras)
+    S-->>F: filas (caché en memoria, 60 s)
+    F->>G: contexto + catálogo compacto + historial<br/>+ response_format con schema JSON
+    G-->>F: steps[] → model_output (JSON)
+    F->>F: descarta todo id que no exista<br/>en el catálogo
+    F-->>U: { reply, recommendations[], itinerary? }
+    U->>S: hidrata cada id (nombre, fotos, coordenadas)
+```
+
+#### Cómo evita alucinar
+
+Esto es el núcleo del diseño, no un detalle de implementación:
+
+1. **El modelo no escribe nombres de lugares: elige `id`s** de un catálogo que la función le pasa en el prompt (id, kind, nombre, categoría, ciudad, flag eco y descripción recortada a 140 caracteres).
+2. **Salida estructurada obligatoria** — se manda un `response_format` con `schema` JSON (`respuesta`, `recomendaciones[]`, `itinerario?`), así la respuesta se parsea en vez de interpretarse con expresiones regulares.
+3. **Validación server-side de cada id**: la función descarta toda recomendación o parada de itinerario cuyo id no esté en el catálogo, y **toma el `kind` del catálogo, no del modelo** (si se equivoca de tipo, la app abriría la pantalla incorrecta). Un día de itinerario que queda sin paradas tras el filtro no se muestra.
+4. Si se descartan ids, queda un `console.warn` en los logs — es la señal temprana de que hay que endurecer el prompt.
+5. **Flutter hidrata los ids contra Supabase**: nombres, fotos y coordenadas los pone la base de datos. El modelo solo redacta el texto y el motivo de cada recomendación.
+
+Resultado: que el asistente recomiende un hostal inexistente no es improbable, es **imposible**.
+
+#### Decisiones de integración
+
+- **Pasa por una Edge Function, no habla con Gemini desde Dart**, por dos razones: la API key quedaría como texto plano dentro del APK, y el id del modelo es una variable de entorno del servidor (a `gemini-2.0-flash` lo apagaron nueve meses después de salir — un retiro se resuelve editando un campo en vez de publicando una app nueva).
+- **El catálogo se lee con el JWT del usuario, no con la `service_role key`**: RLS ya permite leer negocios aprobados y jornadas ECO, así que la clave privilegiada no hace falta. Se cachea 60 s en memoria del worker, y se puede compartir entre usuarios porque son las mismas filas públicas que cualquiera ve en el mapa.
+- **Solo jornadas futuras** entran al catálogo: recomendar una jornada que ya pasó es peor que no recomendar nada.
+- **Historial de 6 mensajes** (recortado en el cliente y otra vez en el servidor) para mantener el hilo sin que el prompt crezca sin control. Los mensajes de error no se reenvían: si el modelo lee sus propias disculpas, empieza a disculparse en cadena.
+- **Errores en español, listos para mostrar**: `429` del tier gratuito (10 peticiones/minuto) devuelve *"Estoy atendiendo a varias personas ahora mismo…"*; falta de secreto devuelve `503`; salida no parseable, `502`.
+- **Consumo medido, no estimado**: cada turno deja en los logs el modelo, los tokens de entrada/salida/cacheados y el tamaño del catálogo.
+- **Los hilos de conversación se guardan en el dispositivo** (`SharedPreferences`, vía `AssistantConversationStore`), no en Supabase.
+
+> [!IMPORTANT]
+> **Privacidad.** En el tier gratuito de Gemini, Google usa el contenido para mejorar sus productos. Por eso al prompt van **únicamente** el catálogo público de negocios y jornadas, el texto que el usuario escribe y, opcionalmente, su ciudad aproximada — nunca su correo, teléfono, cédula ni el nombre de su perfil.
 
 ### Modelo de datos
 
