@@ -171,7 +171,7 @@ supabase/              # no versionado en este repo (ver "Archivos no versionado
 ├── sql/               # 44 migraciones numeradas, aplicadas a mano y en orden
 └── functions/
     ├── get-directions/    # Proxy de la Google Directions API
-    ├── travel-assistant/  # Asistente de viaje (Gemini) sobre el catálogo real
+    ├── travel-assistant/  # Asistente de viaje (Gemini 3.5 Flash Lite)
     └── send-push/         # Entrega FCM (API HTTP v1), disparada por trigger
 ```
 
@@ -197,13 +197,13 @@ sequenceDiagram
     participant S as Supabase<br/>(Postgres + RLS)
     participant G as Gemini 3.5 Flash Lite
 
-    U->>F: invoke({ messages[≤6], city? }) + JWT
+    U->>F: invoke(hasta 6 mensajes + ciudad) + JWT
     F->>S: catálogo público (negocios aprobados<br/>+ jornadas ECO futuras)
     S-->>F: filas (caché en memoria, 60 s)
-    F->>G: contexto + catálogo compacto + historial<br/>+ response_format con schema JSON
-    G-->>F: steps[] → model_output (JSON)
+    F->>G: contexto + catálogo + historial<br/>+ salida JSON forzada por schema
+    G-->>F: steps → model_output (JSON)
     F->>F: descarta todo id que no exista<br/>en el catálogo
-    F-->>U: { reply, recommendations[], itinerary? }
+    F-->>U: reply + recomendaciones + itinerario
     U->>S: hidrata cada id (nombre, fotos, coordenadas)
 ```
 
@@ -344,7 +344,7 @@ El repositorio es público, así que algunos archivos se mantienen solo en local
 `android/app/google-services.json` **sí** está versionado en el repo, así que el push funciona sin configurarlo.
 
 > [!NOTE]
-> La URL y la `anon key` de Supabase ya están en `lib/core/supabase/supabase_config.dart` y apuntan al proyecto compartido: **no hace falta crear un backend propio para correr la app**. Para apuntar a un proyecto Supabase distinto, reemplazar esos valores ahí, aplicar las migraciones de `supabase/sql/` en orden en el SQL Editor (ninguna se aplica automáticamente) y desplegar las tres Edge Functions con sus secretos (`GOOGLE_MAPS_API_KEY`, `GEMINI_API_KEY`, `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY`).
+> La URL y la `anon key` de Supabase ya están en `lib/core/supabase/supabase_config.dart` y apuntan al proyecto compartido: **no hace falta crear un backend propio para correr la app**. Para apuntar a un proyecto Supabase distinto, reemplazar esos valores ahí, aplicar las migraciones de `supabase/sql/` en orden en el SQL Editor (ninguna se aplica automáticamente) y desplegar las tres Edge Functions con sus secretos: `GOOGLE_MAPS_API_KEY` (Directions), `GEMINI_API_KEY` y opcionalmente `GEMINI_MODEL` (asistente de IA), y `FCM_PROJECT_ID`/`FCM_CLIENT_EMAIL`/`FCM_PRIVATE_KEY` (push).
 
 ### 5. Ejecutar la aplicación
 
