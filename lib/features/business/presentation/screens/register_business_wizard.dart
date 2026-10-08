@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:nikara_app/core/models/geographic_destination.dart';
 import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
 import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
@@ -995,6 +996,11 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                             controller: _phoneController,
                             hint: '8123-4567',
                             keyboardType: TextInputType.phone,
+                            prefixIcon: FaIcon(
+                              FontAwesomeIcons.whatsapp,
+                              size: 16,
+                              color: AppColors.detailWhatsappIcon,
+                            ),
                             // Mismo formateador que el celular en el registro
                             // de cuenta (register_screen.dart) — un mismo
                             // dato no debería verse distinto según qué
@@ -1035,6 +1041,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     const SizedBox(height: 7),
                     _SocialField(
                       icon: Icons.photo_camera,
+                      brandIcon: FontAwesomeIcons.instagram,
                       iconBg: AppColors.detailInstagramIconBg,
                       iconColor: AppColors.favoriteActive,
                       controller: _instagramController,
@@ -1043,6 +1050,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                     const SizedBox(height: 8),
                     _SocialField(
                       icon: Icons.thumb_up,
+                      brandIcon: FontAwesomeIcons.facebookF,
                       iconBg: AppColors.wizardFacebookIconBg,
                       iconColor: AppColors.wizardFacebookIcon,
                       controller: _facebookController,
@@ -2536,6 +2544,7 @@ class _WizardTextField extends StatelessWidget {
     this.keyboardType,
     this.onSubmitted,
     this.inputFormatters,
+    this.prefixIcon,
   });
 
   final TextEditingController controller;
@@ -2545,6 +2554,7 @@ class _WizardTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final ValueChanged<String>? onSubmitted;
   final List<TextInputFormatter>? inputFormatters;
+  final Widget? prefixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -2559,6 +2569,7 @@ class _WizardTextField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: AppTextStyles.wizardFieldHint,
+        prefixIcon: prefixIcon,
         filled: true,
         fillColor: AppColors.settingsBackground,
         counterText: '',
@@ -2630,6 +2641,7 @@ class _CountryCodeField extends StatelessWidget {
 class _SocialField extends StatelessWidget {
   const _SocialField({
     required this.icon,
+    this.brandIcon,
     required this.iconBg,
     required this.iconColor,
     required this.controller,
@@ -2637,6 +2649,7 @@ class _SocialField extends StatelessWidget {
   });
 
   final IconData icon;
+  final FaIconData? brandIcon;
   final Color iconBg;
   final Color iconColor;
   final TextEditingController controller;
@@ -2661,7 +2674,9 @@ class _SocialField extends StatelessWidget {
             height: 26,
             alignment: Alignment.center,
             decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-            child: Icon(icon, size: 15, color: iconColor),
+            child: brandIcon == null
+                ? Icon(icon, size: 15, color: iconColor)
+                : FaIcon(brandIcon!, size: 15, color: iconColor),
           ),
           const SizedBox(width: 10),
           Expanded(

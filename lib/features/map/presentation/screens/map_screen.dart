@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:nikara_app/features/routes/data/route_travel_service.dart';
+import 'package:nikara_app/features/routes/presentation/screens/route_travel_screen.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -116,12 +118,12 @@ class _MapScreenState extends State<MapScreen>
   final Map<MapPinCategory, BitmapDescriptor> _pinIconsSelected = {};
   BitmapDescriptor? _vehicleIcon;
 
-  /// Bitmaps de badge de cluster por conteo (2..9, 10 = "9+", ver
-  /// [_clusterIconKey]). Se generan una sola vez junto a los pines en
-  /// [_loadMarkerIcons] porque `icon` de un marker necesita un
-  /// [BitmapDescriptor] ya listo, no algo construido al vuelo dentro del
-  /// build síncrono.
-  final Map<int, BitmapDescriptor> _clusterIcons = {};
+  /// Iconos de agrupaciones, generados según las categorías visibles. Evita
+  /// mostrar cifras que parecen pines de ruta y ayuda a reconocer qué lugares
+  /// hay dentro del grupo.
+  final Map<String, BitmapDescriptor> _clusterIcons = {};
+  final Map<String, List<MapPinCategory>> _pendingClusterIcons = {};
+  bool _clusterIconBatchScheduled = false;
 
   /// Pines con el nombre del negocio dibujado debajo, cacheados por
   /// contenido (ver [_labeledPinFor]): a diferencia de [_pinIcons], que
@@ -187,9 +189,13 @@ class _MapScreenState extends State<MapScreen>
   /// `setState` ahí) para que esté al día cuando [GoogleMap.onCameraIdle]
   /// re-agrupa al terminar el gesto.
   double _currentZoom = 13;
+  int _viewportLoadGeneration = 0;
 
   // --- Modo de preview de viaje, Fase 1 (ver _startTripPreview) ---
   bool _isPreviewingTrip = false;
+  bool _isStartingTripPreview = false;
+  bool _isConfirmingTrip = false;
+  MapRouteRequest? _itineraryRequest;
   TravelMode _tripMode = TravelMode.driving;
 
   /// Fijado al tocar "Cómo llegar" y reusado en cada cambio de modo durante
@@ -448,18 +454,39 @@ class _MapScreenState extends State<MapScreen>
   }
 
   Future<void> _openRequestedTrip(MapRouteRequest request) async {
-    try {
-      final businesses = await _businessStorageService.getBusinesses();
-      if (!mounted) return;
-      final business = businesses
-          .where((business) => business.id == request.destinationId)
-          .firstOrNull;
-      await _startTripPreview(
-        business ?? _syntheticDestination(request),
-        isBusiness: business != null,
+    if (_isNavigating || _isStartingTripPreview) {
+      AppSnackbar.showInfo(
+        context,
+        'Finaliza el viaje actual antes de iniciar otra parada.',
       );
-    } on BusinessServiceException catch (e) {
-      if (mounted) AppSnackbar.showError(context, e.message);
+      return;
+    }
+    // Cached real business when available; a catalog outage must not block a
+    // point whose name and coordinates are already known.
+    var business = _businessById(request.destinationId);
+    if (business == null) {
+      try {
+        final businesses = await _businessStorageService.getBusinesses();
+        business = businesses
+            .where((b) => b.id == request.destinationId)
+            .firstOrNull;
+      } on BusinessServiceException {
+        /* use the known point */
+      }
+    }
+    if (!mounted) return;
+    if (business?.latitude == null || business?.longitude == null) {
+      business = null;
+    }
+    final opened = await _startTripPreview(
+      business ?? _syntheticDestination(request),
+      isBusiness: business != null,
+      mode: request.mode,
+    );
+    if (opened && mounted) {
+      setState(
+        () => _itineraryRequest = request.routeId == null ? null : request,
+      );
     }
   }
 
@@ -473,7 +500,7 @@ class _MapScreenState extends State<MapScreen>
     return BusinessModel(
       id: request.destinationId,
       name: request.destinationName,
-      category: 'Eco',
+      category: request.category,
       description: '',
       city: '',
       locationText: '',
@@ -582,7 +609,6 @@ class _MapScreenState extends State<MapScreen>
 
   Future<void> _loadMarkerIcons() async {
     final dpr = _devicePixelRatio;
-    final clusterKeys = [2, 3, 4, 5, 6, 7, 8, 9, _clusterOverflowKey];
     final pinCategories = MapPinCategory.values;
     final results = await Future.wait([
       for (final category in pinCategories)
@@ -598,8 +624,6 @@ class _MapScreenState extends State<MapScreen>
           devicePixelRatio: dpr,
         ),
       _buildVehicleBitmap(devicePixelRatio: dpr),
-      for (final key in clusterKeys)
-        _buildClusterBitmap(count: key, devicePixelRatio: dpr),
       _buildPinBitmap(
         selected: false,
         category: MapPinCategory.eco,
@@ -616,11 +640,7 @@ class _MapScreenState extends State<MapScreen>
         _pinIconsSelected[pinCategories[i]] = results[pinCategories.length + i];
       }
       _vehicleIcon = results[pinCategories.length * 2];
-      final clusterStart = pinCategories.length * 2 + 1;
-      for (var i = 0; i < clusterKeys.length; i++) {
-        _clusterIcons[clusterKeys[i]] = results[clusterStart + i];
-      }
-      _ecoPinIcon = results[clusterStart + clusterKeys.length];
+      _ecoPinIcon = results[pinCategories.length * 2 + 1];
     });
   }
 
@@ -698,70 +718,117 @@ class _MapScreenState extends State<MapScreen>
     });
   }
 
-  /// 9+ se agrupa en un solo bitmap compartido en vez de generar uno por
-  /// conteo exacto — la densidad de negocios de Nikara no justifica un
-  /// badge exacto tipo "47".
-  static const _clusterOverflowKey = 10;
+  BitmapDescriptor? _clusterIconFor(MapCluster cluster) {
+    final categories = cluster.businesses
+        .map((business) => mapPinCategoryFor(business.category))
+        .toSet()
+        .take(3)
+        .toList(growable: false);
+    final visibleCategories = categories.isEmpty
+        ? const [MapPinCategory.general]
+        : categories;
+    final key = visibleCategories.map((category) => category.name).join('|');
+    final cached = _clusterIcons[key];
+    if (cached != null) return cached;
+    _pendingClusterIcons[key] = visibleCategories;
+    if (!_clusterIconBatchScheduled) {
+      _clusterIconBatchScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_flushClusterIcons());
+      });
+    }
+    return _pinBitmapFor(visibleCategories.first, selected: false);
+  }
 
-  static int _clusterIconKey(int count) =>
-      count >= _clusterOverflowKey ? _clusterOverflowKey : count;
+  Future<void> _flushClusterIcons() async {
+    _clusterIconBatchScheduled = false;
+    if (_pendingClusterIcons.isEmpty) return;
+    final batch = Map.of(_pendingClusterIcons);
+    _pendingClusterIcons.clear();
+    final built = await Future.wait([
+      for (final categories in batch.values)
+        _buildClusterBitmap(
+          categories: categories,
+          devicePixelRatio: _devicePixelRatio,
+        ),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      var index = 0;
+      for (final key in batch.keys) {
+        _clusterIcons[key] = built[index++];
+      }
+    });
+  }
 
   static Future<BitmapDescriptor> _buildClusterBitmap({
-    required int count,
+    required List<MapPinCategory> categories,
     required double devicePixelRatio,
   }) async {
-    const double logicalSize = 40;
-    final size = (logicalSize * devicePixelRatio).round();
-    final scale = size / logicalSize;
+    const width = 58.0;
+    const height = 42.0;
+    final pixelWidth = (width * devicePixelRatio).round();
+    final pixelHeight = (height * devicePixelRatio).round();
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
       recorder,
-      Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
     );
-    canvas.scale(scale);
-    final center = const Offset(logicalSize / 2, logicalSize / 2);
-    final radius = logicalSize / 2 - 2;
-
-    canvas.drawCircle(
-      center,
-      radius,
+    canvas.scale(devicePixelRatio);
+    final pill = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(5, 5, width - 10, height - 10),
+      const Radius.circular(16),
+    );
+    canvas.drawRRect(
+      pill.shift(const Offset(0, 2)),
       Paint()
-        ..color = AppColors.mapPinShadowActive
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        ..color = AppColors.mapPinShadowActive.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-    canvas.drawCircle(center, radius, Paint()..color = AppColors.primary500);
-    canvas.drawCircle(
-      center,
-      radius,
+    canvas.drawRRect(pill, Paint()..color = Colors.white);
+    canvas.drawRRect(
+      pill,
       Paint()
         ..color = AppColors.surface100
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth = 1.5,
     );
-
-    final label = count >= _clusterOverflowKey ? '9+' : '$count';
-    final textPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(
-        text: label,
-        // Sin fontFamily: este TextPainter dibuja sobre un canvas de
-        // dart:ui para generar el bitmap del pin, donde google_fonts no puede
-        // resolver una familia — se usa la del sistema, como cualquier otro
-        // texto pintado a mano.
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: label.length > 1 ? 13 : 15,
-          color: AppColors.settingsTextDark,
-        ),
-      )
-      ..layout();
-    textPainter.paint(
-      canvas,
-      center - Offset(textPainter.width / 2, textPainter.height / 2),
-    );
+    final centers = switch (categories.length) {
+      1 => const [Offset(width / 2, height / 2)],
+      2 => const [Offset(22, height / 2), Offset(36, height / 2)],
+      _ => const [
+        Offset(16, height / 2),
+        Offset(29, height / 2),
+        Offset(42, height / 2),
+      ],
+    };
+    for (var i = 0; i < categories.length; i++) {
+      final center = centers[i];
+      const radius = 11.5;
+      canvas.drawCircle(center, radius + 2, Paint()..color = Colors.white);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()..color = const Color(0xFFF2F0E9),
+      );
+      final icon = mapPinIcon(categories[i]);
+      final glyph = TextPainter(textDirection: TextDirection.ltr)
+        ..text = TextSpan(
+          text: String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+            fontSize: 15,
+            color: AppColors.settingsTextDark,
+          ),
+        )
+        ..layout();
+      glyph.paint(canvas, center - Offset(glyph.width / 2, glyph.height / 2));
+    }
 
     final picture = recorder.endRecording();
-    final image = await picture.toImage(size, size);
+    final image = await picture.toImage(pixelWidth, pixelHeight);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
     // el tamaño visual del pin al renderizarlo a mayor densidad.
@@ -1214,20 +1281,15 @@ class _MapScreenState extends State<MapScreen>
     await _loadAllBusinessesAndFitCamera();
   }
 
-  /// Trae solo lo que está dentro del viewport actual (con margen
-  /// [_kViewportPadding]) en cada [GoogleMap.onCameraIdle], para no
-  /// descargar la tabla `businesses` completa al hacer pan/zoom.
-  ///
-  /// Los resultados se *fusionan* en [_businesses] en vez de reemplazarlo:
-  /// es una carga incremental, así que hacer zoom en un pin no debe hacer
-  /// desaparecer los demás. [_loadAllBusinessesAndFitCamera] es quien
-  /// reemplaza el set completo (y así refleja negocios borrados en otro
-  /// lado). Es silencioso a propósito: sin spinner ni overlay de error para
-  /// un refresco de fondo que no afecta los pines ya visibles.
+  /// Fetches businesses near the settled viewport. Replacing this set avoids
+  /// stale markers from previously visited areas; a generation token below
+  /// ignores network responses that arrive after a newer pan/zoom.
   Future<void> _loadBusinessesInViewport() async {
+    final generation = ++_viewportLoadGeneration;
     final controller = _mapController;
     if (controller == null) return;
     final region = await controller.getVisibleRegion();
+    if (!mounted || generation != _viewportLoadGeneration) return;
     final padded = _paddedBounds(region, factor: _kViewportPadding);
 
     try {
@@ -1237,22 +1299,24 @@ class _MapScreenState extends State<MapScreen>
         maxLng: padded.northeast.longitude,
         maxLat: padded.northeast.latitude,
       );
-      if (!mounted) return;
-      final merged = {
-        for (final business in _businesses) business.id: business,
-      };
-      for (final business in businesses) {
-        // Defensivo solamente: `businesses.location` es NOT NULL, pero sin
-        // coordenadas no se puede anclar un pin.
-        if (business.latitude == null || business.longitude == null) continue;
-        merged[business.id] = business;
-      }
+      if (!mounted || generation != _viewportLoadGeneration) return;
       setState(() {
-        _businesses = merged.values.toList(growable: false);
+        // Keep only businesses near this viewport. Accumulating old results
+        // leaves stale clusters scattered across the map after panning.
+        _businesses = businesses
+            .where(
+              (business) =>
+                  business.latitude != null && business.longitude != null,
+            )
+            .toList(growable: false);
+        if (!_businesses.any((b) => b.id == _selectedBusinessId)) {
+          _selectedBusinessId = null;
+        }
         _loadError = null;
       });
     } on BusinessServiceException catch (e) {
-      if (!mounted || _businesses.isNotEmpty) return;
+      if (!mounted || generation != _viewportLoadGeneration) return;
+      if (_businesses.isNotEmpty) return;
       setState(() => _loadError = e.message);
     }
   }
@@ -1487,54 +1551,68 @@ class _MapScreenState extends State<MapScreen>
   /// [_confirmStartTrip] para Fase 2). Si no se puede obtener una ruta real
   /// (sin key, sin red, sin resultado), muestra la razón en un snackbar y
   /// nunca dibuja una ruta inventada.
-  Future<void> _startTripPreview(
+  Future<bool> _startTripPreview(
     BusinessModel business, {
     bool isBusiness = true,
+    TravelMode mode = TravelMode.driving,
   }) async {
-    debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
-    final lat = business.latitude;
-    final lng = business.longitude;
-    if (lat == null || lng == null) {
-      debugPrint('[MapScreen] aborted: business has no coordinates');
-      return;
-    }
-    final destination = LatLng(lat, lng);
+    if (_isNavigating || _isStartingTripPreview) return false;
+    setState(() => _isStartingTripPreview = true);
+    try {
+      debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
+      final lat = business.latitude;
+      final lng = business.longitude;
+      if (lat == null ||
+          lng == null ||
+          !LocationService.validCoordinates(lat, lng)) {
+        debugPrint('[MapScreen] aborted: business has no coordinates');
+        return false;
+      }
+      final destination = LatLng(lat, lng);
 
-    final position = await LocationService().getCurrentPosition(
-      forceRefresh: true,
-    );
-    if (!mounted) return;
-    if (position == null) {
-      debugPrint(
-        '[MapScreen] aborted: could not get current position '
-        '(location permission/services?)',
+      final position = await LocationService().getCurrentPosition(
+        forceRefresh: true,
       );
-      AppSnackbar.showError(context, 'No se pudo obtener tu ubicación actual.');
-      return;
+      if (!mounted) return false;
+      if (position == null) {
+        debugPrint(
+          '[MapScreen] aborted: could not get current position '
+          '(location permission/services?)',
+        );
+        AppSnackbar.showError(
+          context,
+          'No se pudo obtener tu ubicación actual.',
+        );
+        return false;
+      }
+      final origin = LatLng(position.latitude, position.longitude);
+
+      final route = await _fetchTripRoute(
+        origin: origin,
+        destination: destination,
+        mode: mode,
+      );
+      if (route == null || !mounted) return false;
+
+      setState(() {
+        _isPreviewingTrip = true;
+        _tripMode = mode;
+        _itineraryRequest = null;
+        _tripOrigin = origin;
+        _navigationTarget = business;
+        _tripHasBusiness = isBusiness;
+        _navigationRoute = route;
+        _selectedBusinessId = business.id;
+      });
+      // Oculta el bottom nav de MainLayout durante ambas fases del viaje —
+      // carrusel y chrome de búsqueda ya se ocultan solos en build() según
+      // `_isPreviewingTrip`/`_isNavigating`.
+      MapFocusController().navigationActive.value = true;
+      await _fitTripPreviewCamera();
+      return true;
+    } finally {
+      if (mounted) setState(() => _isStartingTripPreview = false);
     }
-    final origin = LatLng(position.latitude, position.longitude);
-
-    final route = await _fetchTripRoute(
-      origin: origin,
-      destination: destination,
-      mode: TravelMode.driving,
-    );
-    if (route == null || !mounted) return;
-
-    setState(() {
-      _isPreviewingTrip = true;
-      _tripMode = TravelMode.driving;
-      _tripOrigin = origin;
-      _navigationTarget = business;
-      _tripHasBusiness = isBusiness;
-      _navigationRoute = route;
-      _selectedBusinessId = business.id;
-    });
-    // Oculta el bottom nav de MainLayout durante ambas fases del viaje —
-    // carrusel y chrome de búsqueda ya se ocultan solos en build() según
-    // `_isPreviewingTrip`/`_isNavigating`.
-    MapFocusController().navigationActive.value = true;
-    await _fitTripPreviewCamera();
   }
 
   /// Compartido por [_startTripPreview] y [_changeTripMode] — envuelve
@@ -1580,7 +1658,7 @@ class _MapScreenState extends State<MapScreen>
   /// deja la ruta/modo anterior en pantalla en vez de limpiarlo, para que
   /// una solicitud fallida no deje el preview sin nada dibujado.
   Future<void> _changeTripMode(TravelMode mode) async {
-    if (mode == _tripMode || _isChangingTripMode) return;
+    if (mode == _tripMode || _isChangingTripMode || _isConfirmingTrip) return;
     final origin = _tripOrigin;
     final target = _navigationTarget;
     if (origin == null || target == null || target.latitude == null) return;
@@ -1590,7 +1668,7 @@ class _MapScreenState extends State<MapScreen>
       destination: LatLng(target.latitude!, target.longitude!),
       mode: mode,
     );
-    if (!mounted) return;
+    if (!mounted || !_isPreviewingTrip || _navigationTarget != target) return;
 
     if (route == null) {
       setState(() => _isChangingTripMode = false);
@@ -1608,76 +1686,87 @@ class _MapScreenState extends State<MapScreen>
   /// la ruta ya cargada, inclina la cámara a vista de manejo y abre el
   /// stream de posición que alimenta [_onPositionUpdate].
   Future<void> _confirmStartTrip() async {
-    final origin = _tripOrigin;
-    final route = _navigationRoute;
-    if (origin == null || route == null) return;
-    // El preview ("Cómo llegar") sí está permitido desde cualquier cara: lo
-    // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
-    if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
-    if (!mounted) return;
+    if (_isConfirmingTrip) return;
+    setState(() => _isConfirmingTrip = true);
+    try {
+      final origin = _tripOrigin;
+      final route = _navigationRoute;
+      if (origin == null ||
+          route == null ||
+          _isChangingTripMode ||
+          !_isPreviewingTrip) {
+        return;
+      }
+      // El preview ("Cómo llegar") sí está permitido desde cualquier cara: lo
+      // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
+      if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
+      if (!mounted || !_isPreviewingTrip) return;
 
-    final target = _navigationTarget;
-    if (target?.latitude == null || target?.longitude == null) return;
-    final startedAt = DateTime.now().toUtc();
-    _tripOwnerId = AuthService().currentAuthUser?.id;
-    _tripId = const Uuid().v4();
-    _tripStartedAt = startedAt;
-    _pendingArrivalAt = null;
-    _arrivalTracker = TripArrivalTracker(
-      destination: LatLng(target!.latitude!, target.longitude!),
-      startedAt: startedAt,
-    );
+      final target = _navigationTarget;
+      if (target?.latitude == null || target?.longitude == null) return;
+      final startedAt = DateTime.now().toUtc();
+      _tripOwnerId = AuthService().currentAuthUser?.id;
+      _tripId = const Uuid().v4();
+      _tripStartedAt = startedAt;
+      _pendingArrivalAt = null;
+      _arrivalTracker = TripArrivalTracker(
+        destination: LatLng(target!.latitude!, target.longitude!),
+        startedAt: startedAt,
+      );
 
-    final initialBearing = route.points.length > 1
-        ? Geolocator.bearingBetween(
-            origin.latitude,
-            origin.longitude,
-            route.points[1].latitude,
-            route.points[1].longitude,
-          )
-        : 0.0;
+      final initialBearing = route.points.length > 1
+          ? Geolocator.bearingBetween(
+              origin.latitude,
+              origin.longitude,
+              route.points[1].latitude,
+              route.points[1].longitude,
+            )
+          : 0.0;
 
-    setState(() {
-      _isPreviewingTrip = false;
-      _isNavigating = true;
-      _isCameraLocked = true;
-      _remainingMeters = route.distanceMeters.toDouble();
-      _remainingRoutePoints = route.points;
-      _routeTrimIndex = 0;
-      _currentStepIndex = 0;
-      _distanceToStepMeters = null;
-      _announcedCurrentStep = false;
-      _currentSpeedKmh = null;
-      _vehicleDisplayPosition = origin;
-      _vehicleDisplayBearing = initialBearing;
-      // El puck del vehículo reemplaza al punto azul de Google — ambos a
-      // la vez mostrarían dos marcadores de usuario superpuestos.
-      _myLocationEnabled = false;
-    });
+      setState(() {
+        _isPreviewingTrip = false;
+        _isNavigating = true;
+        _isCameraLocked = true;
+        _remainingMeters = route.distanceMeters.toDouble();
+        _remainingRoutePoints = route.points;
+        _routeTrimIndex = 0;
+        _currentStepIndex = 0;
+        _distanceToStepMeters = null;
+        _announcedCurrentStep = false;
+        _currentSpeedKmh = null;
+        _vehicleDisplayPosition = origin;
+        _vehicleDisplayBearing = initialBearing;
+        // El puck del vehículo reemplaza al punto azul de Google — ambos a
+        // la vez mostrarían dos marcadores de usuario superpuestos.
+        _myLocationEnabled = false;
+      });
 
-    // Transición 3D inmediata — _onPositionUpdate toma el control del
-    // encuadre desde el primer fix de GPS real.
-    await _animateNavigationCamera(
-      CameraPosition(
-        target: origin,
-        zoom: _kNavCameraZoom,
-        tilt: _kNavCameraTilt,
-        bearing: initialBearing,
-      ),
-    );
-    if (!mounted || !_isNavigating) return;
+      // Transición 3D inmediata — _onPositionUpdate toma el control del
+      // encuadre desde el primer fix de GPS real.
+      await _animateNavigationCamera(
+        CameraPosition(
+          target: origin,
+          zoom: _kNavCameraZoom,
+          tilt: _kNavCameraTilt,
+          bearing: initialBearing,
+        ),
+      );
+      if (!mounted || !_isNavigating) return;
 
-    if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
-      unawaited(TtsService().speak(route.steps.first.instruction));
+      if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
+        unawaited(TtsService().speak(route.steps.first.instruction));
+      }
+
+      await _positionSub?.cancel();
+      _positionSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 5,
+        ),
+      ).listen(_onPositionUpdate);
+    } finally {
+      if (mounted) setState(() => _isConfirmingTrip = false);
     }
-
-    await _positionSub?.cancel();
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 5,
-      ),
-    ).listen(_onPositionUpdate);
   }
 
   /// Sale del preview (Fase 1) sin llegar a iniciar el viaje — el espejo
@@ -1687,6 +1776,8 @@ class _MapScreenState extends State<MapScreen>
     final target = _navigationTarget;
     setState(() {
       _isPreviewingTrip = false;
+      _isChangingTripMode = false;
+      _itineraryRequest = null;
       _tripMode = TravelMode.driving;
       _tripOrigin = null;
       _navigationTarget = null;
@@ -1708,6 +1799,7 @@ class _MapScreenState extends State<MapScreen>
     final target = _navigationTarget;
     setState(() {
       _isNavigating = false;
+      _itineraryRequest = null;
       _arrivalTracker = null;
       _tripOwnerId = null;
       _tripId = null;
@@ -1924,8 +2016,43 @@ class _MapScreenState extends State<MapScreen>
           completedAt: arrivedAt,
         );
       }
+      final current = _itineraryRequest;
+      final itinerary = current == null
+          ? null
+          : MapRouteRequest(
+              destinationId: current.destinationId,
+              destinationName: current.destinationName,
+              latitude: current.latitude,
+              longitude: current.longitude,
+              routeId: current.routeId,
+              stopVisitKey: current.stopVisitKey,
+              accountId: current.accountId,
+              mode: _tripMode,
+              category: current.category,
+            );
+      if (itinerary?.routeId != null &&
+          itinerary?.stopVisitKey != null &&
+          itinerary?.accountId ==
+              (AuthService().currentAuthUser?.id ?? 'guest')) {
+        await RouteTravelService.instance.setStatus(
+          accountId: itinerary!.accountId!,
+          routeId: itinerary.routeId!,
+          visitKey: itinerary.stopVisitKey!,
+          status: StopVisitStatus.visited,
+        );
+      }
       await _stopNavigation();
       if (!mounted) return;
+      if (itinerary?.routeId != null) {
+        if (postcard != null) {
+          AppSnackbar.showSuccess(
+            context,
+            'Tu sello de viaje se guardó en el pasaporte.',
+          );
+        }
+        await _showItineraryArrival(target.name, itinerary!);
+        return;
+      }
       if (postcard == null) {
         AppSnackbar.showInfo(
           context,
@@ -1936,8 +2063,93 @@ class _MapScreenState extends State<MapScreen>
       await _showEarnedPostcard(postcard);
     } on PassportServiceException catch (e) {
       if (mounted) AppSnackbar.showError(context, e.message);
+    } catch (_) {
+      if (mounted) {
+        AppSnackbar.showError(
+          context,
+          'No se pudo guardar la visita. Puedes reintentar.',
+        );
+      }
     } finally {
       if (mounted) setState(() => _isCompletingTrip = false);
+    }
+  }
+
+  Future<void> _showItineraryArrival(
+    String name,
+    MapRouteRequest request,
+  ) async {
+    final session = RouteTravelService.instance.active.value;
+    if (session == null ||
+        session.route.id != request.routeId ||
+        session.accountId != request.accountId) {
+      return;
+    }
+    final arrived = session.route.stops
+        .where((s) => s.visitKey == request.stopVisitKey)
+        .firstOrNull;
+    final next = arrived == null ? null : session.nextForDay(arrived.dayNumber);
+    final continueTrip = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.surface100,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '¡Llegaste a $name!',
+                style: AppTextStyles.sectionTitle.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                next == null
+                    ? 'Terminaste las paradas de este día. Descansa o elige otro día.'
+                    : 'Tu visita está guardada. Continúa a ${next.title} cuando estás listo.',
+                style: AppTextStyles.settingsSubtitle,
+              ),
+              const SizedBox(height: 16),
+              if (next != null && next.hasCoordinates)
+                FilledButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  child: const Text('Ir a la siguiente parada'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(sheetContext).pop(false),
+                child: const Text('Ver mi itinerario'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted ||
+        (AuthService().currentAuthUser?.id ?? 'guest') != request.accountId) {
+      return;
+    }
+    if (continueTrip == true && next != null) {
+      await _openRequestedTrip(
+        MapRouteRequest(
+          destinationId: next.kind.name == 'business'
+              ? next.sourceId
+              : 'route-stop-${next.sourceKey}',
+          destinationName: next.title,
+          latitude: next.latitude!,
+          longitude: next.longitude!,
+          routeId: request.routeId,
+          stopVisitKey: next.visitKey,
+          accountId: request.accountId,
+          mode: request.mode,
+          category: next.category.label,
+        ),
+      );
+    } else if (continueTrip == false) {
+      await pushSharedAxis(context, RouteTravelScreen(route: session.route));
     }
   }
 
@@ -2146,7 +2358,7 @@ class _MapScreenState extends State<MapScreen>
             ),
           );
         } else {
-          final icon = _clusterIcons[_clusterIconKey(cluster.count)];
+          final icon = _clusterIconFor(cluster);
           if (icon == null) {
             continue; // Bitmap aún no cargado — se omite este frame.
           }
@@ -2290,7 +2502,9 @@ class _MapScreenState extends State<MapScreen>
           distanceLabel: _tripPreviewDistanceLabel,
           etaLabel: _remainingEtaLabel,
           arrivalLabel: _tripPreviewArrivalLabel,
-          onStart: _confirmStartTrip,
+          onStart: _isChangingTripMode || _isConfirmingTrip
+              ? null
+              : _confirmStartTrip,
         ),
       );
     } else if (_isNavigating && _navigationTarget != null) {
@@ -2434,7 +2648,7 @@ class _MapScreenState extends State<MapScreen>
                 ),
               ),
             )
-          else if (_loadError != null)
+          else if (_loadError != null && !_isNavigating && !_isPreviewingTrip)
             Positioned.fill(
               child: _MapErrorOverlay(
                 message: _loadError!,
@@ -2443,6 +2657,26 @@ class _MapScreenState extends State<MapScreen>
                   unawaited(FavoritesService().preload());
                   unawaited(_loadAllBusinessesAndFitCamera());
                 },
+              ),
+            ),
+          if (_isStartingTripPreview)
+            Center(
+              child: Card(
+                color: AppColors.surface100,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Preparando el trayecto…',
+                        style: AppTextStyles.mapRowTitle,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           // Oculto en ambas fases de viaje: el selector de modo (Fase 1) y
@@ -2455,6 +2689,50 @@ class _MapScreenState extends State<MapScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    ValueListenableBuilder<RouteTravelSession?>(
+                      valueListenable: RouteTravelService.instance.active,
+                      builder: (context, session, _) {
+                        if (session == null ||
+                            session.isFinished ||
+                            session.accountId !=
+                                (AuthService().currentAuthUser?.id ??
+                                    'guest')) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Material(
+                            color: AppColors.surface100,
+                            borderRadius: BorderRadius.circular(16),
+                            child: ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.route_rounded),
+                              title: Text(
+                                session.route.title,
+                                style: AppTextStyles.mapRowTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: const Text('Continuar mi ruta'),
+                              trailing: IconButton(
+                                tooltip: 'Desactivar modo ruta',
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () => unawaited(
+                                  RouteTravelService.instance.deactivate(
+                                    accountId: session.accountId,
+                                    routeId: session.route.id,
+                                  ),
+                                ),
+                              ),
+                              onTap: () => pushSharedAxis(
+                                context,
+                                RouteTravelScreen(route: session.route),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2791,7 +3069,7 @@ class _TripPreviewPanel extends StatelessWidget {
   final String distanceLabel;
   final String etaLabel;
   final String arrivalLabel;
-  final VoidCallback onStart;
+  final VoidCallback? onStart;
 
   @override
   Widget build(BuildContext context) {

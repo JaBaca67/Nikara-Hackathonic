@@ -273,7 +273,10 @@ class _PlaceCard extends StatelessWidget {
           if (badge != null) ...[badge!, const SizedBox(height: 8)],
           Text(
             title,
-            style: AppTextStyles.detailTitle.copyWith(fontSize: 18),
+            style: AppTextStyles.detailTitle.copyWith(
+              fontSize: 18,
+              color: AppColors.textPrimary,
+            ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),

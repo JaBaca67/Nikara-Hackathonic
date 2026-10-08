@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:nikara_app/core/services/directions_service.dart';
 
 import 'package:nikara_app/shared/services/main_tab_controller.dart';
 
@@ -26,12 +27,22 @@ class MapRouteRequest {
     required this.destinationName,
     required this.latitude,
     required this.longitude,
+    this.routeId,
+    this.stopVisitKey,
+    this.accountId,
+    this.mode = TravelMode.driving,
+    this.category = 'Eco',
   });
 
   final String destinationId;
   final String destinationName;
   final double latitude;
   final double longitude;
+  final String? routeId;
+  final String? stopVisitKey;
+  final String? accountId;
+  final TravelMode mode;
+  final String category;
 }
 
 /// Canal entre pantallas para el mapa, mismo espíritu que [MainTabController]: evita que el mapa y `MainLayout` necesiten un `BuildContext` mutuo.

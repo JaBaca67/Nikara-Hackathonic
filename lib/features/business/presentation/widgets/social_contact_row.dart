@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
@@ -41,6 +42,7 @@ Future<void> _launch(BuildContext context, Uri uri) async {
 class SocialContact {
   const SocialContact({
     required this.icon,
+    this.brandIcon,
     required this.label,
     required this.handle,
     required this.tint,
@@ -49,6 +51,7 @@ class SocialContact {
   });
 
   final IconData icon;
+  final FaIconData? brandIcon;
 
   final String label;
 
@@ -67,6 +70,7 @@ class SocialContact {
         : '?text=${Uri.encodeComponent(message)}';
     return SocialContact(
       icon: Icons.chat,
+      brandIcon: FontAwesomeIcons.whatsapp,
       label: 'WhatsApp',
       handle: phone.trim(),
       tint: AppColors.detailWhatsappIcon,
@@ -78,6 +82,7 @@ class SocialContact {
   factory SocialContact.phone(String phone) {
     return SocialContact(
       icon: Icons.call_rounded,
+      brandIcon: FontAwesomeIcons.phone,
       label: 'Llamar',
       handle: phone.trim(),
       tint: AppColors.settingsTextMuted,
@@ -90,6 +95,7 @@ class SocialContact {
     final handle = _extractHandle(handleOrLink, hostFragment: 'instagram.com');
     return SocialContact(
       icon: Icons.photo_camera,
+      brandIcon: FontAwesomeIcons.instagram,
       label: 'Instagram',
       handle: handle.isEmpty ? '' : '@$handle',
       tint: AppColors.favoriteActive,
@@ -102,6 +108,7 @@ class SocialContact {
     final handle = _extractHandle(handleOrLink, hostFragment: 'facebook.com');
     return SocialContact(
       icon: Icons.thumb_up,
+      brandIcon: FontAwesomeIcons.facebookF,
       label: 'Facebook',
       handle: '',
       tint: AppColors.wizardFacebookIcon,
@@ -176,7 +183,9 @@ class _SocialHubCard extends StatelessWidget {
                   color: contact.iconBackground,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(contact.icon, color: contact.tint, size: 19),
+                child: contact.brandIcon == null
+                    ? Icon(contact.icon, color: contact.tint, size: 19)
+                    : FaIcon(contact.brandIcon!, color: contact.tint, size: 19),
               ),
               const SizedBox(width: 11),
               Expanded(

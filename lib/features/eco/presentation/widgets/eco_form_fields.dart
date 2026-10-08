@@ -38,6 +38,7 @@ class EcoTextField extends StatelessWidget {
     this.validator,
     this.onSubmitted,
     this.prefixText,
+    this.prefixIcon,
   });
 
   final TextEditingController controller;
@@ -49,6 +50,7 @@ class EcoTextField extends StatelessWidget {
 
   /// Ej. la arroba fija del campo "Handle", para dejar claro que no hay que escribirla.
   final String? prefixText;
+  final Widget? prefixIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +65,7 @@ class EcoTextField extends StatelessWidget {
         hintText: hint,
         hintStyle: AppTextStyles.wizardFieldHint,
         prefixText: prefixText,
+        prefixIcon: prefixIcon,
         prefixStyle: AppTextStyles.wizardFieldValue.copyWith(
           color: AppColors.settingsTextMuted,
         ),

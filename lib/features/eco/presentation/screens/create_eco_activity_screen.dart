@@ -4,6 +4,7 @@ import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
 import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -50,6 +51,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
   NicaraguaOriginPlace? _municipality;
   final _capacityController = TextEditingController();
   final _requirementController = TextEditingController();
+  final _contactPhoneController = TextEditingController();
+  final _instagramController = TextEditingController();
+  final _facebookController = TextEditingController();
 
   String _category = kEcoCategories.first;
   DateTime? _date;
@@ -115,6 +119,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         resolveLegacyEcoMunicipality(activity.location);
     _capacityController.text = activity.maxCapacity?.toString() ?? '';
     _requirements.addAll(activity.requirements);
+    _contactPhoneController.text = activity.contactPhone ?? '';
+    _instagramController.text = activity.instagramLink ?? '';
+    _facebookController.text = activity.facebookLink ?? '';
     _existingImageUrl = activity.imageUrl;
     // La categoría guardada puede no estar en kEcoCategories (texto libre en
     // la tabla, ver EcoActivityModel): se respeta la del feed en ese caso.
@@ -177,6 +184,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
     _locationController.dispose();
     _capacityController.dispose();
     _requirementController.dispose();
+    _contactPhoneController.dispose();
+    _instagramController.dispose();
+    _facebookController.dispose();
     _mapController?.dispose();
     super.dispose();
   }
@@ -373,6 +383,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           startTime: startTime,
           maxCapacity: int.tryParse(_capacityController.text.trim()),
           requirements: _requirements,
+          contactPhone: _contactPhoneController.text,
+          instagramLink: _instagramController.text,
+          facebookLink: _facebookController.text,
           organizationId: organization!.id,
         );
       } else {
@@ -390,6 +403,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           startTime: startTime,
           maxCapacity: int.tryParse(_capacityController.text.trim()),
           requirements: _requirements,
+          contactPhone: _contactPhoneController.text,
+          instagramLink: _instagramController.text,
+          facebookLink: _facebookController.text,
           organizationId: organization?.id,
         );
         // Guardar por sí solo no la devolvía a la cola de revisión — ver
@@ -490,6 +506,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                         _buildLocationSection(),
                         _buildScheduleSection(),
                         _buildRequirementsSection(),
+                        _buildContactSection(),
                         const SizedBox(height: 8),
                       ],
                     ),
@@ -878,6 +895,44 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
                 ],
               ),
             ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContactSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const EcoSectionIntro(
+          title: 'Contacto y redes',
+          subtitle:
+              'Opcional. Ayuda a los participantes a comunicarse con la organización.',
+        ),
+        EcoFormCard(
+          children: [
+            const EcoFieldLabel('Teléfono / WhatsApp'),
+            EcoTextField(
+              controller: _contactPhoneController,
+              hint: 'Ej. +505 8123-4567',
+              keyboardType: TextInputType.phone,
+              prefixIcon: const FaIcon(FontAwesomeIcons.phone, size: 16),
+            ),
+            const SizedBox(height: 12),
+            const EcoFieldLabel('Instagram'),
+            EcoTextField(
+              controller: _instagramController,
+              hint: '@tuorganizacion o instagram.com/tuorganizacion',
+              prefixIcon: const FaIcon(FontAwesomeIcons.instagram, size: 16),
+            ),
+            const SizedBox(height: 12),
+            const EcoFieldLabel('Facebook'),
+            EcoTextField(
+              controller: _facebookController,
+              hint: 'facebook.com/tuorganizacion',
+              prefixIcon: const FaIcon(FontAwesomeIcons.facebookF, size: 16),
+            ),
           ],
         ),
       ],

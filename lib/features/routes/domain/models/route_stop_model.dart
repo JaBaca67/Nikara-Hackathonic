@@ -68,6 +68,8 @@ class RouteStopModel {
     required this.title,
     this.subtitle = '',
     this.category = RouteStopCategory.turistico,
+    this.businessCategory,
+    this.municipalityCode,
     this.imagePath,
     this.latitude,
     this.longitude,
@@ -86,24 +88,41 @@ class RouteStopModel {
   final String title;
   final String subtitle;
   final RouteStopCategory category;
+
+  /// Categoría original del negocio para filtrar con el mismo catálogo que el mapa.
+  final String? businessCategory;
+  final String? municipalityCode;
   final String? imagePath;
   final double? latitude;
   final double? longitude;
   final int dayNumber;
   final int position;
 
-  bool get hasCoordinates => latitude != null && longitude != null;
+  bool get hasCoordinates =>
+      latitude != null &&
+      longitude != null &&
+      latitude!.isFinite &&
+      longitude!.isFinite &&
+      latitude! >= -90 &&
+      latitude! <= 90 &&
+      longitude! >= -180 &&
+      longitude! <= 180;
 
   /// Identidad de la parada de cara al usuario: dos filas distintas que
   /// apuntan al mismo lugar son "la misma parada" para el botón
   /// "Agregado" del paso 2 y para el chequeo de duplicados.
-  String get sourceKey => '${_kindToString(kind)}:$sourceId';
+  String get sourceKey =>
+      '${_kindToString(kind)}:${sourceId.isEmpty ? 'removed:${id ?? title}' : sourceId}';
+
+  String get visitKey => '$dayNumber:$sourceKey';
 
   RouteStopModel copyWith({
     String? id,
     int? dayNumber,
     int? position,
     RouteStopCategory? category,
+    double? latitude,
+    double? longitude,
   }) {
     return RouteStopModel(
       id: id ?? this.id,
@@ -112,9 +131,11 @@ class RouteStopModel {
       title: title,
       subtitle: subtitle,
       category: category ?? this.category,
+      businessCategory: businessCategory,
+      municipalityCode: municipalityCode,
       imagePath: imagePath,
-      latitude: latitude,
-      longitude: longitude,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       dayNumber: dayNumber ?? this.dayNumber,
       position: position ?? this.position,
     );
@@ -127,8 +148,12 @@ class RouteStopModel {
     'day_number': dayNumber,
     'position': position,
     'kind': _kindToString(kind),
-    'business_id': kind == RouteStopKind.business ? sourceId : null,
-    'eco_activity_id': kind == RouteStopKind.ecoActivity ? sourceId : null,
+    'business_id': kind == RouteStopKind.business && sourceId.isNotEmpty
+        ? sourceId
+        : null,
+    'eco_activity_id': kind == RouteStopKind.ecoActivity && sourceId.isNotEmpty
+        ? sourceId
+        : null,
     'destination_id': kind == RouteStopKind.destination ? sourceId : null,
     'title': title,
     'subtitle': subtitle,

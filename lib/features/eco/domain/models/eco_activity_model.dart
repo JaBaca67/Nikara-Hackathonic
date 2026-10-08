@@ -99,6 +99,9 @@ class EcoActivityModel {
     this.latitude,
     this.longitude,
     this.imageUrl,
+    this.contactPhone,
+    this.instagramLink,
+    this.facebookLink,
     required this.startTime,
     this.maxCapacity,
     this.organizerId,
@@ -136,6 +139,9 @@ class EcoActivityModel {
   /// por igual la tarjeta del feed, la tarjeta hero y la portada del detalle;
   /// nula = se cae al ícono de la categoría.
   final String? imageUrl;
+  final String? contactPhone;
+  final String? instagramLink;
+  final String? facebookLink;
 
   final DateTime startTime;
 
@@ -277,6 +283,9 @@ class EcoActivityModel {
       latitude: latitude,
       longitude: longitude,
       imageUrl: imageUrl,
+      contactPhone: contactPhone,
+      instagramLink: instagramLink,
+      facebookLink: facebookLink,
       startTime: startTime,
       maxCapacity: maxCapacity,
       organizerId: organizerId,
@@ -322,6 +331,9 @@ class EcoActivityModel {
       longitude: (row['longitude'] as num?)?.toDouble(),
       // Ausente (no solo nula) mientras no haya corrido la migración 014.
       imageUrl: row['image_url'] as String?,
+      contactPhone: row['contact_phone'] as String?,
+      instagramLink: row['instagram_link'] as String?,
+      facebookLink: row['facebook_link'] as String?,
       // Postgres devuelve `timestamptz` en UTC y los formatters de
       // `eco_format.dart` leen `.hour`/`.day` crudos, así que sin normalizar
       // aquí una jornada de las 9:00 a.m. en Nicaragua se mostraba a las 3:00 p.m.

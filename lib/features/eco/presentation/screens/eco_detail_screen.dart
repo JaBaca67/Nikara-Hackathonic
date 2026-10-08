@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nikara_app/shared/widgets/origin_badge.dart';
 import 'package:nikara_app/shared/widgets/user_avatar.dart';
@@ -639,6 +640,11 @@ class _InformationTab extends StatelessWidget {
           onTap: () => openEcoOrganizerProfile(context, activity),
         ),
       ),
+      if (_activityContacts(activity).isNotEmpty)
+        DetailSection(
+          title: 'Contacto y redes',
+          child: SocialHub(contacts: _activityContacts(activity)),
+        ),
       if (activity.requirements.isNotEmpty)
         DetailSection(
           title: 'Requisitos y qué llevar',
@@ -683,6 +689,17 @@ class _InformationTab extends StatelessWidget {
     );
   }
 }
+
+List<SocialContact> _activityContacts(EcoActivityModel activity) => [
+  if ((activity.contactPhone ?? '').trim().isNotEmpty) ...[
+    SocialContact.whatsapp(activity.contactPhone!),
+    SocialContact.phone(activity.contactPhone!),
+  ],
+  if ((activity.instagramLink ?? '').trim().isNotEmpty)
+    SocialContact.instagram(activity.instagramLink!),
+  if ((activity.facebookLink ?? '').trim().isNotEmpty)
+    SocialContact.facebook(activity.facebookLink!),
+];
 
 class _ParticipantsPreview extends StatelessWidget {
   const _ParticipantsPreview({required this.activity});

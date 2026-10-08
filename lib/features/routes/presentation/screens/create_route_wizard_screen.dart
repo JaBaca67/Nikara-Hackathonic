@@ -3,16 +3,24 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'route_stop_location_screen.dart';
 
 import 'package:nikara_app/core/utils/validators.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/routes/data/route_catalog_service.dart';
 import 'package:nikara_app/features/routes/data/route_service.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
+import 'package:nikara_app/features/routes/domain/route_planner.dart';
+import 'package:nikara_app/features/routes/presentation/screens/route_overview_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_motion.dart';
@@ -55,6 +63,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   final _searchController = TextEditingController();
 
   int _step = 0;
+  int _addingDay = 1;
   late int _days = widget.initialRoute?.days ?? 1;
   late bool _isPublic = widget.initialRoute?.isPublic ?? false;
 
@@ -87,7 +96,8 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   List<RouteStopModel> _catalog = const [];
   bool _loadingCatalog = true;
   String? _catalogWarning;
-  RouteStopCategory? _categoryFilter;
+  String? _categoryFilter;
+  GeographicDestination _destinationFilter = const GeographicDestination();
 
   bool _isSaving = false;
 
@@ -145,36 +155,62 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
 
   /// El catálogo filtrado por el buscador y el chip de categoría del paso 2.
   List<RouteStopModel> get _visibleCandidates {
-    final query = _searchController.text.trim().toLowerCase();
+    final query = RoutePlanner.searchKey(_searchController.text);
     return _catalog
         .where((stop) {
-          if (_categoryFilter != null && stop.category != _categoryFilter) {
-            return false;
+          final category = _categoryFilter;
+          if (category == 'Jornadas ECO') {
+            if (stop.kind != RouteStopKind.ecoActivity) return false;
+          } else if (category != null) {
+            if (stop.kind != RouteStopKind.business ||
+                businessCategoryPresetFor(stop.businessCategory ?? '') !=
+                    category) {
+              return false;
+            }
           }
+          if (!_destinationFilter.matches(
+            municipalityByCode(stop.municipalityCode),
+          ))
+            return false;
           if (query.isEmpty) return true;
-          return stop.title.toLowerCase().contains(query) ||
-              stop.subtitle.toLowerCase().contains(query);
+          return RoutePlanner.searchKey(stop.title).contains(query) ||
+              RoutePlanner.searchKey(stop.subtitle).contains(query);
         })
         .toList(growable: false);
   }
 
-  bool _isAdded(RouteStopModel candidate) =>
-      _stops.any((s) => s.sourceKey == candidate.sourceKey);
+  Future<void> _pickCatalogDestination() async {
+    final selection = await showGeographicDestinationPicker(
+      context,
+      initial: _destinationFilter,
+    );
+    if (selection == null || !mounted) return;
+    setState(() => _destinationFilter = selection.destination);
+  }
+
+  bool _isAdded(RouteStopModel candidate) => _stops.any(
+    (s) => s.sourceKey == candidate.sourceKey && s.dayNumber == _addingDay,
+  );
 
   void _toggleCandidate(RouteStopModel candidate) {
     setState(() {
       if (_isAdded(candidate)) {
         _stops = RouteModel.reindex(
-          _stops.where((s) => s.sourceKey != candidate.sourceKey).toList(),
+          _stops
+              .where(
+                (s) =>
+                    s.sourceKey != candidate.sourceKey ||
+                    s.dayNumber != _addingDay,
+              )
+              .toList(),
         );
         return;
       }
-      // Toda parada nueva entra al día 1; el paso 3 es donde se reparte
-      // entre días.
-      final day1 = _stops.where((s) => s.dayNumber == 1).length;
+      // Each selection belongs to the chosen day; a place can be revisited.
+      final dayPosition = _stops.where((s) => s.dayNumber == _addingDay).length;
       _stops = RouteModel.reindex([
         ..._stops,
-        candidate.copyWith(dayNumber: 1, position: day1),
+        candidate.copyWith(dayNumber: _addingDay, position: dayPosition),
       ]);
     });
   }
@@ -182,9 +218,28 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   void _removeStop(RouteStopModel stop) {
     setState(() {
       _stops = RouteModel.reindex(
-        _stops.where((s) => s.sourceKey != stop.sourceKey).toList(),
+        _stops.where((s) => s.visitKey != stop.visitKey).toList(),
       );
     });
+  }
+
+  Future<void> _locateStop(RouteStopModel stop) async {
+    final point = await pushSharedAxis<LatLng>(
+      context,
+      RouteStopLocationScreen(title: stop.title),
+    );
+    if (point == null || !mounted) return;
+    setState(
+      () => _stops = [
+        for (final current in _stops)
+          current.visitKey == stop.visitKey
+              ? current.copyWith(
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                )
+              : current,
+      ],
+    );
   }
 
   /// Mueve una parada un lugar arriba o abajo dentro de su día; en los
@@ -229,9 +284,18 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     required int day,
     required num position,
   }) {
+    if (_stops.any(
+      (s) =>
+          s.sourceKey == stop.sourceKey &&
+          s.dayNumber == day &&
+          s.visitKey != stop.visitKey,
+    )) {
+      AppSnackbar.showInfo(context, 'Este lugar ya está en ese día.');
+      return;
+    }
     setState(() {
       final others = _stops
-          .where((s) => s.sourceKey != stop.sourceKey)
+          .where((s) => s.visitKey != stop.visitKey)
           .toList(growable: false);
       final rebuilt = <RouteStopModel>[];
       for (final other in others) {
@@ -291,6 +355,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     if (next == _days) return;
     setState(() {
       _days = next;
+      if (_addingDay > next) _addingDay = next;
       // Al acortar la ruta, las paradas de los días que dejaron de existir
       // se recuestan en el último día en vez de perderse.
       _stops = RouteModel.reindex([
@@ -320,37 +385,9 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     await _save();
   }
 
-  /// Avanza (o salta) a [next] guardando cómo estaban las paradas al llegar:
-  /// "Retroceder" descarta lo hecho en un paso volviendo a esa foto, sin
-  /// tocar lo capturado en los pasos anteriores.
-  void _goToStep(int next) {
-    _stopsAtEntry[next - 1] = [..._stops];
-    setState(() => _step = next);
-  }
-
-  /// Fotos de [_stops] al entrar a cada paso, indexadas por el paso del que
-  /// se vino (`_stopsAtEntry[0]` = al salir del paso 1).
-  final Map<int, List<RouteStopModel>> _stopsAtEntry = {};
-
-  /// Evita apilar diálogos si se toca atrás o la X varias veces seguidas.
+  // Moving between steps keeps the draft, including assignments and order.
+  void _goToStep(int next) => setState(() => _step = next);
   bool _dialogOpen = false;
-
-  /// Lo único que se captura en los pasos 2 y 3 son las paradas (el buscador
-  /// y el filtro del paso 2 son solo una vista), así que "cambió algo" es
-  /// "las paradas ya no son las de cuando se entró al paso".
-  bool get _stepHasChanges {
-    final entry = _stopsAtEntry[_step - 1];
-    if (entry == null) return false;
-    if (entry.length != _stops.length) return true;
-    for (var i = 0; i < entry.length; i++) {
-      if (entry[i].sourceKey != _stops[i].sourceKey ||
-          entry[i].dayNumber != _stops[i].dayNumber ||
-          entry[i].position != _stops[i].position) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   /// Pregunta y devuelve `true` solo si se confirmó. Un cierre de cualquier
   /// otra forma (atrás del sistema sobre la alerta) deja a la persona donde
@@ -398,20 +435,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
       if (exit) _leave();
       return;
     }
-    if (!_stepHasChanges) {
-      _goBackOneStep();
-      return;
-    }
-    final back = await _confirm(
-      title: '¿Volver al paso anterior?',
-      message:
-          'Perderás lo que editaste en este paso. Lo del paso anterior se '
-          'conserva.',
-      confirmLabel: 'Retroceder',
-      cancelLabel: 'Cancelar',
-      destructive: false,
-    );
-    if (back) _goBackOneStep();
+    _goBackOneStep();
   }
 
   /// La X de los pasos 2 y 3: siempre pregunta, haya cambios o no.
@@ -426,19 +450,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     if (exit) _leave();
   }
 
-  /// Vuelve un paso descartando solo lo del paso actual: las paradas regresan
-  /// a como estaban al entrar; el nombre, los días y las fotos (paso 1) no se
-  /// tocan.
-  void _goBackOneStep() {
-    setState(() {
-      _stops = [...(_stopsAtEntry[_step - 1] ?? _stops)];
-      if (_step == 1) {
-        _searchController.clear();
-        _categoryFilter = null;
-      }
-      _step--;
-    });
-  }
+  void _goBackOneStep() => setState(() => _step--);
 
   Future<void> _save() async {
     if (_isSaving) return;
@@ -554,6 +566,11 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                     onRemoveCoverPhoto: _removeCoverPhoto,
                   ),
                   1 => _StepPlaces(
+                    days: _days,
+                    addingDay: _addingDay,
+                    selectedCount: _stops.length,
+                    onAddingDayChanged: (day) =>
+                        setState(() => _addingDay = day),
                     searchController: _searchController,
                     candidates: _visibleCandidates,
                     isLoading: _loadingCatalog,
@@ -561,6 +578,10 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                     selectedCategory: _categoryFilter,
                     onCategorySelected: (category) =>
                         setState(() => _categoryFilter = category),
+                    destination: _destinationFilter,
+                    onDestinationFilterChanged: (destination) =>
+                        setState(() => _destinationFilter = destination),
+                    onPickDestination: _pickCatalogDestination,
                     onSearchChanged: () => setState(() {}),
                     isAdded: _isAdded,
                     onToggle: _toggleCandidate,
@@ -571,7 +592,26 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                     stops: _stops,
                     onMove: _moveStop,
                     onRemove: _removeStop,
-                    onAddMore: () => _goToStep(1),
+                    onLocate: _locateStop,
+                    onAddMore: (day) {
+                      _addingDay = day;
+                      _goToStep(1);
+                    },
+                    onAssignDay: (stop, day) => _reassign(
+                      stop,
+                      day: day,
+                      position: _stops.where((s) => s.dayNumber == day).length,
+                    ),
+                    onSuggestOrder: (day) => setState(
+                      () => _stops = RoutePlanner.suggestOrder(_stops, day),
+                    ),
+                    onPreview: () => pushSharedAxis(
+                      context,
+                      RouteOverviewScreen(
+                        title: _titleController.text.trim(),
+                        stops: _stops,
+                      ),
+                    ),
                   ),
                 },
               ),
@@ -590,7 +630,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
 
 /// Cabecera del wizard: flecha de la izquierda y, desde el paso 2, una X para
 /// salir. Son dos acciones distintas (retroceder un paso / abandonar), cada
-/// una con su propia alerta, así que son dos botones separados.
+/// la salida pide confirmar antes de descartar el borrador.
 class _WizardHeader extends StatelessWidget {
   const _WizardHeader({
     required this.title,
@@ -863,11 +903,14 @@ class _StepName extends StatelessWidget {
       children: [
         Text(
           '¿Cómo se llama tu ruta?',
-          style: AppTextStyles.wizardStepHeading.copyWith(fontSize: 22),
+          style: AppTextStyles.wizardStepHeading.copyWith(
+            fontSize: 22,
+            color: AppColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Elige un nombre y cuántos días va a durar.',
+          'Diseña tu viaje por días, elige tus paradas y recórrelas a tu ritmo.',
           style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 14),
         ),
         const SizedBox(height: 18),
@@ -899,8 +942,10 @@ class _StepName extends StatelessWidget {
                 ),
                 decoration: InputDecoration(
                   hintText: 'Ej. Fin de semana en Granada',
+                  helperText: 'Un nombre para encontrar tu viaje fácilmente',
                   hintStyle: AppTextStyles.settingsSubtitle.copyWith(
                     fontSize: 15,
+                    color: AppColors.settingsTextMuted,
                   ),
                   filled: true,
                   fillColor: AppColors.settingsBackground,
@@ -1256,12 +1301,19 @@ class _PublishToggle extends StatelessWidget {
 /// botón "Agregar a ruta" / "✔ Agregado".
 class _StepPlaces extends StatelessWidget {
   const _StepPlaces({
+    required this.days,
+    required this.addingDay,
+    required this.selectedCount,
+    required this.onAddingDayChanged,
     required this.searchController,
     required this.candidates,
     required this.isLoading,
     required this.warning,
     required this.selectedCategory,
     required this.onCategorySelected,
+    required this.destination,
+    required this.onDestinationFilterChanged,
+    required this.onPickDestination,
     required this.onSearchChanged,
     required this.isAdded,
     required this.onToggle,
@@ -1269,12 +1321,19 @@ class _StepPlaces extends StatelessWidget {
   });
 
   final VoidCallback onRetry;
+  final int days;
+  final int addingDay;
+  final int selectedCount;
+  final ValueChanged<int> onAddingDayChanged;
   final TextEditingController searchController;
   final List<RouteStopModel> candidates;
   final bool isLoading;
   final String? warning;
-  final RouteStopCategory? selectedCategory;
-  final ValueChanged<RouteStopCategory?> onCategorySelected;
+  final String? selectedCategory;
+  final ValueChanged<String?> onCategorySelected;
+  final GeographicDestination destination;
+  final ValueChanged<GeographicDestination> onDestinationFilterChanged;
+  final VoidCallback onPickDestination;
   final VoidCallback onSearchChanged;
   final bool Function(RouteStopModel) isAdded;
   final ValueChanged<RouteStopModel> onToggle;
@@ -1285,6 +1344,35 @@ class _StepPlaces extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
       children: [
+        Text(
+          'Elige tus paradas',
+          style: AppTextStyles.sectionTitle.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '$selectedCount lugares seleccionados. Agrega cada lugar al día en que quieres visitarlo.',
+          style: AppTextStyles.settingsSubtitle,
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var day = 1; day <= days; day++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text('Día $day'),
+                    selected: addingDay == day,
+                    onSelected: (_) => onAddingDayChanged(day),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
           decoration: BoxDecoration(
@@ -1319,9 +1407,31 @@ class _StepPlaces extends StatelessWidget {
                   ),
                 ),
               ),
+              IconButton(
+                tooltip: 'Filtrar por departamento o municipio',
+                onPressed: onPickDestination,
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color: destination.isActive
+                      ? AppColors.oliveText
+                      : AppColors.settingsTextDark,
+                ),
+              ),
             ],
           ),
         ),
+        if (destination.isActive) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: InputChip(
+              avatar: const Icon(Icons.place_rounded, size: 16),
+              label: Text(destination.label),
+              onDeleted: () =>
+                  onDestinationFilterChanged(const GeographicDestination()),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         SizedBox(
           height: _kMinTouchTarget,
@@ -1334,9 +1444,14 @@ class _StepPlaces extends StatelessWidget {
                 selected: selectedCategory == null,
                 onTap: () => onCategorySelected(null),
               ),
-              for (final category in RouteStopCategory.values)
+              _CategoryFilterChip(
+                label: 'Jornadas ECO',
+                selected: selectedCategory == 'Jornadas ECO',
+                onTap: () => onCategorySelected('Jornadas ECO'),
+              ),
+              for (final category in kBusinessCategoryPresets)
                 _CategoryFilterChip(
-                  label: category.label,
+                  label: category,
                   selected: selectedCategory == category,
                   onTap: () => onCategorySelected(category),
                 ),
@@ -1504,6 +1619,16 @@ class _CandidateRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 RouteCategoryChip(category: stop.category, compact: true),
+                if (!stop.hasCoordinates)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Sin ubicación para navegar',
+                      style: AppTextStyles.settingsSubtitle.copyWith(
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 Text(
                   stop.title,
@@ -1593,13 +1718,21 @@ class _StepOrganize extends StatelessWidget {
     required this.onMove,
     required this.onRemove,
     required this.onAddMore,
+    required this.onAssignDay,
+    required this.onSuggestOrder,
+    required this.onPreview,
+    required this.onLocate,
   });
 
   final int days;
   final List<RouteStopModel> stops;
   final void Function(RouteStopModel stop, {required bool up}) onMove;
   final ValueChanged<RouteStopModel> onRemove;
-  final VoidCallback onAddMore;
+  final ValueChanged<int> onAddMore;
+  final void Function(RouteStopModel, int) onAssignDay;
+  final ValueChanged<int> onSuggestOrder;
+  final VoidCallback onPreview;
+  final ValueChanged<RouteStopModel> onLocate;
 
   @override
   Widget build(BuildContext context) {
@@ -1610,6 +1743,24 @@ class _StepOrganize extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
       children: [
+        Text(
+          'Revisa tu recorrido',
+          style: AppTextStyles.sectionTitle.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${stops.length} paradas · ${stops.where((s) => s.hasCoordinates).length} con ubicación. '
+          'Ordena cada día y deja espacio para visitas y descansos.',
+          style: AppTextStyles.settingsSubtitle,
+        ),
+        TextButton.icon(
+          onPressed: onPreview,
+          icon: const Icon(Icons.map_outlined),
+          label: const Text('Revisar mapa por día'),
+        ),
+        const SizedBox(height: 12),
         // Solo advierte: una ruta con días vacíos se puede guardar igual.
         if (emptyDays.isNotEmpty) ...[
           _EmptyDaysNotice(emptyDays: emptyDays),
@@ -1617,13 +1768,40 @@ class _StepOrganize extends StatelessWidget {
         ],
         for (var day = 1; day <= days; day++) ...[
           _DayHeader(day: day),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () => onAddMore(day),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Agregar lugares'),
+              ),
+              if (stops
+                      .where((s) => s.dayNumber == day && s.hasCoordinates)
+                      .length >
+                  2)
+                TextButton.icon(
+                  onPressed: () => onSuggestOrder(day),
+                  icon: const Icon(Icons.alt_route_rounded, size: 18),
+                  label: const Text('Ordenar por cercanía'),
+                ),
+            ],
+          ),
+          if (stops
+                  .where((s) => s.dayNumber == day && s.hasCoordinates)
+                  .length >
+              2)
+            Text(
+              'Mantiene la primera parada. Es una sugerencia geográfica; revisa horarios y accesos.',
+              style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 12),
+            ),
           const SizedBox(height: 12),
           ...() {
             final dayStops = stops
                 .where((s) => s.dayNumber == day)
                 .toList(growable: false);
             if (dayStops.isEmpty) {
-              return [_EmptyDaySlot(onAddMore: onAddMore)];
+              return [_EmptyDaySlot(onAddMore: () => onAddMore(day))];
             }
             return [
               for (final stop in dayStops)
@@ -1631,10 +1809,13 @@ class _StepOrganize extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _OrganizeRow(
                     stop: stop,
+                    days: days,
+                    onAssignDay: (day) => onAssignDay(stop, day),
                     canMoveUp: !(day == 1 && stop == dayStops.first),
                     canMoveDown: !(day == days && stop == dayStops.last),
                     onMove: onMove,
                     onRemove: () => onRemove(stop),
+                    onLocate: () => onLocate(stop),
                   ),
                 ),
             ];
@@ -1764,6 +1945,9 @@ class _EmptyDaySlot extends StatelessWidget {
 class _OrganizeRow extends StatelessWidget {
   const _OrganizeRow({
     required this.stop,
+    required this.days,
+    required this.onAssignDay,
+    required this.onLocate,
     required this.canMoveUp,
     required this.canMoveDown,
     required this.onMove,
@@ -1771,6 +1955,9 @@ class _OrganizeRow extends StatelessWidget {
   });
 
   final RouteStopModel stop;
+  final int days;
+  final ValueChanged<int> onAssignDay;
+  final VoidCallback onLocate;
   final bool canMoveUp;
   final bool canMoveDown;
   final void Function(RouteStopModel stop, {required bool up}) onMove;
@@ -1812,6 +1999,27 @@ class _OrganizeRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 RouteCategoryChip(category: stop.category, compact: true),
+                if (!stop.hasCoordinates)
+                  TextButton.icon(
+                    onPressed: onLocate,
+                    icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+                    label: const Text('Ubicar en mapa'),
+                  ),
+                if (days > 1)
+                  DropdownButton<int>(
+                    value: stop.dayNumber,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (var day = 1; day <= days; day++)
+                        DropdownMenuItem(value: day, child: Text('Día $day')),
+                    ],
+                    onChanged: (day) {
+                      if (day != null && day != stop.dayNumber) {
+                        onAssignDay(day);
+                      }
+                    },
+                  ),
               ],
             ),
           ),

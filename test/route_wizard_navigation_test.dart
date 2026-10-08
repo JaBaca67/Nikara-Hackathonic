@@ -244,48 +244,19 @@ void main() {
       expect(find.text('Fin de semana en Granada'), findsOneWidget);
     });
 
-    testWidgets('flecha con cambios pregunta; "Cancelar" se queda', (
+    testWidgets('volver conserva los lugares y el nombre sin pedir descartar', (
       tester,
     ) async {
       await openWizard(tester);
       await goToStepTwo(tester);
       await addFirstStop(tester);
-
       await tester.tap(find.byIcon(Icons.arrow_back));
       await settle(tester);
-
-      expect(find.text('¿Volver al paso anterior?'), findsOneWidget);
-      expect(
-        find.text(
-          'Perderás lo que editaste en este paso. Lo del paso anterior se '
-          'conserva.',
-        ),
-        findsOneWidget,
-      );
-
-      await tapDialog(tester, 'Cancelar');
-      expect(find.textContaining('Paso 2 de 3'), findsOneWidget);
-      expect(find.text('Agregado'), findsOneWidget);
-    });
-
-    testWidgets('"Retroceder" descarta lo del paso y conserva el anterior', (
-      tester,
-    ) async {
-      await openWizard(tester);
-      await goToStepTwo(tester);
-      await addFirstStop(tester);
-
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await settle(tester);
-      await tapDialog(tester, 'Retroceder');
-
+      expect(find.byType(AlertDialog), findsNothing);
       expect(find.textContaining('Paso 1 de 3'), findsOneWidget);
       expect(find.text('Fin de semana en Granada'), findsOneWidget);
-
-      // Al volver a entrar al paso 2, lo agregado antes ya no está.
       await tapPrimary(tester);
-      expect(find.textContaining('Paso 2 de 3'), findsOneWidget);
-      expect(find.text('Agregado'), findsNothing);
+      expect(find.text('Agregado'), findsOneWidget);
     });
 
     testWidgets('el atrás del sistema hace lo mismo que la flecha', (
@@ -300,12 +271,13 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.textContaining('Paso 1 de 3'), findsOneWidget);
 
-      // Con cambios: pregunta lo mismo que la flecha.
+      // With changes: preserve the draft as well.
       await tapPrimary(tester);
       await addFirstStop(tester);
       await tester.binding.handlePopRoute();
       await settle(tester);
-      expect(find.text('¿Volver al paso anterior?'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.textContaining('Paso 1 de 3'), findsOneWidget);
     });
 
     testWidgets('la X siempre pregunta, aunque no haya cambios', (
@@ -342,7 +314,7 @@ void main() {
       expect(find.text('Rutas'), findsOneWidget);
     });
 
-    testWidgets('paso 3: retrocede directo sin cambios y pregunta con ellos', (
+    testWidgets('paso 3: volver conserva también las paradas eliminadas', (
       tester,
     ) async {
       await openWizard(tester);
@@ -355,17 +327,16 @@ void main() {
       expect(find.textContaining('Paso 2 de 3'), findsOneWidget);
       expect(find.text('Agregado'), findsOneWidget);
 
-      // Con un cambio (quitar la parada): pregunta y "Retroceder" lo descarta.
+      // Removing a stop remains part of the draft when returning.
       await tapPrimary(tester);
       await tester.tap(find.byTooltip('Quitar de la ruta'));
       await settle(tester);
       await tester.tap(find.byIcon(Icons.arrow_back));
       await settle(tester);
-      expect(find.text('¿Volver al paso anterior?'), findsOneWidget);
-      await tapDialog(tester, 'Retroceder');
+      expect(find.byType(AlertDialog), findsNothing);
 
       expect(find.textContaining('Paso 2 de 3'), findsOneWidget);
-      expect(find.text('Agregado'), findsOneWidget);
+      expect(find.text('Agregado'), findsNothing);
     });
   });
 
@@ -414,7 +385,7 @@ void main() {
 
     testWidgets('el texto del paso 1 tutea', (tester) async {
       await openWizard(tester);
-      expect(find.textContaining('Elige un nombre'), findsOneWidget);
+      expect(find.textContaining('Diseña tu viaje'), findsOneWidget);
       expect(find.textContaining('Elegí'), findsNothing);
     });
 
@@ -486,6 +457,30 @@ void main() {
     expect(find.text('Cargando lugares…'), findsNothing);
     expect(find.text('Reintentar'), findsNothing);
   });
+
+  testWidgets(
+    'el mismo lugar se agrega y se quita por día sin borrar otra visita',
+    (tester) async {
+      await openWizard(tester);
+      await tester.ensureVisible(find.byIcon(Icons.add_rounded));
+      await tester.tap(find.byIcon(Icons.add_rounded));
+      await settle(tester);
+      await goToStepTwo(tester);
+      await addFirstStop(tester);
+      await tester.tap(find.text('Día 2'));
+      await settle(tester);
+      expect(find.text('Agregado'), findsNothing);
+      await tester.tap(find.text('Agregar a ruta').first);
+      await settle(tester);
+      expect(find.text('Continuar · 2 agregados'), findsOneWidget);
+      await tester.tap(find.text('Agregado').first);
+      await settle(tester);
+      await tester.tap(find.text('Día 1'));
+      await settle(tester);
+      expect(find.text('Agregado'), findsOneWidget);
+      expect(find.text('Continuar · 1 agregados'), findsOneWidget);
+    },
+  );
 
   testWidgets('zonas tocables de al menos 48dp en los controles del wizard', (
     tester,

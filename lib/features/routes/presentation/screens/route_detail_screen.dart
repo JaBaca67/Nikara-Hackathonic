@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'route_overview_screen.dart';
+import 'route_travel_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -10,11 +12,11 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/screens/full_screen_map_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_mini_map.dart';
+import 'package:nikara_app/features/routes/presentation/widgets/route_stop_avatar.dart';
 import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
-import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -36,6 +38,7 @@ class RouteDetailScreen extends StatefulWidget {
 class _RouteDetailScreenState extends State<RouteDetailScreen> {
   late RouteModel _route = widget.route;
   bool _isBusy = false;
+  int _mapDay = 1;
 
   String? get _currentUserId => AuthService().currentAuthUser?.id;
 
@@ -50,7 +53,12 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   Future<void> _refresh() async {
     try {
       final fresh = await RouteService().getRouteById(_route.id);
-      if (fresh != null && mounted) setState(() => _route = fresh);
+      if (fresh != null && mounted) {
+        setState(() {
+          _route = fresh;
+          if (_mapDay > fresh.days) _mapDay = fresh.days;
+        });
+      }
     } on RouteServiceException {
       // Refresco en segundo plano: se sigue mostrando lo que ya traía la
       // tarjeta en vez de un error por algo que nadie pidió.
@@ -253,7 +261,6 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
             _DetailHeader(
               route: route,
               onBack: () => Navigator.of(context).maybePop(),
-              onShare: _showMoreMenu,
               onMore: _showMoreMenu,
             ),
             Expanded(
@@ -265,7 +272,64 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                   AppSpacing.xxl,
                 ),
                 children: [
-                  RouteMiniMap(stops: route.stops),
+                  Text(
+                    'Tu recorrido',
+                    style: AppTextStyles.sectionTitle.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (var day = 1; day <= route.days; day++)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text('Día $day'),
+                              selected: day == _mapDay,
+                              onSelected: (_) => setState(() => _mapDay = day),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: _isBusy || route.stops.isEmpty
+                        ? null
+                        : () => pushSharedAxis(
+                            context,
+                            RouteTravelScreen(route: route),
+                          ),
+                    icon: const Icon(Icons.navigation_rounded),
+                    label: const Text('Empezar recorrido'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary500,
+                      foregroundColor: AppColors.textPrimary,
+                      minimumSize: const Size.fromHeight(54),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tu progreso se guardará y podrás continuar cuando quieras.',
+                    style: AppTextStyles.settingsSubtitle.copyWith(
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  RouteMiniMap(
+                    stops: route.stopsForDay(_mapDay),
+                    interactive: true,
+                    onExpand: () => pushSharedAxis(
+                      context,
+                      RouteOverviewScreen(
+                        title: route.title,
+                        stops: route.stops,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 22),
                   for (var day = 1; day <= route.days; day++)
                     _DaySection(
@@ -295,13 +359,11 @@ class _DetailHeader extends StatelessWidget {
   const _DetailHeader({
     required this.route,
     required this.onBack,
-    required this.onShare,
     required this.onMore,
   });
 
   final RouteModel route;
   final VoidCallback onBack;
-  final VoidCallback onShare;
   final VoidCallback onMore;
 
   @override
@@ -322,7 +384,10 @@ class _DetailHeader extends StatelessWidget {
                 children: [
                   Text(
                     route.title,
-                    style: AppTextStyles.detailTitle.copyWith(fontSize: 21),
+                    style: AppTextStyles.detailTitle.copyWith(
+                      fontSize: 23,
+                      color: AppColors.textPrimary,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -340,8 +405,6 @@ class _DetailHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _RoundButton(icon: Icons.ios_share, onTap: onShare),
-          const SizedBox(width: 8),
           _RoundButton(icon: Icons.more_vert, onTap: onMore),
         ],
       ),
@@ -508,18 +571,7 @@ class _StopTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppRadius.md),
-            child: SizedBox(
-              width: 62,
-              height: 62,
-              child: LocalImage(
-                path: stop.imagePath,
-                fallbackIcon: Icons.photo_outlined,
-                fallbackIconSize: 0,
-              ),
-            ),
-          ),
+          RouteStopAvatar(stop: stop, size: 62),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

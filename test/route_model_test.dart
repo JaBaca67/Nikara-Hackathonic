@@ -258,6 +258,19 @@ void main() {
   });
 
   group('RouteStopModel', () {
+    test(
+      'una parada cuyo origen fue eliminado se guarda sin un UUID vacío',
+      () {
+        const removed = RouteStopModel(
+          id: 'saved-stop',
+          kind: RouteStopKind.business,
+          sourceId: '',
+          title: 'Negocio recordado',
+        );
+        expect(removed.toInsert()['business_id'], isNull);
+        expect(removed.sourceKey, 'business:removed:saved-stop');
+      },
+    );
     test('sourceKey distingue el origen además del id', () {
       const business = RouteStopModel(
         kind: RouteStopKind.business,

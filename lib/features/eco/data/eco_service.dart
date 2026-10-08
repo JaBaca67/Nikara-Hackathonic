@@ -21,6 +21,13 @@ class EcoServiceException implements Exception {
   String toString() => message;
 }
 
+String? _optionalText(String? value, {required int maxLength}) {
+  final text = value?.trim() ?? '';
+  return text.isEmpty ? null : sanitizeText(text, maxLength: maxLength);
+}
+
+String? _optionalHandle(String value) => value.isEmpty ? null : value;
+
 /// Por qué no se pudo unir o salir de una actividad. La pantalla decide con
 /// esto el tipo de aviso: [retryable] es un fallo real (red, tiempo, servidor)
 /// y ofrece "Reintentar"; los demás son situaciones normales que se explican
@@ -527,6 +534,9 @@ class EcoService {
     double? latitude,
     double? longitude,
     String? imageUrl,
+    String? contactPhone,
+    String? instagramLink,
+    String? facebookLink,
     required DateTime startTime,
     int? maxCapacity,
     List<String> requirements = const [],
@@ -552,6 +562,11 @@ class EcoService {
         'longitude': longitude,
         // Se omite la clave si es null para que funcione sin la migración 014.
         'image_url': ?safeImageUrl,
+        'contact_phone': ?_optionalText(contactPhone, maxLength: 32),
+        'instagram_link': ?_optionalHandle(
+          sanitizeInstagramHandle(instagramLink),
+        ),
+        'facebook_link': ?_optionalHandle(sanitizeFacebookHandle(facebookLink)),
         'start_time': startTime.toUtc().toIso8601String(),
         'max_capacity': maxCapacity,
         // El organizador sale de la sesión, nunca de un parámetro de la UI.
@@ -750,6 +765,9 @@ class EcoService {
     double? longitude,
     String? imageUrl,
     bool removeImage = false,
+    String? contactPhone,
+    String? instagramLink,
+    String? facebookLink,
     required DateTime startTime,
     int? maxCapacity,
     List<String> requirements = const [],
@@ -772,6 +790,11 @@ class EcoService {
         'start_time': startTime.toUtc().toIso8601String(),
         'max_capacity': maxCapacity,
         'requirements': sanitizeTextList(requirements),
+        'contact_phone': _optionalText(contactPhone, maxLength: 32),
+        'instagram_link': _optionalHandle(
+          sanitizeInstagramHandle(instagramLink),
+        ),
+        'facebook_link': _optionalHandle(sanitizeFacebookHandle(facebookLink)),
       };
       if (removeImage) {
         patch['image_url'] = null;

@@ -59,7 +59,7 @@ class RouteCard extends StatelessWidget {
             Text(
               route.title,
               style: AppTextStyles.sectionTitle.copyWith(
-                color: AppColors.settingsTextDark,
+                color: AppColors.textPrimary,
                 fontSize: 17,
               ),
               maxLines: 2,

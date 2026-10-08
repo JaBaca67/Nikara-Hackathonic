@@ -340,7 +340,9 @@ class DirectionsService {
         .replaceAll('&quot;', '"')
         .replaceAll('&#39;', "'")
         .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'\s+([,.])'), r'$1')
+        // Dart treats replaceAll's replacement as a literal string, so `r'$1'`
+        // leaked into instructions such as "Girar a la izquierda $1".
+        .replaceAllMapped(RegExp(r'\s+([,.])'), (match) => match.group(1)!)
         .replaceAll(RegExp(r'\.\s*\.'), '.')
         .trim();
   }
