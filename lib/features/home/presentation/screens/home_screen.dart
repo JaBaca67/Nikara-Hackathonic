@@ -20,8 +20,8 @@ import 'package:nikara_app/features/home/presentation/widgets/search_header_widg
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
-import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -1289,12 +1289,7 @@ class _FavoriteButton extends StatelessWidget {
               return;
             }
             if (!context.mounted) return;
-            try {
-              await FavoritesService().toggleFavorite(businessId);
-            } on FavoritesServiceException catch (e) {
-              if (!context.mounted) return;
-              AppSnackbar.showError(context, e.message);
-            }
+            await toggleFavoriteWithFeedback(context, businessId);
           },
           child: Container(
             width: size,

@@ -27,6 +27,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -74,9 +75,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   @override
   void initState() {
     super.initState();
+    // El corazón sigue al servicio y no solo a los toques de esta pantalla:
+    // "Deshacer" (del aviso de favorito quitado) cambia el favorito por fuera
+    // de aquí y, sin esto, el corazón se quedaba vacío.
+    _favoritesService.idsNotifier.addListener(_syncFavorite);
     _loadFavoriteState();
     _loadCurrentUser();
     _loadUserPosition();
+  }
+
+  @override
+  void dispose() {
+    _favoritesService.idsNotifier.removeListener(_syncFavorite);
+    super.dispose();
+  }
+
+  void _syncFavorite() {
+    if (!mounted) return;
+    final isFavorite = _favoritesService.idsNotifier.value.contains(
+      _business.id,
+    );
+    if (isFavorite != _isFavorite) setState(() => _isFavorite = isFavorite);
   }
 
   Future<void> _loadFavoriteState() async {
@@ -143,16 +162,13 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) return;
     if (!mounted) return;
     // Desde que los favoritos viven en `user_favorites`, guardar puede fallar
-    // por red. El corazón no se mueve si eso pasa: pintarlo lleno haría creer
-    // que el negocio quedó guardado cuando no se escribió ninguna fila.
-    try {
-      final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
-      if (!mounted) return;
-      setState(() => _isFavorite = nowFavorite);
-    } on FavoritesServiceException catch (e) {
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
-    }
+    // por red. El corazón no se mueve si eso pasa (`null`): pintarlo lleno
+    // haría creer que el negocio quedó guardado cuando no se escribió ninguna
+    // fila. Si quitó el favorito, el helper ofrece "Deshacer"; ese cambio
+    // vuelve por `idsNotifier` (ver `_syncFavorite`).
+    final nowFavorite = await toggleFavoriteWithFeedback(context, _business.id);
+    if (nowFavorite == null || !mounted) return;
+    setState(() => _isFavorite = nowFavorite);
   }
 
   void _showComingSoon() {

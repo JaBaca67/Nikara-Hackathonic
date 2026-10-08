@@ -22,6 +22,7 @@ import 'package:nikara_app/features/settings/presentation/screens/settings_scree
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
 import 'package:nikara_app/theme/app_motion.dart';
@@ -158,13 +159,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _toggleFavorite(String id) async {
-    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
-    try {
-      await _favoritesService.toggleFavorite(id);
-    } on FavoritesServiceException catch (e) {
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
-    }
+    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya
+    // recarga la pantalla. Se usa el contexto de la pantalla (no el de la
+    // tarjeta) porque al quitar un favorito la tarjeta desaparece de la lista
+    // y su aviso de "Deshacer" tiene que seguir pudiendo mostrar un error.
+    await toggleFavoriteWithFeedback(context, id);
   }
 
   /// Mientras la galería está abierta (todavía no hay foto que guardar):
