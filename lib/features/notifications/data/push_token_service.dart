@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -16,7 +17,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 /// Registro best-effort a propósito: un fallo acá (permiso denegado, sin
 /// internet, Firebase todavía sin inicializar) nunca debe impedir el login ni
 /// romper las notificaciones in-app, que no dependen de esto.
-class PushTokenService {
+class PushTokenService with WidgetsBindingObserver {
   factory PushTokenService() => instance;
 
   PushTokenService._internal();
@@ -30,6 +31,7 @@ class PushTokenService {
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<String>? _tokenRefreshSub;
   Future<void> _registration = Future<void>.value();
+  bool _observingLifecycle = false;
 
   /// Eventos en los que el token de este dispositivo se re-registra: cubre
   /// login normal, login OAuth y `AuthService.switchAccount` (los tres
@@ -49,6 +51,10 @@ class PushTokenService {
 
   void startTracking() {
     if (!_platformSupportsPush) return;
+    if (!_observingLifecycle) {
+      WidgetsBinding.instance.addObserver(this);
+      _observingLifecycle = true;
+    }
     _authSub ??= AuthService().authStateChanges.listen((state) {
       if (state.event == AuthChangeEvent.signedOut) {
         unawaited(_unregisterCurrentDevice());
@@ -65,6 +71,16 @@ class PushTokenService {
     // initialSession puede haber pasado cuando nos suscribimos: registrar
     // también la sesión actual permite recibir push al reabrir la app.
     if (AuthService().currentAuthUser != null) {
+      unawaited(_registerCurrentDevice());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Recupera el registro si el arranque ocurrió sin conexión o si el
+    // usuario volvió de habilitar las notificaciones en Ajustes.
+    if (state == AppLifecycleState.resumed &&
+        AuthService().currentAuthUser != null) {
       unawaited(_registerCurrentDevice());
     }
   }

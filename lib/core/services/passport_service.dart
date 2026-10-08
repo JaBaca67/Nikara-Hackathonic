@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +8,7 @@ import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class PassportServiceException implements Exception {
   const PassportServiceException(this.message);
@@ -47,6 +49,16 @@ class PassportCollection {
   const PassportCollection(this.trips);
   final List<CompletedPassportTrip> trips;
 
+  List<Map<String, dynamic>> get notificationTrips => [
+    for (final trip in trips)
+      {
+        'trip_id': trip.id,
+        'business_id': trip.postcard.id,
+        'started_at': trip.startedAt.toUtc().toIso8601String(),
+        'completed_at': trip.postcard.sealedAt!.toUtc().toIso8601String(),
+      },
+  ];
+
   /// Repeated visits count as trips but preserve the first seal of a business.
   List<TravelPostcard> get postcards {
     final byBusiness = <String, TravelPostcard>{};
@@ -67,14 +79,20 @@ class PassportCollection {
 class PassportService {
   factory PassportService() => instance;
   PassportService._internal()
-    : _currentUserId = (() => AuthService().currentAuthUser?.id);
+    : _currentUserId = (() => AuthService().currentAuthUser?.id),
+      _onProgress = ((ownerId, collection) =>
+          NotificationService().syncPassportProgress(
+            ownerId: ownerId,
+            trips: collection.notificationTrips,
+          ));
   @visibleForTesting
-  PassportService.forTesting(this._currentUserId);
+  PassportService.forTesting(this._currentUserId, [this._onProgress]);
 
   static final instance = PassportService._internal();
   static final revision = ValueNotifier<int>(0);
   static final openRequested = ValueNotifier<bool>(false);
   final String? Function() _currentUserId;
+  final Future<void> Function(String, PassportCollection)? _onProgress;
   Future<void> _writeQueue = Future.value();
   static String _key(String ownerId) => 'completed_business_trips_v1_$ownerId';
 
@@ -183,12 +201,27 @@ class PassportService {
         );
       }
       revision.value++;
+      unawaited(_publishProgress(ownerId, updated));
       return updated.postcards.firstWhere((card) => card.id == business.id);
     } on PassportServiceException {
       rethrow;
     } catch (_) {
       throw const PassportServiceException(
         'No se pudo guardar la postal. Intenta de nuevo.',
+      );
+    }
+  }
+
+  Future<void> _publishProgress(
+    String ownerId,
+    PassportCollection collection,
+  ) async {
+    if (_currentUserId() != ownerId) return;
+    try {
+      await _onProgress?.call(ownerId, collection);
+    } catch (e) {
+      debugPrint(
+        '[PassportService] No se pudieron enviar los avisos del viaje: $e',
       );
     }
   }

@@ -13,6 +13,12 @@ enum NotificationTarget {
   /// Abre el perfil de la fundación cuyo id viaja en `reference_id`.
   organization,
 
+  /// Muestra el perfil propio con las insignias obtenidas.
+  achievements,
+
+  /// Muestra la colección de postales del usuario actual.
+  passport,
+
   /// Informativa: al tocarla solo se marca como leída.
   none,
 }
@@ -36,6 +42,16 @@ enum NotificationType {
     Icons.storefront_rounded,
     NotificationTarget.business,
   ),
+  achievementUnlocked(
+    'achievement_unlocked',
+    Icons.emoji_events_rounded,
+    NotificationTarget.achievements,
+  ),
+  postcardEarned(
+    'postcard_earned',
+    Icons.markunread_mailbox_rounded,
+    NotificationTarget.passport,
+  ),
   ecoActivityJoined(
     'eco_activity_joined',
     Icons.eco_rounded,
@@ -50,6 +66,16 @@ enum NotificationType {
     'eco_activity_preparation',
     Icons.checklist_rounded,
     NotificationTarget.ecoActivity,
+  ),
+  ecoActivityUpdated(
+    'eco_activity_updated',
+    Icons.event_note_rounded,
+    NotificationTarget.ecoActivity,
+  ),
+  ecoActivityCancelled(
+    'eco_activity_cancelled',
+    Icons.event_busy_rounded,
+    NotificationTarget.none,
   ),
   demoWelcome(
     'demo_welcome',

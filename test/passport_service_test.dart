@@ -142,4 +142,63 @@ void main() {
       '{broken',
     );
   });
+
+  test(
+    'completed trips publish persisted progress once and use real arrival dates',
+    () async {
+      final progress = <PassportCollection>[];
+      service = PassportService.forTesting(() => currentUser, (
+        owner,
+        collection,
+      ) async {
+        expect(owner, currentUser);
+        expect(
+          (await service.getCollection()).trips.length,
+          collection.trips.length,
+        );
+        progress.add(collection);
+      });
+      await complete();
+      await complete();
+      await complete(
+        tripId: 'trip-2',
+        completedAt: arrival.add(const Duration(hours: 1)),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(progress.map((collection) => collection.trips.length), [1, 2]);
+      expect(progress.last.notificationTrips.last, {
+        'trip_id': 'trip-2',
+        'business_id': business.id,
+        'started_at': start.toIso8601String(),
+        'completed_at': arrival.add(const Duration(hours: 1)).toIso8601String(),
+      });
+      expect(progress.last.postcards, hasLength(1));
+    },
+  );
+
+  test('notification failure never loses the earned postcard', () async {
+    service = PassportService.forTesting(() => currentUser, (_, _) async {
+      throw Exception('Entrega no disponible');
+    });
+    final postcard = await complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(postcard.isStamped, isTrue);
+    expect((await service.getCollection()).postcards, hasLength(1));
+  });
+
+  test('invalid trips do not publish progress', () async {
+    var notifications = 0;
+    service = PassportService.forTesting(() => currentUser, (_, _) async {
+      notifications++;
+    });
+    await expectLater(
+      complete(owner: 'traveler-b'),
+      throwsA(isA<PassportServiceException>()),
+    );
+    await expectLater(
+      complete(completedAt: start.subtract(const Duration(seconds: 1))),
+      throwsA(isA<PassportServiceException>()),
+    );
+    expect(notifications, 0);
+  });
 }

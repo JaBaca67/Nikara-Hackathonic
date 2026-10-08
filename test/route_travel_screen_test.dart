@@ -70,13 +70,13 @@ void main() {
     'paradas sin ubicación mantienen checklist y bloquean solo navegar',
     (tester) async {
       await open(tester);
-      final button = find.widgetWithText(FilledButton, 'Viajar a esta parada');
+      final button = find.widgetWithText(FilledButton, 'Ir a esta parada');
       expect(tester.widget<FilledButton>(button).onPressed, isNull);
       expect(find.text('Modo ruta'), findsOneWidget);
       expect(find.textContaining('2 paradas sin ubicación'), findsOneWidget);
-      final visit = find.text('Marcar visita').first;
+      final visit = find.text('Registrar visita').first;
       await tester.scrollUntilVisible(
-        find.text('1. Museo'),
+        find.text('Registrar visita'),
         180,
         scrollable: find.byType(Scrollable).first,
       );
@@ -102,8 +102,7 @@ void main() {
     final freeDay = find.text('Día libre');
     await tester.ensureVisible(freeDay);
     expect(freeDay, findsOneWidget);
-    expect(find.text('Viajar a esta parada'), findsNothing);
+    expect(find.text('Ir a esta parada'), findsNothing);
     expect(tester.takeException(), isNull);
   });
-
 }

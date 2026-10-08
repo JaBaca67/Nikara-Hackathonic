@@ -59,6 +59,22 @@ class NotificationService {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) return;
     try {
+      try {
+        // El trigger y este RPC comparten el mismo recibo: la respuesta del
+        // cliente puede reintentarse sin enviar dos confirmaciones.
+        await _client
+            .rpc(
+              'notify_eco_participation',
+              params: {'p_activity_id': activity.id},
+            )
+            .timeout(_deliveryTimeout);
+        revision.value++;
+        return;
+      } on PostgrestException catch (e) {
+        // Mantiene la confirmación actual durante el despliegue de 045.
+        if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+      }
+      if (AuthService().currentAuthUser?.id != userId) return;
       await _client
           .from(_table)
           .insert([
@@ -70,6 +86,38 @@ class NotificationService {
     } catch (e) {
       debugPrint(
         '[NotificationService] No se pudieron enviar los avisos ECO: $e',
+      );
+    }
+  }
+
+  Future<void> enableAutomations() async {
+    if (AuthService().currentAuthUser == null) return;
+    try {
+      await _client
+          .rpc('enable_user_notification_automations')
+          .timeout(_deliveryTimeout);
+    } catch (e) {
+      debugPrint(
+        '[NotificationService] No se pudieron activar los avisos automáticos: $e',
+      );
+    }
+  }
+
+  /// La colección permanece guardada aunque falle la red. Inicio vuelve a
+  /// sincronizarla y los recibos del servidor evitan repetir premios.
+  Future<void> syncPassportProgress({
+    required String ownerId,
+    required List<Map<String, dynamic>> trips,
+  }) async {
+    if (trips.isEmpty || AuthService().currentAuthUser?.id != ownerId) return;
+    try {
+      await _client
+          .rpc('sync_passport_notification_events', params: {'p_trips': trips})
+          .timeout(_deliveryTimeout);
+      revision.value++;
+    } catch (e) {
+      debugPrint(
+        '[NotificationService] No se pudieron sincronizar los avisos del pasaporte: $e',
       );
     }
   }

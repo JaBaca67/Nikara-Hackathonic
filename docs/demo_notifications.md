@@ -16,12 +16,14 @@ notificaciones, la inscripción continúa confirmada.
 Los mensajes preparados están en
 `lib/features/notifications/domain/models/notification_message.dart`.
 No se inventan promociones, precios ni horarios de los negocios. Las
-indicaciones ECO llegan al unirse; no se programa un recordatorio futuro.
+indicaciones ECO llegan al unirse. Los recordatorios futuros y los avisos por
+logros y postales se describen en [action_notifications.md](action_notifications.md).
 
 Las filas se insertan en la tabla existente `notifications`. La campana se
 actualiza mediante `NotificationService.revision` y el webhook de push existente
 entrega las mismas filas por FCM si el dispositivo tiene un token registrado y
-permiso para notificaciones. No requiere migraciones ni dependencias nuevas.
+permiso para notificaciones. El lote inicial no requiere migraciones; las
+automatizaciones por acciones y por horario requieren los scripts 045 y 046.
 
 Para repetir el lote completo durante otra demostración, iniciar sesión con
 otra cuenta. Las notificaciones de inscripción se pueden mostrar al unirse a

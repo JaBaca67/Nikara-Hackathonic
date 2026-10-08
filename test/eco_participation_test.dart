@@ -97,6 +97,17 @@ class _FakeEco {
 
   http.Client get client => MockClient((request) async {
     final path = request.url.path;
+    if (path.endsWith('/rpc/notify_eco_participation')) {
+      return http.Response(
+        jsonEncode({
+          'code': 'PGRST202',
+          'message': 'Migración pendiente (simulada)',
+        }),
+        404,
+        request: request,
+        headers: {'content-type': 'application/json'},
+      );
+    }
     if (path.endsWith('/notifications') && request.method == 'POST') {
       if (notificationsFail) return _error(request);
       notifications.addAll(

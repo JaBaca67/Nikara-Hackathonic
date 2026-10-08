@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'package:nikara_app/core/navigation/root_navigator.dart';
+import 'package:nikara_app/features/notifications/data/notification_service.dart';
 import 'package:nikara_app/features/notifications/presentation/screens/notifications_screen.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 
@@ -66,7 +67,7 @@ class PushMessageService {
       onDidReceiveNotificationResponse: (_) => _openNotifications(),
     );
 
-    FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+    FirebaseMessaging.onMessage.listen(showForegroundNotification);
     FirebaseMessaging.onMessageOpenedApp.listen((_) => _openNotifications());
 
     // La app pudo haber arrancado *desde* el tap en el push (estaba cerrada
@@ -75,23 +76,42 @@ class PushMessageService {
     if (initialMessage != null) _openNotifications();
   }
 
-  void _showForegroundNotification(RemoteMessage message) {
+  @visibleForTesting
+  Future<void> showForegroundNotification(RemoteMessage message) async {
+    NotificationService.revision.value++;
     final notification = message.notification;
-    if (notification == null) return;
-    _localNotifications.show(
-      id: notification.hashCode,
-      title: notification.title,
-      body: notification.body,
-      notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channel.id,
-          _channel.name,
-          channelDescription: _channel.description,
-          importance: Importance.high,
-          priority: Priority.high,
+    final title = notification?.title ?? message.data['title']?.toString();
+    final body = notification?.body ?? message.data['body']?.toString();
+    if ((title == null || title.isEmpty) && (body == null || body.isEmpty)) {
+      return;
+    }
+    final reference = message.data['notification_id']?.toString();
+    final tag = reference != null && reference.isNotEmpty
+        ? reference
+        : message.messageId;
+    try {
+      await _localNotifications.show(
+        id: tag == null ? message.hashCode : 0,
+        title: title ?? 'Níkara',
+        body: body,
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channel.id,
+            _channel.name,
+            channelDescription: _channel.description,
+            tag: tag,
+            importance: Importance.high,
+            priority: Priority.high,
+            styleInformation: BigTextStyleInformation(
+              body ?? '',
+              contentTitle: title ?? 'Níkara',
+            ),
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('[PushMessageService] No se pudo mostrar el push: $e');
+    }
   }
 
   void _openNotifications() {

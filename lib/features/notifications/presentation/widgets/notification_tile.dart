@@ -16,7 +16,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// la leída sobre [AppColors.profileDivider] el cuerpo en
 /// [AppColors.settingsTextMuted] caía a 3.5:1 de contraste, peor que el 4.1:1
 /// que ese par ya tiene en el resto de la app.
-class NotificationTile extends StatelessWidget {
+class NotificationTile extends StatefulWidget {
   const NotificationTile({
     super.key,
     required this.notification,
@@ -31,12 +31,37 @@ class NotificationTile extends StatelessWidget {
   final DateTime? now;
 
   @override
+  State<NotificationTile> createState() => _NotificationTileState();
+}
+
+class _NotificationTileState extends State<NotificationTile> {
+  bool _expanded = false;
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
+
+  @override
+  void didUpdateWidget(covariant NotificationTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notification.id != widget.notification.id) _expanded = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final notification = widget.notification;
     final unread = !notification.isRead;
-    final relative = notification.relativeTime(now: now);
+    final relative = notification.relativeTime(now: widget.now);
+    final createdAt = notification.createdAt.toLocal();
+    String padded(int value) => value.toString().padLeft(2, '0');
+    final date =
+        '${padded(createdAt.day)}/${padded(createdAt.month)}/'
+        '${createdAt.year} · ${padded(createdAt.hour)}:${padded(createdAt.minute)}';
 
     return Semantics(
       button: true,
+      onLongPress: _toggleExpanded,
+      hint: _expanded
+          ? 'Mantén presionado para contraer el mensaje.'
+          : 'Mantén presionado para leer el mensaje completo.',
       label: unread
           ? 'No leída. ${notification.title}. $relative'
           : '${notification.title}. $relative',
@@ -52,7 +77,8 @@ class NotificationTile extends StatelessWidget {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadius.md),
-          onTap: onTap,
+          onTap: widget.onTap,
+          onLongPress: _toggleExpanded,
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Row(
@@ -70,8 +96,10 @@ class NotificationTile extends StatelessWidget {
                           Expanded(
                             child: Text(
                               notification.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              maxLines: _expanded ? null : 2,
+                              overflow: _expanded
+                                  ? TextOverflow.visible
+                                  : TextOverflow.ellipsis,
                               style: AppTextStyles.settingsRowTitle.copyWith(
                                 color: AppColors.settingsTextDark,
                                 fontWeight: unread
@@ -92,12 +120,30 @@ class NotificationTile extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xs),
                       Text(
                         notification.body,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: _expanded ? null : 3,
+                        overflow: _expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
                         style: AppTextStyles.settingsSubtitle.copyWith(
                           color: AppColors.settingsTextMuted,
                         ),
                       ),
+                      if (_expanded) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          '$date · ${unread ? 'No leída' : 'Leída'}',
+                          style: AppTextStyles.settingsRowCaption.copyWith(
+                            color: AppColors.settingsTextMuted,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: _toggleExpanded,
+                            child: const Text('Ver menos'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

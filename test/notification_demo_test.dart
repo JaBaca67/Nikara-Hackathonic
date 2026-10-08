@@ -69,6 +69,22 @@ void main() {
       publishableKey: 'test-anon-key-not-real',
       httpClient: MockClient((request) async {
         requests.add(request);
+        if (request.url.path.contains('/rpc/')) {
+          if (request.url.path.endsWith('/sync_passport_notification_events')) {
+            return http.Response(
+              '1',
+              200,
+              request: request,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            'null',
+            200,
+            request: request,
+            headers: {'content-type': 'application/json'},
+          );
+        }
         if (request.url.path.endsWith('/notifications')) {
           if (request.method == 'GET') {
             final gate = readGate;
@@ -252,6 +268,88 @@ void main() {
   });
 
   test(
+    'activar avisos usa el RPC propio sin reenviar la programación',
+    () async {
+      await NotificationService().enableAutomations();
+      expect(requests, hasLength(1));
+      expect(
+        requests.single.url.path,
+        endsWith('/rpc/enable_user_notification_automations'),
+      );
+      expect(jsonDecode(requests.single.body), isNull);
+    },
+  );
+
+  test(
+    'sincronizar el pasaporte conserva los eventos y omite cuentas ajenas',
+    () async {
+      final trips = [
+        {
+          'trip_id': 'viaje-1',
+          'business_id': 'cafe-1',
+          'started_at': '2026-10-08T14:00:00Z',
+          'completed_at': '2026-10-08T14:20:00Z',
+        },
+      ];
+      await NotificationService().syncPassportProgress(
+        ownerId: _other,
+        trips: trips,
+      );
+      await NotificationService().syncPassportProgress(ownerId: _me, trips: []);
+      expect(requests, isEmpty);
+      final revision = NotificationService.revision.value;
+      await NotificationService().syncPassportProgress(
+        ownerId: _me,
+        trips: trips,
+      );
+      expect(jsonDecode(requests.single.body), {'p_trips': trips});
+      expect(NotificationService.revision.value, revision + 1);
+    },
+  );
+
+  test(
+    'unirse con el RPC disponible no inserta otra confirmación desde el cliente',
+    () async {
+      final activity = EcoActivityModel.fromRow({
+        'id': 'jornada-1',
+        'title': 'Limpieza',
+        'category': 'Limpieza',
+        'start_time': '2026-10-15T14:00:00Z',
+        'created_at': '2026-10-08T14:00:00Z',
+      });
+      await NotificationService().notifyEcoActivityJoined(activity);
+      expect(requests, hasLength(1));
+      expect(
+        requests.single.url.path,
+        endsWith('/rpc/notify_eco_participation'),
+      );
+      expect(rows, isEmpty);
+    },
+  );
+
+  test(
+    'los tipos nuevos abren los logros y el pasaporte; una cancelación es informativa',
+    () {
+      expect(
+        NotificationType.fromWire('achievement_unlocked').target,
+        NotificationTarget.achievements,
+      );
+      expect(
+        NotificationType.fromWire('postcard_earned').target,
+        NotificationTarget.passport,
+      );
+      expect(
+        NotificationType.fromWire('eco_activity_updated').target,
+        NotificationTarget.ecoActivity,
+      );
+      expect(
+        NotificationType.fromWire('eco_activity_cancelled').target,
+        NotificationTarget.none,
+      );
+    },
+  );
+
+  test(
     'la preparación usa requisitos reales y no anuncia un recordatorio futuro',
     () {
       final activity = EcoActivityModel.fromRow({
@@ -259,9 +357,9 @@ void main() {
         'title': 'Limpieza de playa',
         'category': 'Limpieza',
         'location': 'Pochomil',
-      'start_time': '2026-10-15T14:00:00Z',
-      'created_at': '2026-10-08T14:00:00Z',
-      'requirements': ['Guantes', '  ', 'Botella reutilizable'],
+        'start_time': '2026-10-15T14:00:00Z',
+        'created_at': '2026-10-08T14:00:00Z',
+        'requirements': ['Guantes', '  ', 'Botella reutilizable'],
       });
       final messages = NotificationMessage.participation(activity);
       expect(messages.first.body, contains('Pochomil'));

@@ -275,6 +275,8 @@ erDiagram
 | `origin_places` | Catálogo de solo lectura con 153 municipios y cabeceras (códigos INIDE). |
 | `audit_logs` | Registro de auditoría, accesible solo a `service_role`. |
 
+El **modelo ER normalizado hasta la 2FN** (el que va al entregable) vive en [`docs/er_2fn.md`](docs/er_2fn.md), generado por código desde las migraciones — ver [`scripts/er_diagram/`](scripts/er_diagram/), que además lo publica en Miro.
+
 Detalle columna por columna en [`docs/database_erd.md`](docs/database_erd.md); procedencia y privacidad en [`docs/user_origin.md`](docs/user_origin.md); descubrimiento geográfico en [`docs/discovery_geography.md`](docs/discovery_geography.md).
 
 ### Seguridad

@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
+import 'package:nikara_app/features/profile/presentation/screens/passport_collection_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
@@ -37,11 +42,13 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
-class _NotificationsScreenState extends State<NotificationsScreen> {
+class _NotificationsScreenState extends State<NotificationsScreen>
+    with WidgetsBindingObserver {
   final _service = NotificationService();
 
   List<AppNotification>? _notifications;
   String? _error;
+  int _loadVersion = 0;
 
   /// True mientras se resuelve el recurso de una notificación ya tocada —
   /// evita abrir dos detalles por un doble toque.
@@ -54,20 +61,45 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    NotificationService.revision.addListener(_onNotificationsChanged);
     if (!_isGuest) _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _error = null;
-      _notifications = null;
-    });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    NotificationService.revision.removeListener(_onNotificationsChanged);
+    super.dispose();
+  }
+
+  void _onNotificationsChanged() {
+    if (mounted && !_isGuest) unawaited(_load(quietly: true));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onNotificationsChanged();
+  }
+
+  Future<void> _load({bool quietly = false}) async {
+    final version = ++_loadVersion;
+    if (!quietly) {
+      setState(() {
+        _error = null;
+        _notifications = null;
+      });
+    }
     try {
       final rows = await _service.getMine();
-      if (!mounted) return;
-      setState(() => _notifications = rows);
+      if (!mounted || version != _loadVersion) return;
+      setState(() {
+        _error = null;
+        _notifications = rows;
+      });
     } on NotificationServiceException catch (e) {
-      if (!mounted) return;
+      if (!mounted || version != _loadVersion) return;
+      if (quietly && _notifications != null) return;
       setState(() {
         _error = e.message;
         _notifications = const [];
@@ -150,11 +182,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           await _openEcoActivity(notification);
         case NotificationTarget.organization:
           await _openOrganization(notification);
+        case NotificationTarget.achievements:
+          await pushSharedAxis(context, const ProfileScreen());
+        case NotificationTarget.passport:
+          await _openPassport();
         case NotificationTarget.none:
           break;
       }
     } finally {
       if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<void> _openPassport() async {
+    try {
+      final collection = await PassportService().getCollection();
+      if (!mounted) return;
+      await pushSharedAxis(
+        context,
+        PassportCollectionScreen(postcards: collection.postcards),
+      );
+    } on PassportServiceException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
     }
   }
 

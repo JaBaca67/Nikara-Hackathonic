@@ -61,6 +61,9 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     text: widget.initialRoute?.title ?? '',
   );
   final _searchController = TextEditingController();
+  late final _descriptionController = TextEditingController(
+    text: widget.initialRoute?.description ?? '',
+  );
 
   int _step = 0;
   int _addingDay = 1;
@@ -125,6 +128,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _descriptionController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -170,8 +174,9 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           }
           if (!_destinationFilter.matches(
             municipalityByCode(stop.municipalityCode),
-          ))
+          )) {
             return false;
+          }
           if (query.isEmpty) return true;
           return RoutePlanner.searchKey(stop.title).contains(query) ||
               RoutePlanner.searchKey(stop.subtitle).contains(query);
@@ -477,6 +482,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
       if (initial == null) {
         await RouteService().createRoute(
           title: _titleController.text.trim(),
+          description: _descriptionController.text.trim(),
           days: _days,
           isPublic: _isPublic,
           stops: _stops,
@@ -486,6 +492,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
         await RouteService().updateRoute(
           initial.id,
           title: _titleController.text.trim(),
+          description: _descriptionController.text.trim(),
           days: _days,
           isPublic: _isPublic,
           imageUrls: imageUrls,
@@ -554,6 +561,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
                 child: switch (_step) {
                   0 => _StepName(
                     controller: _titleController,
+                    descriptionController: _descriptionController,
                     showError: _titleTouched && !_titleIsValid,
                     days: _days,
                     isPublic: _isPublic,
@@ -874,6 +882,7 @@ class _StepBubble extends StatelessWidget {
 class _StepName extends StatelessWidget {
   const _StepName({
     required this.controller,
+    required this.descriptionController,
     required this.showError,
     required this.days,
     required this.isPublic,
@@ -886,6 +895,7 @@ class _StepName extends StatelessWidget {
   });
 
   final TextEditingController controller;
+  final TextEditingController descriptionController;
   final bool showError;
   final int days;
   final bool isPublic;
@@ -1005,6 +1015,48 @@ class _StepName extends StatelessWidget {
               Text('DURACIÓN', style: AppTextStyles.settingsSectionLabel),
               const SizedBox(height: 10),
               _DayStepper(days: days, onChanged: onDaysChanged),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DESCRIPCIÓN BREVE',
+                style: AppTextStyles.settingsSectionLabel,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const ValueKey('route-description'),
+                controller: descriptionController,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: RouteModel.maxDescriptionLength,
+                textCapitalization: TextCapitalization.sentences,
+                style: AppTextStyles.settingsSubtitle.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  hintText: '¿Qué descubrirán quienes recorran esta ruta?',
+                  helperText: 'Opcional · Se mostrará junto a tu ruta',
+                  helperMaxLines: 2,
+                  filled: true,
+                  fillColor: AppColors.settingsBackground,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    borderSide: const BorderSide(
+                      color: AppColors.mapControlBorder,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
