@@ -21,24 +21,34 @@ void main() {
     await Supabase.initialize(
       url: 'https://example.supabase.co',
       publishableKey: 'test-anon-key-not-real',
+      realtimeClientOptions: RealtimeClientOptions(
+        transport: (_, _) => throw StateError('Realtime simulado sin conexión'),
+        disconnectOnEmptyChannelsAfter: Duration.zero,
+      ),
       httpClient: MockClient(
         (request) async => http.Response(
-          jsonEncode([
-            for (final category in ['Limpieza', 'Fauna'])
-              {
-                'id': category,
-                'title': '$category del río',
-                'category': category,
-                'description': 'Actividad ambiental',
-                'location': category == 'Fauna' ? 'Managua' : 'Granada',
-                'municipality_code': category == 'Fauna' ? '5525' : '7015',
-                'start_time': DateTime.now()
-                    .add(const Duration(days: 10))
-                    .toIso8601String(),
-                'created_at': DateTime(2026).toIso8601String(),
-                'status': 'aprobado',
-              },
-          ]),
+          jsonEncode(
+            request.url.queryParameters['start_time']?.startsWith('lt.') == true
+                ? []
+                : [
+                    for (final category in ['Limpieza', 'Fauna'])
+                      {
+                        'id': category,
+                        'title': '$category del río',
+                        'category': category,
+                        'description': 'Actividad ambiental',
+                        'location': category == 'Fauna' ? 'Managua' : 'Granada',
+                        'municipality_code': category == 'Fauna'
+                            ? '5525'
+                            : '7015',
+                        'start_time': DateTime.now()
+                            .add(const Duration(days: 10))
+                            .toIso8601String(),
+                        'created_at': DateTime(2026).toIso8601String(),
+                        'status': 'aprobado',
+                      },
+                  ],
+          ),
           200,
           request: request,
           headers: {'content-type': 'application/json; charset=utf-8'},

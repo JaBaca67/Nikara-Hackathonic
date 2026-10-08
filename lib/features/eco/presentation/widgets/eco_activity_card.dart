@@ -50,7 +50,7 @@ class EcoActivityCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppRadius.md),
               child: SizedBox(
                 width: 84,
-                height: 118,
+                height: 160,
                 child: LocalImage(
                   path: activity.imageUrl,
                   fallbackIcon: ecoCategoryIcon(activity.category),

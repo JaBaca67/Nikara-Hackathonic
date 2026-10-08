@@ -9,6 +9,8 @@ import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart'
 import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
@@ -109,98 +111,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Mientras corre cerrar sesión o eliminar la cuenta: bloquea la pantalla
+  /// (`AppBusyOverlay`) y el botón atrás, porque ambas acciones terminan
+  /// sacando a la persona de Ajustes y no admiten un segundo disparo.
+  bool _isBusy = false;
+  String _busyMessage = '';
+
   Future<void> _confirmLogout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text(
-          'Cerrar sesión',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
-          '¿Seguro que quieres cerrar tu sesión de Níkara?',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Cerrar sesión',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.destructive,
-              ),
-            ),
-          ),
-        ],
-      ),
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Cerrar sesión',
+      message: '¿Seguro que quieres cerrar tu sesión de Níkara?',
+      confirmLabel: 'Cerrar sesión',
     );
-    if (confirmed != true) return;
-    await _authService.signOut();
-    await GuestSessionService().exitGuestMode();
-    if (!mounted) return;
-    pushFadeThroughAndRemoveUntil(context, const LoginScreen());
-  }
+    if (!confirmed || !mounted) return;
 
-  Future<void> _confirmDeleteAccount() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text(
-          'Eliminar cuenta',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
-          'Esta acción es permanente: se borrará tu perfil y toda tu '
-          'información de Níkara, y no podrás recuperarla. ¿Seguro que '
-          'quieres eliminar tu cuenta?',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar cuenta',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.destructive,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
+    setState(() {
+      _isBusy = true;
+      _busyMessage = 'Cerrando sesión…';
+    });
     try {
-      await _authService.deleteAccount();
+      await _authService.signOut();
+      await GuestSessionService().exitGuestMode();
+      if (!mounted) return;
+      pushFadeThroughAndRemoveUntil(context, const LoginScreen());
     } on AuthServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
-      return;
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo cerrar la sesión. Verifica tu internet e intenta de nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
     }
-    await GuestSessionService().exitGuestMode();
-    if (!mounted) return;
-    pushFadeThroughAndRemoveUntil(context, const LoginScreen());
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar cuenta',
+      message:
+          'Esta acción es permanente: se borrará tu perfil y toda tu '
+          'información de Níkara, y no podrás recuperarla. ¿Seguro que '
+          'quieres eliminar tu cuenta?',
+      confirmLabel: 'Eliminar cuenta',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _isBusy = true;
+      _busyMessage = 'Eliminando tu cuenta…';
+    });
+    try {
+      await _authService.deleteAccount();
+      await GuestSessionService().exitGuestMode();
+      if (!mounted) return;
+      pushFadeThroughAndRemoveUntil(context, const LoginScreen());
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo eliminar tu cuenta. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: AppColors.settingsBackground,
       // El header blanco (surface100) llega hasta y=0 y absorbe la barra de
       // estado con su propio color, en vez de que el Scaffold pinte una
@@ -381,6 +370,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+
+    return PopScope(
+      canPop: !_isBusy,
+      child: AppBusyOverlay(
+        visible: _isBusy,
+        message: _busyMessage,
+        child: scaffold,
       ),
     );
   }

@@ -26,9 +26,9 @@ class EcoSeedTests(unittest.TestCase):
             path.write_text(json.dumps(broken),encoding='utf8')
             with self.assertRaisesRegex(ValueError,'repetido'):catalog(path)
             broken=copy.deepcopy(self.data)
-            broken['activities'][0]['title']='Evento confirmado'
+            broken['activities'][0]['description']='Actividad comunitaria real.'
             path.write_text(json.dumps(broken),encoding='utf8')
-            with self.assertRaisesRegex(ValueError,'demostración'):catalog(path)
+            with self.assertRaisesRegex(ValueError,'descripción conserva'):catalog(path)
 
     def test_repeat_preserves_identity_and_refuses_changed_assets(self):
         org='7a4feee5-cfa2-41ce-a683-fd090aac95ed'; owner='30a57d65-a20c-407e-bd7f-d07d8c3c54da'

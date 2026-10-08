@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:nikara_app/features/profile/presentation/screens/edit_public_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
@@ -27,6 +29,7 @@ import 'package:nikara_app/features/settings/presentation/screens/settings_scree
 import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
 import 'package:nikara_app/theme/app_motion.dart';
@@ -170,26 +173,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loadError = e.message;
         _isLoading = false;
       });
+    } on FavoritesServiceException catch (e) {
+      // Sin esto un fallo de red al leer los favoritos escapaba sin captura y
+      // dejaba la pantalla cargando para siempre; ahora muestra el mismo
+      // estado de error (con su "Reintentar") que los demás fallos de carga.
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _toggleFavorite(String id) async {
-    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
-    try {
-      await _favoritesService.toggleFavorite(id);
-    } on FavoritesServiceException catch (e) {
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
-    }
+    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya
+    // recarga la pantalla. Se usa el contexto de la pantalla (no el de la
+    // tarjeta) porque al quitar un favorito la tarjeta desaparece de la lista
+    // y su aviso de "Deshacer" tiene que seguir pudiendo mostrar un error.
+    await toggleFavoriteWithFeedback(context, id);
   }
 
+  /// Mientras la galería está abierta (todavía no hay foto que guardar):
+  /// `_isSavingAvatar` solo cubre la subida, y un segundo toque aquí abriría
+  /// otro selector encima.
+  bool _isPickingAvatar = false;
+
   Future<void> _pickAvatar() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      imageQuality: 85,
-    );
+    if (_isSavingAvatar || _isPickingAvatar) return;
+    _isPickingAvatar = true;
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 85,
+      );
+    } on Exception {
+      // Permiso de galería denegado o el selector del sistema falló.
+      _isPickingAvatar = false;
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo abrir tu galería. Revisa los permisos de la app e '
+        'intenta de nuevo.',
+      );
+      return;
+    }
+    _isPickingAvatar = false;
     if (picked == null || !mounted) return;
+
     setState(() => _isSavingAvatar = true);
     try {
       await _authService.updateAvatar(picked);
@@ -197,6 +229,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } on AuthServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo actualizar tu foto. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _isSavingAvatar = false);
     }
@@ -411,6 +450,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   FilledButton.icon(
                     onPressed: () {
                       setState(() => _isLoading = true);
+                      // Primero los favoritos: si el fallo fue de red, así
+                      // `_loadAll` encuentra la lectura ya hecha (o en curso).
+                      unawaited(FavoritesService().preload());
                       _loadAll();
                     },
                     icon: const Icon(Icons.refresh),

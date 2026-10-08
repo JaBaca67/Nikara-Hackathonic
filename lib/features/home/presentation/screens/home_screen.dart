@@ -28,6 +28,7 @@ import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/category_icons_row.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -213,12 +214,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _loadUserName() async {
     if (GuestSessionService().isGuest || !AuthService().isLoggedIn) return;
-    final profile = await AuthService().getCurrentProfile();
-    if (!mounted || profile == null) return;
-    setState(() {
-      _userName = profile.firstName;
-      _role = profile.role;
-    });
+    try {
+      final profile = await AuthService().getCurrentProfile();
+      if (!mounted || profile == null) return;
+      setState(() {
+        _userName = profile.firstName;
+        _role = profile.role;
+      });
+    } on AuthServiceException catch (e) {
+      // El nombre del saludo es decorativo: sin red Inicio sigue usable sin
+      // él. Antes la excepción se escapaba sin captura.
+      debugPrint('No se pudo leer el perfil para el saludo: ${e.message}');
+    }
   }
 
   void _openAdminPanel() {
@@ -290,6 +297,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _heroPhotoIndex = 0;
     });
     _resetHero();
+  }
+
+  /// "Reintentar" del estado de error: además de los negocios vuelve a pedir
+  /// los favoritos, porque sin red ambas lecturas fallan juntas y, si solo se
+  /// reintentara la primera, los corazones quedaban sin marcar.
+  void _retryLoad() {
+    unawaited(FavoritesService().preload());
+    unawaited(_loadBusinesses());
   }
 
   Future<void> _loadBusinesses() async {
@@ -463,10 +478,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           Expanded(
             child: _loadError != null
-                ? _LoadErrorState(
-                    message: _loadError!,
-                    onRetry: _loadBusinesses,
-                  )
+                ? _LoadErrorState(message: _loadError!, onRetry: _retryLoad)
                 : businesses == null
                 ? const Center(
                     child: CircularProgressIndicator(
@@ -1263,12 +1275,7 @@ class _FavoriteButton extends StatelessWidget {
               return;
             }
             if (!context.mounted) return;
-            try {
-              await FavoritesService().toggleFavorite(businessId);
-            } on FavoritesServiceException catch (e) {
-              if (!context.mounted) return;
-              AppSnackbar.showError(context, e.message);
-            }
+            await toggleFavoriteWithFeedback(context, businessId);
           },
           child: Container(
             width: size,

@@ -301,7 +301,7 @@ class ReviewService {
       throw ReviewServiceException(
         targetType == ecoActivityTargetType && e.code == 'P0001'
             ? e.message
-            : 'No se pudo publicar tu reseña: ${e.message}',
+            : 'No se pudo publicar tu reseña. Intenta de nuevo en un momento.',
       );
     } catch (_) {
       throw const ReviewServiceException(

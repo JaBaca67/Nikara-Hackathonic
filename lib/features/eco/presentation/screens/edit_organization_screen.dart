@@ -8,6 +8,7 @@ import 'package:nikara_app/features/eco/data/organization_service.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_form_fields.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/organization_image_field.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -116,41 +117,17 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
   }
 
   Future<void> _confirmDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-        ),
-        title: Text(
-          '¿Eliminar fundación?',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: '¿Eliminar fundación?',
+      message:
           'Se eliminará "${widget.organization.name}" de forma permanente. '
           'Las jornadas que publicaste en su nombre no se borran: pasan a '
           'figurar como publicaciones tuyas a título personal.',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.destructive,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar',
     );
-    if (confirmed != true) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _isDeleting = true);
     try {
@@ -164,7 +141,15 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
     } on OrganizationServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
-      if (mounted) setState(() => _isDeleting = false);
+      setState(() => _isDeleting = false);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo eliminar la fundación. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+      setState(() => _isDeleting = false);
     }
   }
 

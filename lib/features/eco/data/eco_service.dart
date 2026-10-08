@@ -21,6 +21,34 @@ class EcoServiceException implements Exception {
   String toString() => message;
 }
 
+/// Por qué no se pudo unir o salir de una actividad. La pantalla decide con
+/// esto el tipo de aviso: [retryable] es un fallo real (red, tiempo, servidor)
+/// y ofrece "Reintentar"; los demás son situaciones normales que se explican
+/// sin parecer un error.
+enum EcoParticipationFailure {
+  notLoggedIn,
+  alreadyJoined,
+  full,
+  ended,
+  unavailable,
+  retryable,
+}
+
+/// Error de [EcoService.joinActivity]/[EcoService.leaveActivity], con el
+/// mensaje ya en español y sin texto técnico del servidor.
+class EcoParticipationException extends EcoServiceException {
+  const EcoParticipationException(super.message, this.failure, {this.activity});
+
+  final EcoParticipationFailure failure;
+
+  /// Lo último que dijo el servidor de la actividad, cuando el rechazo salió
+  /// de leerla (llena, finalizada, ya inscrito): la pantalla puede ponerse al
+  /// día sin recargar.
+  final EcoActivityModel? activity;
+
+  bool get canRetry => failure == EcoParticipationFailure.retryable;
+}
+
 /// Persiste [EcoActivityModel] en `eco_activities`/`eco_participants` (supabase/sql/009_eco_activities.sql); mismo patrón singleton que [BusinessStorageService].
 class EcoService {
   factory EcoService() => EcoService.instance;
@@ -271,25 +299,42 @@ class EcoService {
         .toList(growable: false);
   }
 
+  /// Tope para unirse o salir: sin red la petición puede quedarse colgada
+  /// mucho más, y el botón no debe girar para siempre.
+  static const participationTimeout = Duration(seconds: 15);
+
   /// "Unirme": se asume que quien llama ya validó con [GuestGuard.allow] (un invitado no tiene id para insertar).
-  Future<void> joinActivity(String activityId) async {
+  ///
+  /// Antes de inscribir lee la actividad con datos frescos y rechaza si ya
+  /// finalizó, ya no tiene cupo o la persona ya está inscrita: la copia que
+  /// trae la pantalla puede estar vieja. Devuelve la actividad ya con la
+  /// persona inscrita y el cupo al día.
+  ///
+  /// Lanza [EcoParticipationException] (mensaje en español, sin texto técnico).
+  Future<EcoActivityModel> joinActivity(String activityId) async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
-      throw const EcoServiceException(
-        'Necesitas iniciar sesión para unirte a una actividad.',
+      throw const EcoParticipationException(
+        'Inicia sesión para unirte a la actividad.',
+        EcoParticipationFailure.notLoggedIn,
       );
     }
     try {
-      await _client.from('eco_participants').insert({
-        'activity_id': activityId,
-        'user_id': userId,
-      });
-      revision.value++;
+      return await _join(activityId, userId).timeout(participationTimeout);
+    } on EcoParticipationException {
+      rethrow;
+    } on TimeoutException {
+      throw const EcoParticipationException(
+        'La inscripción tardó demasiado. Verifica tu internet e intenta de '
+        'nuevo.',
+        EcoParticipationFailure.retryable,
+      );
     } on PostgrestException catch (e) {
       // Violación de unicidad = ya estaba inscrito, no es un error real desde su perspectiva.
       if (e.code == '23505') {
-        throw const EcoServiceException(
-          'Ya estás participando en esta actividad.',
+        throw const EcoParticipationException(
+          'Ya estás inscrito en esta actividad.',
+          EcoParticipationFailure.alreadyJoined,
         );
       }
       // Disparado por el trigger `enforce_eco_capacity`
@@ -297,26 +342,84 @@ class EcoService {
       // se pintó "X disponibles" y que se intentó unir — típicamente otra
       // persona tomando el último lugar.
       if (e.message.contains('cupo máximo')) {
-        throw const EcoServiceException(
-          'Esta jornada ya alcanzó su cupo máximo.',
+        throw const EcoParticipationException(
+          'La actividad está llena: ya no quedan cupos.',
+          EcoParticipationFailure.full,
         );
       }
-      throw EcoServiceException(
-        'No se pudo completar la inscripción: ${e.message}',
+      throw const EcoParticipationException(
+        'No se pudo completar la inscripción. Intenta de nuevo en un momento.',
+        EcoParticipationFailure.retryable,
       );
-    } catch (_) {
-      throw const EcoServiceException(
-        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+    } on Exception {
+      throw const EcoParticipationException(
+        'Sin conexión. No se pudo completar la inscripción. Verifica tu '
+        'internet e intenta de nuevo.',
+        EcoParticipationFailure.retryable,
       );
     }
   }
 
-  /// "Abandonar actividad".
+  Future<EcoActivityModel> _join(String activityId, String userId) async {
+    final fresh = await _readForParticipation(activityId);
+    if (fresh == null) {
+      throw const EcoParticipationException(
+        'Esta actividad ya no está disponible.',
+        EcoParticipationFailure.unavailable,
+      );
+    }
+    if (fresh.isPast) {
+      throw EcoParticipationException(
+        'Esta actividad ya finalizó.',
+        EcoParticipationFailure.ended,
+        activity: fresh,
+      );
+    }
+    if (fresh.isJoinedByCurrentUser) {
+      throw EcoParticipationException(
+        'Ya estás inscrito en esta actividad.',
+        EcoParticipationFailure.alreadyJoined,
+        activity: fresh,
+      );
+    }
+    if (fresh.isFull) {
+      throw EcoParticipationException(
+        'La actividad está llena: ya no quedan cupos.',
+        EcoParticipationFailure.full,
+        activity: fresh,
+      );
+    }
+    await _client.from('eco_participants').insert({
+      'activity_id': activityId,
+      'user_id': userId,
+    });
+    revision.value++;
+    return fresh.withParticipation(
+      isJoined: true,
+      participantCount: fresh.participantCount + 1,
+    );
+  }
+
+  /// Igual que [getActivityById] pero dejando pasar las excepciones crudas:
+  /// quien llama las traduce a un [EcoParticipationException].
+  Future<EcoActivityModel?> _readForParticipation(String id) async {
+    try {
+      return await _getActivityById(id, select: _selectWithOrganization);
+    } on PostgrestException catch (e) {
+      if (_isMissingEmbed(e)) {
+        return _getActivityById(id, select: _selectWithoutOrganization);
+      }
+      rethrow;
+    }
+  }
+
+  /// "Abandonar actividad". Lanza [EcoParticipationException].
   Future<void> leaveActivity(String activityId) async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) {
-      throw const EcoServiceException(
-        'Necesitas iniciar sesión para gestionar tus actividades.',
+      throw const EcoParticipationException(
+        'Inicia sesión para gestionar tus actividades.',
+        EcoParticipationFailure.notLoggedIn,
       );
     }
     try {
@@ -324,15 +427,25 @@ class EcoService {
           .from('eco_participants')
           .delete()
           .eq('activity_id', activityId)
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .timeout(participationTimeout);
       revision.value++;
-    } on PostgrestException catch (e) {
-      throw EcoServiceException(
-        'No se pudo abandonar la actividad: ${e.message}',
+    } on TimeoutException {
+      throw const EcoParticipationException(
+        'La operación tardó demasiado. Verifica tu internet e intenta de '
+        'nuevo.',
+        EcoParticipationFailure.retryable,
       );
-    } catch (_) {
-      throw const EcoServiceException(
-        'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+    } on PostgrestException {
+      throw const EcoParticipationException(
+        'No se pudo salir de la actividad. Intenta de nuevo en un momento.',
+        EcoParticipationFailure.retryable,
+      );
+    } on Exception {
+      throw const EcoParticipationException(
+        'Sin conexión. No se pudo salir de la actividad. Verifica tu '
+        'internet e intenta de nuevo.',
+        EcoParticipationFailure.retryable,
       );
     }
   }

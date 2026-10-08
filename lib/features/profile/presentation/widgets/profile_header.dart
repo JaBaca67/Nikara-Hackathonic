@@ -37,25 +37,30 @@ class ProfileHeaderShell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Cada botón ocupa 48dp (su círculo sigue siendo de 36, con 6 de aire
+          // a cada lado), así que no lleva separador propio y el relleno se
+          // reparte para que la cabecera conserve su altura (8 + 48 + 8 = los
+          // 16 + 36 + 12 de antes) y el último círculo quede cerca del margen
+          // de 20 del resto de la pantalla.
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.xl,
+              AppSpacing.sm,
               AppSpacing.lg,
-              AppSpacing.xl,
-              AppSpacing.md,
+              AppSpacing.sm,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Perfil', style: AppTextStyles.profileScreenTitle),
-                Row(
-                  children: [
-                    for (var i = 0; i < actions.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      actions[i],
-                    ],
-                  ],
+                Expanded(
+                  child: Text(
+                    'Perfil',
+                    style: AppTextStyles.profileScreenTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                Row(children: actions),
               ],
             ),
           ),
@@ -85,11 +90,14 @@ class ProfileHeaderIconButton extends StatelessWidget {
     required this.label,
   });
 
+  /// Lado mínimo de la zona tocable (Material/WCAG: 48dp).
+  static const double touchTarget = 48;
+
   final IconData icon;
   final VoidCallback onTap;
 
-  /// Descripción para lectores de pantalla — el botón no tiene texto visible.
-  /// Es obligatorio a propósito: así el compilador obliga a etiquetar
+  /// Descripción para lectores de pantalla y tooltip — el botón no tiene texto
+  /// visible. Es obligatorio a propósito: así el compilador obliga a etiquetar
   /// cualquier uso nuevo.
   final String label;
 
@@ -98,17 +106,29 @@ class ProfileHeaderIconButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: AppColors.profileDivider,
-            shape: BoxShape.circle,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          // Zona tocable de 48dp con el círculo visible de 36.
+          child: SizedBox.square(
+            dimension: touchTarget,
+            child: Center(
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: AppColors.profileDivider,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
+              ),
+            ),
           ),
-          child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
         ),
       ),
     );

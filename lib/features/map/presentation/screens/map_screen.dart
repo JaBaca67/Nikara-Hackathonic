@@ -37,6 +37,7 @@ import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -2391,7 +2392,11 @@ class _MapScreenState extends State<MapScreen>
             Positioned.fill(
               child: _MapErrorOverlay(
                 message: _loadError!,
-                onRetry: _loadAllBusinessesAndFitCamera,
+                // También los favoritos: sin red ambas lecturas fallan juntas.
+                onRetry: () {
+                  unawaited(FavoritesService().preload());
+                  unawaited(_loadAllBusinessesAndFitCamera());
+                },
               ),
             ),
           // Oculto en ambas fases de viaje: el selector de modo (Fase 1) y
@@ -3837,12 +3842,7 @@ class _FavoriteToggle extends StatelessWidget {
               return;
             }
             if (!context.mounted) return;
-            try {
-              await FavoritesService().toggleFavorite(businessId);
-            } on FavoritesServiceException catch (e) {
-              if (!context.mounted) return;
-              AppSnackbar.showError(context, e.message);
-            }
+            await toggleFavoriteWithFeedback(context, businessId);
           },
           child: Container(
             width: 30,

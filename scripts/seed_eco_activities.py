@@ -41,8 +41,8 @@ def catalog(path):
         if not re.fullmatch(r'[a-z0-9-]+',a['slug']) or a['slug'] in seen:
             raise ValueError('Slug inválido o repetido.')
         seen.add(a['slug'])
-        if not a['title'].startswith('Demo · ') or not a['description'].startswith('Actividad de demostración'):
-            raise ValueError('Cada propuesta debe identificarse como demostración.')
+        if a['title'].startswith('Demo · ') or not a['description'].startswith('Actividad de demostración'):
+            raise ValueError('Los títulos van sin prefijo; la descripción conserva la nota de demostración.')
         if not a['source']['url'].startswith('https://') or not a['image_url'].startswith('https://'):
             raise ValueError('La fuente y la portada deben tener URL HTTPS.')
         if not 1 <= a['max_capacity'] <= 100 or not re.fullmatch(r'\d{4}',a['municipality_code']):

@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nikara_app/features/business/data/business_post_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/domain/models/business_post_model.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
@@ -30,6 +32,10 @@ class _ManageBusinessPostsScreenState extends State<ManageBusinessPostsScreen> {
   List<BusinessPostModel> _posts = const [];
   bool _loading = true;
   bool _publishing = false;
+
+  /// Anuncio que se está eliminando: bloquea todos los botones de eliminar
+  /// (no solo el suyo) y pone el spinner en su fila.
+  String? _deletingPostId;
 
   @override
   void initState() {
@@ -95,24 +101,15 @@ class _ManageBusinessPostsScreenState extends State<ManageBusinessPostsScreen> {
   }
 
   Future<void> _delete(BusinessPostModel post) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar anuncio'),
-        content: const Text('Esta acción no se puede deshacer.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
+    if (_deletingPostId != null) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar anuncio',
+      message: 'Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
     );
-    if (confirmed != true) return;
+    if (!confirmed || !mounted) return;
+    setState(() => _deletingPostId = post.id);
     try {
       await BusinessPostService().deletePost(post.id);
       if (!mounted) return;
@@ -120,6 +117,15 @@ class _ManageBusinessPostsScreenState extends State<ManageBusinessPostsScreen> {
     } on BusinessPostServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo eliminar el anuncio. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _deletingPostId = null);
     }
   }
 
@@ -179,8 +185,11 @@ class _ManageBusinessPostsScreenState extends State<ManageBusinessPostsScreen> {
                       ),
                       itemCount: _posts.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) =>
-                          _PostRow(post: _posts[index], onDelete: _delete),
+                      itemBuilder: (context, index) => _PostRow(
+                        post: _posts[index],
+                        onDelete: _delete,
+                        deletingPostId: _deletingPostId,
+                      ),
                     ),
             ),
             SafeArea(
@@ -272,10 +281,15 @@ class _ManageBusinessPostsScreenState extends State<ManageBusinessPostsScreen> {
 }
 
 class _PostRow extends StatelessWidget {
-  const _PostRow({required this.post, required this.onDelete});
+  const _PostRow({
+    required this.post,
+    required this.onDelete,
+    required this.deletingPostId,
+  });
 
   final BusinessPostModel post;
   final ValueChanged<BusinessPostModel> onDelete;
+  final String? deletingPostId;
 
   @override
   Widget build(BuildContext context) {
@@ -315,11 +329,14 @@ class _PostRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () => onDelete(post),
-            icon: const Icon(
-              Icons.delete_outline,
-              color: AppColors.destructive,
-            ),
+            onPressed: deletingPostId != null ? null : () => onDelete(post),
+            tooltip: 'Eliminar anuncio',
+            icon: deletingPostId == post.id
+                ? const AppSpinner(color: AppColors.destructive)
+                : const Icon(
+                    Icons.delete_outline,
+                    color: AppColors.destructive,
+                  ),
           ),
         ],
       ),

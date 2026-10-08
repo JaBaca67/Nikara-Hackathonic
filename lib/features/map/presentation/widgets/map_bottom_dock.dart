@@ -64,7 +64,7 @@ class MapBottomDock extends StatelessWidget {
                   ],
                 ),
               ),
-            if (hasControls && panel != null && recommendationLabel == null)
+            if (hasControls && panel != null)
               const SizedBox(height: AppSpacing.md),
             ?panel,
           ],

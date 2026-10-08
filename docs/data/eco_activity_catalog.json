@@ -5,7 +5,7 @@
     {
       "slug": "reforestacion",
       "category": "Reforestación",
-      "title": "Demo · Reforestación del bosque de Tomabú",
+      "title": "Reforestar el bosque de pino de Tomabú",
       "municipality": "Estelí",
       "department": "Estelí",
       "municipality_code": "2515",
@@ -31,7 +31,7 @@
     {
       "slug": "fauna",
       "category": "Fauna",
-      "title": "Demo · Guardianes de tortugas en Quelantaro",
+      "title": "Tortugas marinas de Quelantaro",
       "municipality": "Villa El Carmen",
       "department": "Managua",
       "municipality_code": "5520",
@@ -57,7 +57,7 @@
     {
       "slug": "limpieza",
       "category": "Limpieza",
-      "title": "Demo · Playa limpia en El Tránsito",
+      "title": "Jornada costera en El Tránsito",
       "municipality": "Nagarote",
       "department": "León",
       "municipality_code": "3550",
@@ -83,7 +83,7 @@
     {
       "slug": "reciclaje",
       "category": "Reciclaje",
-      "title": "Demo · Madera recuperada y artesanía en Limay",
+      "title": "Artesanía circular en San Juan de Limay",
       "municipality": "San Juan de Limay",
       "department": "Estelí",
       "municipality_code": "2520",
@@ -109,7 +109,7 @@
     {
       "slug": "agua",
       "category": "Agua y cuencas",
-      "title": "Demo · Explorar y cuidar la cuenca del río Dipilto",
+      "title": "Caminata por la cuenca del río Dipilto",
       "municipality": "Dipilto",
       "department": "Nueva Segovia",
       "municipality_code": "0530",
@@ -135,7 +135,7 @@
     {
       "slug": "suelos",
       "category": "Suelos y agroecología",
-      "title": "Demo · Suelos vivos en la Serranía de Amerrisque",
+      "title": "Suelos vivos en la Serranía de Amerrisque",
       "municipality": "San Pedro de Lóvago",
       "department": "Chontales",
       "municipality_code": "6530",
@@ -161,7 +161,7 @@
     {
       "slug": "viveros",
       "category": "Jardinería y viveros",
-      "title": "Demo · Semillas y viveros de las brumas",
+      "title": "Viveros forestales de Jinotega",
       "municipality": "Jinotega",
       "department": "Jinotega",
       "municipality_code": "1035",
@@ -187,7 +187,7 @@
     {
       "slug": "educacion",
       "category": "Educación ambiental",
-      "title": "Demo · Aprender a separar residuos en Muy Muy",
+      "title": "Clasificación de residuos en Muy Muy",
       "municipality": "Muy Muy",
       "department": "Matagalpa",
       "municipality_code": "4045",
@@ -213,7 +213,7 @@
     {
       "slug": "biodiversidad",
       "category": "Monitoreo de biodiversidad",
-      "title": "Demo · Observar biodiversidad en Peñas Blancas",
+      "title": "Observación de biodiversidad en Peñas Blancas",
       "municipality": "El Cuá",
       "department": "Jinotega",
       "municipality_code": "1010",
@@ -239,7 +239,7 @@
     {
       "slug": "saneamiento",
       "category": "Saneamiento ambiental",
-      "title": "Demo · Agua limpia y saneamiento en La Trinidad",
+      "title": "Saneamiento ambiental en La Trinidad",
       "municipality": "La Trinidad",
       "department": "Estelí",
       "municipality_code": "2525",

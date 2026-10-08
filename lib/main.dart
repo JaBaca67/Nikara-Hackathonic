@@ -16,6 +16,9 @@ import 'package:nikara_app/firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const [
+    DeviceOrientation.portraitUp,
+  ]);
   await _configureSystemBars();
   // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
   final isotipoReady = _precacheSplashIsotipo();
