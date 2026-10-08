@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
+import 'package:nikara_app/shared/widgets/catalog_selection_field.dart';
 
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_bottom_dock.dart';
@@ -50,6 +53,8 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    DiscoveryDestinationService().destination.value =
+        const GeographicDestination();
   });
 
   Future<void> pumpMap(WidgetTester tester) async {
@@ -92,6 +97,51 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(minutes: 1));
   }
+
+  testWidgets(
+    'el filtro del mapa abre el selector de Inicio y aplica el destino',
+    (tester) async {
+      addTearDown(tester.view.reset);
+      Future<void> advance() async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      await pumpMap(tester);
+      await tester.tap(find.byTooltip('Filtrar por destino'));
+      await advance();
+      expect(find.text('¿Dónde quieres explorar?'), findsOneWidget);
+      await tester.tap(find.byType(CatalogSelectionField<String>));
+      await advance();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Buscar en el catálogo'),
+        'granada',
+      );
+      await advance();
+      await tester.tap(find.widgetWithText(ListTile, 'Granada'));
+      await advance();
+      await tester.tap(find.text('Aplicar destino'));
+      await advance();
+      expect(
+        DiscoveryDestinationService().destination.value.department,
+        'Granada',
+      );
+      expect(
+        find.widgetWithText(TextField, 'Buscar en Granada...'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byTooltip('Filtrar por destino'));
+      await advance();
+      await tester.tap(find.text('Ver todo Nicaragua'));
+      await advance();
+      expect(DiscoveryDestinationService().destination.value.isActive, isFalse);
+      expect(
+        find.widgetWithText(TextField, 'Buscar negocio o lugar...'),
+        findsOneWidget,
+      );
+      await disposeMap(tester);
+    },
+  );
 
   testWidgets('el dock se aparta al escribir en la búsqueda', (tester) async {
     addTearDown(tester.view.reset);

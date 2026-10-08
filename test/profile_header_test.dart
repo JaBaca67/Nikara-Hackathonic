@@ -5,13 +5,12 @@ import 'package:nikara_app/features/profile/presentation/widgets/profile_header.
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Cabecera del Perfil de turista tal como la arma `ProfileScreen`: cambiar de
-/// cuenta, vista del perfil público, Ajustes y compartir.
-Widget _header({required List<VoidCallback> taps, int buttons = 4}) {
+/// cuenta, vista del perfil público y Ajustes.
+Widget _header({required List<VoidCallback> taps, int buttons = 3}) {
   const icons = [
     (Icons.switch_account_outlined, 'Cambiar de cuenta'),
     (Icons.visibility_outlined, 'Ver mi perfil público'),
     (Icons.settings_outlined, 'Ajustes'),
-    (Icons.ios_share, 'Compartir perfil'),
   ];
   return MaterialApp(
     theme: AppTheme.lightTheme,
@@ -60,7 +59,7 @@ void main() {
       for (final label in [
         'Cambiar de cuenta',
         'Ajustes',
-        'Compartir perfil',
+        'Ver mi perfil público',
       ]) {
         final size = tester.getSize(find.byTooltip(label));
         expect(size.width, greaterThanOrEqualTo(48), reason: label);
@@ -101,7 +100,6 @@ void main() {
 
       expect(find.bySemanticsLabel('Ajustes'), findsOneWidget);
       expect(find.bySemanticsLabel('Cambiar de cuenta'), findsOneWidget);
-      expect(find.bySemanticsLabel('Compartir perfil'), findsOneWidget);
       handle.dispose();
     });
 
@@ -115,7 +113,6 @@ void main() {
           'Cambiar de cuenta',
           'Ver mi perfil público',
           'Ajustes',
-          'Compartir perfil',
         ])
           tester.getRect(find.byTooltip(label)),
       ];
@@ -145,25 +142,25 @@ void main() {
       expect(button.bottom - shellTop, 56);
     });
 
-    testWidgets('no desborda con los cuatro botones en 360dp', (tester) async {
+    testWidgets('no desborda con los tres botones en 360dp', (tester) async {
       await pumpAt(tester, const Size(360, 800), _header(taps: noop));
 
       expect(tester.takeException(), isNull);
       expect(
-        tester.getRect(find.byTooltip('Compartir perfil')).right,
+        tester.getRect(find.byTooltip('Ajustes')).right,
         lessThanOrEqualTo(360),
       );
     });
 
-    testWidgets('los cuatro botones caben en el ancho disponible', (
+    testWidgets('los tres botones caben en el ancho disponible', (
       tester,
     ) async {
       await pumpAt(tester, const Size(390, 800), _header(taps: noop));
 
       final first = tester.getRect(find.byTooltip('Cambiar de cuenta'));
-      final last = tester.getRect(find.byTooltip('Compartir perfil'));
+      final last = tester.getRect(find.byTooltip('Ajustes'));
       final width = last.right - first.left;
-      expect(width, 4 * ProfileHeaderIconButton.touchTarget);
+      expect(width, 3 * ProfileHeaderIconButton.touchTarget);
       expect(width, lessThanOrEqualTo(390 - 36 - 80));
     });
   });

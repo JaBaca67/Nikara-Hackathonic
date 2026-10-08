@@ -340,12 +340,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                       ? 'Quitar de favoritos'
                       : 'Agregar a favoritos',
                 ),
-                const SizedBox(width: 8),
-                DetailCoverIconButton(
-                  icon: Icons.ios_share,
-                  onTap: _showComingSoon,
-                  label: 'Compartir negocio',
-                ),
               ],
             ),
             Transform.translate(

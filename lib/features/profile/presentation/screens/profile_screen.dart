@@ -266,10 +266,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _loadAll();
   }
 
-  void _showComingSoon() {
-    AppSnackbar.showInfo(context, 'Próximamente');
-  }
-
   void _showBadgeRequirement(BadgeInfo badge) {
     showDialog<void>(
       context: context,
@@ -519,11 +515,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           label: 'Ajustes',
                           icon: Icons.settings_outlined,
                           onTap: _openSettings,
-                        ),
-                        ProfileHeaderIconButton(
-                          label: 'Compartir perfil',
-                          icon: Icons.ios_share,
-                          onTap: _showComingSoon,
                         ),
                       ],
                       avatar: ProfileFaceAvatar(

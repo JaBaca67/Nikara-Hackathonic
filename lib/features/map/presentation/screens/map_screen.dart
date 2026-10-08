@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
 import 'package:nikara_app/core/services/directions_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
@@ -34,6 +36,7 @@ import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
 import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
@@ -146,6 +149,7 @@ class _MapScreenState extends State<MapScreen>
   bool _myLocationEnabled = false;
   String _searchQuery = '';
   String _selectedCategory = _kAllCategories;
+  GeographicDestination _destination = const GeographicDestination();
   String? _loadError;
   String? _selectedBusinessId;
   Position? _userPosition;
@@ -295,6 +299,10 @@ class _MapScreenState extends State<MapScreen>
   @override
   void initState() {
     super.initState();
+    _destination = DiscoveryDestinationService().destination.value;
+    DiscoveryDestinationService().destination.addListener(
+      _onDestinationChanged,
+    );
     WidgetsBinding.instance.addObserver(this);
     ReviewService.revision.addListener(_onReviewsChanged);
     // Se lee antes de suscribirse para no re-disparar _onFocusRequested con
@@ -329,6 +337,9 @@ class _MapScreenState extends State<MapScreen>
 
   @override
   void dispose() {
+    DiscoveryDestinationService().destination.removeListener(
+      _onDestinationChanged,
+    );
     _arrivalTracker?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     ReviewService.revision.removeListener(_onReviewsChanged);
@@ -479,10 +490,12 @@ class _MapScreenState extends State<MapScreen>
   Future<void> _consumePendingFocus() async {
     final request = _pendingFocus;
     if (request == null || _mapController == null) return;
+    // Un filtro residual no debe ocultar el destino solicitado desde otra pantalla.
+    if (_destination.isActive) {
+      DiscoveryDestinationService().destination.value =
+          const GeographicDestination();
+    }
     _pendingFocus = null;
-
-    // Un filtro de categoría/búsqueda residual podría ocultar el negocio
-    // pedido, así que el foco resetea ambos.
     if (_searchQuery.isNotEmpty) _searchController.clear();
     if (_selectedCategory != _kAllCategories) {
       setState(() => _selectedCategory = _kAllCategories);
@@ -527,7 +540,12 @@ class _MapScreenState extends State<MapScreen>
           final matchesSearch =
               _searchQuery.isEmpty ||
               b.name.toLowerCase().contains(_searchQuery.toLowerCase());
-          return matchesCategory && matchesSearch;
+          return matchesCategory &&
+              matchesSearch &&
+              _destination.matches(
+                municipalityByCode(b.municipalityCode) ??
+                    resolveMunicipality(b.city),
+              );
         })
         .toList(growable: false);
   }
@@ -537,10 +555,16 @@ class _MapScreenState extends State<MapScreen>
         _selectedCategory != _kEcoCategory) {
       return const [];
     }
-    if (_searchQuery.isEmpty) return _ecoActivities;
     final query = _searchQuery.toLowerCase();
     return _ecoActivities
-        .where((a) => a.title.toLowerCase().contains(query))
+        .where(
+          (a) =>
+              (_searchQuery.isEmpty || a.title.toLowerCase().contains(query)) &&
+              _destination.matches(
+                municipalityByCode(a.municipalityCode) ??
+                    resolveLegacyEcoMunicipality(a.location),
+              ),
+        )
         .toList(growable: false);
   }
 
@@ -1328,6 +1352,30 @@ class _MapScreenState extends State<MapScreen>
 
   /// Chips (Estado 19a): filtran pines y carrusel, y reencuadran la cámara
   /// a lo que queda visible.
+  Future<void> _openFilterSheet() async {
+    _searchFocusNode.unfocus();
+    final filters = await showGeographicDestinationPicker(
+      context,
+      initial: _destination,
+    );
+    if (!mounted || filters == null) return;
+    DiscoveryDestinationService().destination.value = filters.destination;
+  }
+
+  void _onDestinationChanged() {
+    if (!mounted) return;
+    setState(() {
+      _destination = DiscoveryDestinationService().destination.value;
+      if (!_filteredBusinesses.any((b) => b.id == _selectedBusinessId)) {
+        _selectedBusinessId = null;
+      }
+    });
+    _jumpCarouselTo(0);
+    if (!_isNavigating && !_isPreviewingTrip && _pendingFocus == null) {
+      unawaited(_fitCameraToBusinesses(_filteredBusinesses));
+    }
+  }
+
   void _onCategorySelected(String category) {
     setState(() {
       _selectedCategory = category;
@@ -1409,26 +1457,24 @@ class _MapScreenState extends State<MapScreen>
   Future<void> _fitCameraToBusinesses(List<BusinessModel> businesses) async {
     final controller = _mapController;
     if (controller == null) return;
-    if (businesses.isEmpty) {
+    final points = [
+      for (final business in businesses)
+        LatLng(business.latitude!, business.longitude!),
+      for (final activity in _filteredEcoActivities)
+        LatLng(activity.latitude!, activity.longitude!),
+    ];
+    if (points.isEmpty) {
       await controller.animateCamera(
         CameraUpdate.newLatLngZoom(_kDefaultMapCenter, 13),
       );
       return;
     }
-    if (businesses.length == 1) {
-      final business = businesses.first;
+    if (points.length == 1) {
       await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(business.latitude!, business.longitude!),
-          14,
-        ),
+        CameraUpdate.newLatLngZoom(points.first, 14),
       );
       return;
     }
-    final points = [
-      for (final business in businesses)
-        LatLng(business.latitude!, business.longitude!),
-    ];
     await controller.animateCamera(
       CameraUpdate.newLatLngBounds(_boundsForPoints(points), 72),
     );
@@ -2417,12 +2463,13 @@ class _MapScreenState extends State<MapScreen>
                             controller: _searchController,
                             focusNode: _searchFocusNode,
                             onSubmitted: _onSearchSubmitted,
+                            hintText: _destination.isActive
+                                ? 'Buscar en ${_destination.label}...'
+                                : 'Buscar negocio o lugar...',
                           ),
                         ),
                         const SizedBox(width: 10),
-                        _MapFilterButton(
-                          onTap: () => _onCategorySelected(_kAllCategories),
-                        ),
+                        _MapFilterButton(onTap: _openFilterSheet),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -2445,11 +2492,12 @@ class _MapScreenState extends State<MapScreen>
                     if (!_isLoading &&
                         _loadError == null &&
                         _businesses.isNotEmpty &&
-                        filtered.isEmpty)
+                        filtered.isEmpty &&
+                        _filteredEcoActivities.isEmpty)
                       const Padding(
                         padding: EdgeInsets.only(top: 10),
                         child: _EmptyBusinessesBanner(
-                          message: 'Ningún negocio coincide con tu búsqueda.',
+                          message: 'Ningún lugar coincide con tus filtros.',
                         ),
                       )
                     else if (!_isLoading &&
@@ -3233,11 +3281,13 @@ class _MapSearchBar extends StatelessWidget {
     required this.controller,
     this.focusNode,
     this.onSubmitted,
+    required this.hintText,
   });
 
   final TextEditingController controller;
   final FocusNode? focusNode;
   final ValueChanged<String>? onSubmitted;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -3276,7 +3326,7 @@ class _MapSearchBar extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                hintText: 'Buscar negocio o lugar...',
+                hintText: hintText,
                 hintStyle: AppTextStyles.caption.copyWith(
                   color: AppColors.settingsTextMuted,
                 ),
@@ -3289,8 +3339,7 @@ class _MapSearchBar extends StatelessWidget {
   }
 }
 
-/// Botón cuadrado junto a la búsqueda; al tocarlo resetea el filtro de
-/// categoría a "Todos".
+/// Abre el selector de destino compartido con Inicio y ECO.
 class _MapFilterButton extends StatelessWidget {
   const _MapFilterButton({required this.onTap});
 
@@ -3298,28 +3347,31 @@ class _MapFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.mapControlBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.mapControlShadow,
-              offset: Offset(0, 4),
-              blurRadius: 16,
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.tune,
-          size: 18,
-          color: AppColors.settingsTextDark,
+    return Tooltip(
+      message: 'Filtrar por destino',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.mapControlBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.mapControlShadow,
+                offset: Offset(0, 4),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.tune,
+            size: 18,
+            color: AppColors.settingsTextDark,
+          ),
         ),
       ),
     );
