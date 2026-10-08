@@ -2333,7 +2333,7 @@ class _MapScreenState extends State<MapScreen>
             name: business.name,
             category: category,
             selected: isSelected,
-            detail: business.reviews.isEmpty
+            detail: business.reviewCount == 0
                 ? null
                 : business.averageRating.toStringAsFixed(1),
           );
@@ -3976,7 +3976,7 @@ class _BusinessCarouselCard extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xs),
                 MapBusinessRating(
                   average: business.averageRating,
-                  count: business.reviews.length,
+                  count: business.reviewCount,
                 ),
                 if (expanded && (firstActivity != null || isEco)) ...[
                   const SizedBox(height: AppSpacing.xs),

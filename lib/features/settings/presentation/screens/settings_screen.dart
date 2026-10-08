@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
-import 'package:nikara_app/core/utils/validators.dart';
-import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
-import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
-import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
-import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/features/settings/data/settings_controller.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_account_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_community_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_preferences_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_support_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_team_screen.dart';
+import 'package:nikara_app/features/settings/presentation/widgets/settings_widgets.dart';
 import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
@@ -16,9 +18,11 @@ import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Pantalla de Ajustes (nodo Figma 361:323). Los toggles de
-/// notificaciones/privacidad y los flujos de editar cuenta / cambiar
-/// contraseña son estado mock local — no se persiste nada.
+/// Menú de Ajustes (nodo Figma 361:323): un botón por categoría, cada una con
+/// su propia vista en este mismo directorio. Aquí quedan además "Cambiar de
+/// cuenta" y, separadas abajo, las acciones de sesión (cerrar sesión y eliminar
+/// la cuenta). El estado de las categorías vive en [SettingsController], que
+/// pertenece a esta pantalla para que sobreviva a entrar y salir de cada vista.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -28,88 +32,21 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _authService = AuthService();
-
-  String _name = '';
-  String _email = '';
-  String _phone = '';
-  UserRole _role = UserRole.turista;
-
-  /// Cuentas guardadas además de la activa; alimenta el subtítulo de la fila
-  /// "Cambiar de cuenta".
-  int _otherAccountsCount = 0;
-
-  bool _tripAlerts = true;
-  bool _ecoCampaigns = true;
-  bool _offers = false;
-  bool _publicProfile = true;
-  bool _shareLocation = false;
+  final _controller = SettingsController();
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
-    _loadSavedAccounts();
+    _controller.loadProfile();
   }
 
-  Future<void> _loadProfile() async {
-    final profile = await _authService.getCurrentProfile();
-    if (!mounted || profile == null) return;
-    setState(() {
-      _name = profile.fullName;
-      _email = profile.email;
-      _phone = profile.phone;
-      _role = profile.role;
-    });
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
-  void _openAdminPanel() {
-    pushSharedAxis(context, const AdminShellScreen());
-  }
-
-  Future<void> _loadSavedAccounts() async {
-    final accounts = await _authService.getSavedAccounts();
-    if (!mounted) return;
-    setState(() => _otherAccountsCount = accounts.length);
-  }
-
-  String get _savedAccountsCaption => switch (_otherAccountsCount) {
-    0 => 'Agrega otra cuenta y alterna sin volver a iniciar sesión',
-    1 => '1 cuenta más guardada en este dispositivo',
-    final n => '$n cuentas más guardadas en este dispositivo',
-  };
-
-  Future<void> _openAccountSwitcher() async {
-    await showAccountSwitcherSheet(context);
-    if (!mounted) return;
-    // La hoja puede haber quitado una cuenta guardada (o haber guardado la
-    // activa por primera vez), así que el contador se recalcula al cerrarla.
-    await _loadSavedAccounts();
-  }
-
-  Future<void> _openEditProfile() async {
-    final result = await showDialog<(String, String, String)>(
-      context: context,
-      builder: (_) =>
-          _EditProfileDialog(name: _name, email: _email, phone: _phone),
-    );
-    if (result == null || !mounted) return;
-    setState(() {
-      _name = result.$1;
-      _email = result.$2;
-      _phone = result.$3;
-    });
-    AppSnackbar.showSuccess(context, 'Perfil actualizado');
-  }
-
-  Future<void> _openChangePassword() async {
-    final changed = await showDialog<bool>(
-      context: context,
-      builder: (_) => const _ChangePasswordDialog(),
-    );
-    if (changed == true && mounted) {
-      AppSnackbar.showSuccess(context, 'Contraseña actualizada');
-    }
-  }
+  void _open(Widget page) => pushSharedAxis(context, page);
 
   /// Mientras corre cerrar sesión o eliminar la cuenta: bloquea la pantalla
   /// (`AppBusyOverlay`) y el botón atrás, porque ambas acciones terminan
@@ -200,165 +137,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _SettingsHeader(onBack: () => Navigator.of(context).maybePop()),
-            const SizedBox(height: 20),
-            _SettingsSection(
-              label: 'Mi cuenta',
-              children: [
-                _SettingsRow(
-                  icon: Icons.person_outline,
-                  title: 'Editar perfil',
-                  onTap: _openEditProfile,
-                ),
-                _SettingsRow(
-                  icon: Icons.lock_outline,
-                  title: 'Cambiar contraseña',
-                  onTap: _openChangePassword,
-                ),
-                _SettingsRow(
-                  icon: Icons.mail_outline,
-                  title: 'Correo electrónico',
-                  value: _email,
-                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
-                ),
-                _SettingsRow(
-                  icon: Icons.call_outlined,
-                  title: 'Teléfono',
-                  value: _phone,
-                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
-                ),
-              ],
+            SettingsHeader(
+              title: 'Ajustes',
+              subtitle: 'Cuenta y preferencias',
+              onBack: () => Navigator.of(context).maybePop(),
             ),
-            if (_role.canAccessAdminPanel)
-              _SettingsSection(
-                label: 'Equipo Níkara',
+            ListenableBuilder(
+              listenable: _controller,
+              builder: (context, _) => SettingsSection(
                 children: [
-                  _SettingsRow(
-                    icon: Icons.shield_outlined,
-                    iconTint: AppColors.oliveText,
-                    title: 'Panel de administración',
-                    caption: _role.permissionsSummary,
-                    onTap: _openAdminPanel,
+                  SettingsMenuButton(
+                    icon: Icons.person_outline,
+                    title: 'Cuenta',
+                    onTap: () =>
+                        _open(SettingsAccountScreen(controller: _controller)),
+                  ),
+                  SettingsMenuButton(
+                    icon: Icons.tune,
+                    title: 'Preferencias',
+                    onTap: () => _open(
+                      SettingsPreferencesScreen(controller: _controller),
+                    ),
+                  ),
+                  SettingsMenuButton(
+                    icon: Icons.groups_outlined,
+                    title: 'Comunidad',
+                    onTap: () => _open(const SettingsCommunityScreen()),
+                  ),
+                  if (_controller.role.canAccessAdminPanel)
+                    SettingsMenuButton(
+                      icon: Icons.shield_outlined,
+                      tint: AppColors.oliveText,
+                      title: 'Equipo Níkara',
+                      onTap: () =>
+                          _open(SettingsTeamScreen(controller: _controller)),
+                    ),
+                  SettingsMenuButton(
+                    icon: Icons.help_outline,
+                    title: 'Ayuda y soporte',
+                    onTap: () => _open(const SettingsSupportScreen()),
                   ),
                 ],
               ),
-            _SettingsSection(
-              label: 'Notificaciones',
-              children: [
-                _SettingsToggleRow(
-                  icon: Icons.notifications_none,
-                  title: 'Novedades de viaje',
-                  value: _tripAlerts,
-                  onChanged: (v) => setState(() => _tripAlerts = v),
-                ),
-                _SettingsToggleRow(
-                  icon: Icons.eco_outlined,
-                  title: 'Campañas ecológicas',
-                  value: _ecoCampaigns,
-                  onChanged: (v) => setState(() => _ecoCampaigns = v),
-                ),
-                _SettingsToggleRow(
-                  icon: Icons.local_offer_outlined,
-                  title: 'Ofertas y promociones',
-                  value: _offers,
-                  onChanged: (v) => setState(() => _offers = v),
-                ),
-              ],
             ),
-            _SettingsSection(
-              label: 'Privacidad',
-              children: [
-                _SettingsToggleRow(
-                  icon: Icons.person_outline,
-                  title: 'Perfil público',
-                  value: _publicProfile,
-                  onChanged: (v) => setState(() => _publicProfile = v),
-                ),
-                _SettingsToggleRow(
-                  icon: Icons.location_on_outlined,
-                  title: 'Compartir ubicación',
-                  value: _shareLocation,
-                  onChanged: (v) => setState(() => _shareLocation = v),
-                ),
-              ],
-            ),
-            _SettingsSection(
-              label: 'Para negocios turísticos',
-              children: [
-                _SettingsRow(
-                  icon: Icons.storefront_outlined,
-                  iconTint: AppColors.oliveText,
-                  title: 'Registrar mi negocio',
-                  caption: 'Llega a más viajeros en Nicaragua',
-                  onTap: () => openBusinessRegistrationFlow(context),
-                ),
-              ],
-            ),
-            _SettingsSection(
-              label: 'Comunidad ECO',
-              children: [
-                _SettingsRow(
-                  icon: Icons.eco_outlined,
-                  iconTint: AppColors.oliveText,
-                  title: 'Registrar actividad ECO',
-                  caption: 'Organiza una jornada ambiental',
-                  onTap: () {
-                    pushSharedAxis(context, const CreateEcoActivityScreen());
-                  },
-                ),
-                _SettingsRow(
-                  icon: Icons.groups_outlined,
-                  iconTint: AppColors.oliveText,
-                  title: 'Registrar / Gestionar Fundación',
-                  caption: 'Publica jornadas a nombre de tu organización',
-                  onTap: () => openOrganizationRegistrationFlow(context),
-                ),
-              ],
-            ),
-            _SettingsSection(
-              label: 'Soporte',
-              children: [
-                _SettingsRow(
-                  icon: Icons.help_outline,
-                  title: 'Centro de ayuda',
-                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
-                ),
-                _SettingsRow(
-                  icon: Icons.description_outlined,
-                  title: 'Términos y condiciones',
-                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
-                ),
-                _SettingsRow(
-                  icon: Icons.info_outline,
-                  title: 'Acerca de Níkara',
-                  value: 'v1.0.0',
-                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
-                ),
-              ],
-            ),
-            _SettingsSection(
+            SettingsSection(
               label: 'Sesión',
               children: [
-                _SettingsRow(
-                  icon: Icons.switch_account_outlined,
-                  iconTint: AppColors.oliveText,
-                  title: 'Cambiar de cuenta',
-                  caption: _savedAccountsCaption,
-                  onTap: _openAccountSwitcher,
-                ),
-                _SettingsRow(
+                SettingsRow(
                   icon: Icons.logout,
                   iconTint: AppColors.destructive,
                   titleColor: AppColors.destructive,
                   title: 'Cerrar sesión',
                   onTap: _confirmLogout,
                 ),
-              ],
-            ),
-            _SettingsSection(
-              label: 'Zona de peligro',
-              children: [
-                _SettingsRow(
+                SettingsRow(
                   icon: Icons.delete_forever_outlined,
                   iconTint: AppColors.destructive,
                   titleColor: AppColors.destructive,
@@ -380,420 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         message: _busyMessage,
         child: scaffold,
       ),
-    );
-  }
-}
-
-class _SettingsHeader extends StatelessWidget {
-  const _SettingsHeader({required this.onBack});
-
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.surface100,
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.xl,
-        MediaQuery.of(context).padding.top + AppSpacing.lg,
-        AppSpacing.xl,
-        AppSpacing.xl,
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: onBack,
-            child: Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.profileDivider,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                semanticLabel: 'Volver',
-                size: 18,
-                color: AppColors.settingsTextDark,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ajustes',
-                  style: AppTextStyles.settingsTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'Cuenta y preferencias',
-                  style: AppTextStyles.settingsSubtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({required this.label, required this.children});
-
-  final String label;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-            child: Text(
-              label.toUpperCase(),
-              style: AppTextStyles.settingsSectionLabel,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.detailCardGlow,
-                    offset: Offset(0, 2),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  for (var i = 0; i < children.length; i++)
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: i == children.length - 1
-                            ? null
-                            : const Border(
-                                bottom: BorderSide(
-                                  color: AppColors.cardGlowSoft,
-                                  width: 0.8,
-                                ),
-                              ),
-                      ),
-                      child: children[i],
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.icon,
-    required this.title,
-    this.value,
-    this.caption,
-    this.iconTint = AppColors.settingsAccent,
-    this.titleColor = AppColors.settingsTextDark,
-    this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String? value;
-  final String? caption;
-  final Color iconTint;
-  final Color titleColor;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: iconTint.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 16, color: iconTint),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: AppTextStyles.settingsRowTitle.copyWith(
-                      color: titleColor,
-                    ),
-                  ),
-                  if (caption != null)
-                    Text(caption!, style: AppTextStyles.settingsRowCaption),
-                ],
-              ),
-            ),
-            if (value != null) ...[
-              Text(value!, style: AppTextStyles.settingsRowValue),
-              const SizedBox(width: 8),
-            ],
-            const Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: AppColors.settingsTextMuted,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsToggleRow extends StatelessWidget {
-  const _SettingsToggleRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final IconData icon;
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.settingsAccent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 16, color: AppColors.settingsAccent),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: AppTextStyles.settingsRowTitle)),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeThumbColor: AppColors.surface100,
-            activeTrackColor: AppColors.settingsAccent,
-            inactiveThumbColor: AppColors.surface100,
-            inactiveTrackColor: AppColors.settingsToggleOff,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EditProfileDialog extends StatefulWidget {
-  const _EditProfileDialog({
-    required this.name,
-    required this.email,
-    required this.phone,
-  });
-
-  final String name;
-  final String email;
-  final String phone;
-
-  @override
-  State<_EditProfileDialog> createState() => _EditProfileDialogState();
-}
-
-class _EditProfileDialogState extends State<_EditProfileDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late final _nameController = TextEditingController(text: widget.name);
-  late final _emailController = TextEditingController(text: widget.email);
-  late final _phoneController = TextEditingController(text: widget.phone);
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    Navigator.of(context).pop((
-      _nameController.text.trim(),
-      _emailController.text.trim(),
-      _phoneController.text.trim(),
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      title: Text(
-        'Editar perfil',
-        style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-      ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Nombre'),
-              validator: validateFullName,
-            ),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Correo'),
-              validator: validateEmail,
-            ),
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
-              // Antes solo exigía que no estuviera vacío: un teléfono de 3
-              // dígitos pasaba y quedaba guardado en el perfil.
-              validator: validatePhone,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-        ),
-        FilledButton(
-          onPressed: _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.settingsAccent,
-          ),
-          child: const Text('Guardar'),
-        ),
-      ],
-    );
-  }
-}
-
-class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
-
-  @override
-  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
-}
-
-class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _currentController = TextEditingController();
-  final _newController = TextEditingController();
-  final _confirmController = TextEditingController();
-
-  @override
-  void dispose() {
-    _currentController.dispose();
-    _newController.dispose();
-    _confirmController.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    Navigator.of(context).pop(true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-      ),
-      title: Text(
-        'Cambiar contraseña',
-        style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-      ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _currentController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Contraseña actual'),
-              validator: (v) => (v == null || v.isEmpty)
-                  ? 'Ingresa tu contraseña actual'
-                  : null,
-            ),
-            TextFormField(
-              controller: _newController,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Nueva contraseña'),
-              validator: validatePassword,
-            ),
-            TextFormField(
-              controller: _confirmController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Confirmar contraseña',
-              ),
-              validator: (v) =>
-                  validatePasswordConfirmation(v, _newController.text),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-        ),
-        FilledButton(
-          onPressed: _save,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.settingsAccent,
-          ),
-          child: const Text('Guardar'),
-        ),
-      ],
     );
   }
 }

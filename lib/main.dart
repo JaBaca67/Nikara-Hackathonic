@@ -21,7 +21,21 @@ Future<void> main() async {
   ]);
   await _configureSystemBars();
   // En paralelo al resto del init: el isotipo del splash tiene que estar decodificado en el primer frame.
-  final isotipoReady = _precacheSplashIsotipo();
+  final isotipoReady = _precacheAsset(
+    'assets/images/isotipo_nikara_splash.png',
+    'isotipo del splash',
+  );
+  // Las ilustraciones de Auth no se ven hasta el login, pero decodificarlas ahí mismo las hacía aparecer a pedazos; este es el único momento en que cuestan cero frames.
+  final authArtReady = Future.wait([
+    _precacheAsset(
+      'assets/images/parte_arriba_nikara.png',
+      'ilustración superior de Auth',
+    ),
+    _precacheAsset(
+      'assets/images/parte_abajo_login.png',
+      'ilustración inferior de Auth',
+    ),
+  ]);
   await Supabase.initialize(
     url: SupabaseConfig.url,
     // "publishableKey" es el nuevo nombre de supabase_flutter para la anon key.
@@ -36,6 +50,7 @@ Future<void> main() async {
   await LocalProfileExtrasService().clearLegacyAvatar();
   await _initPush();
   await isotipoReady;
+  await authArtReady;
   runApp(const MyApp());
 }
 
@@ -57,14 +72,12 @@ Future<void> _configureSystemBars() async {
 }
 
 /// `precacheImage` exige un BuildContext y aún no hay árbol; resolver el proveedor con
-/// [ImageConfiguration.empty] llena el mismo `imageCache`, así el `Image.asset` del splash
-/// (misma key: sin `cacheWidth`, sin variantes por densidad) sale sincrónico en el primer frame
-/// en vez de aparecer un instante después sobre el fondo vacío.
-Future<void> _precacheSplashIsotipo() {
+/// [ImageConfiguration.empty] llena el mismo `imageCache`, así el `Image.asset` correspondiente
+/// (misma key: sin `cacheWidth`, sin variantes por densidad) sale sincrónico en vez de aparecer
+/// un instante después sobre el fondo vacío. [label] solo identifica el asset en el log.
+Future<void> _precacheAsset(String assetPath, String label) {
   final completer = Completer<void>();
-  final stream = const AssetImage(
-    'assets/images/isotipo_nikara_splash.png',
-  ).resolve(ImageConfiguration.empty);
+  final stream = AssetImage(assetPath).resolve(ImageConfiguration.empty);
   late final ImageStreamListener listener;
   listener = ImageStreamListener(
     (_, _) {
@@ -73,8 +86,8 @@ Future<void> _precacheSplashIsotipo() {
     },
     onError: (Object error, StackTrace? _) {
       stream.removeListener(listener);
-      // Sin precarga el splash sigue funcionando (el isotipo carga async); no vale tumbar el arranque.
-      debugPrint('Precarga del isotipo del splash falló: $error');
+      // Sin precarga la pantalla sigue funcionando (el asset carga async); no vale tumbar el arranque.
+      debugPrint('Precarga de $label falló: $error');
       completer.complete();
     },
   );
