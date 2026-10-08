@@ -183,12 +183,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUserName() async {
     if (GuestSessionService().isGuest || !AuthService().isLoggedIn) return;
-    final profile = await AuthService().getCurrentProfile();
-    if (!mounted || profile == null) return;
-    setState(() {
-      _userName = profile.firstName;
-      _role = profile.role;
-    });
+    try {
+      final profile = await AuthService().getCurrentProfile();
+      if (!mounted || profile == null) return;
+      setState(() {
+        _userName = profile.firstName;
+        _role = profile.role;
+      });
+    } on AuthServiceException catch (e) {
+      // El nombre del saludo es decorativo: sin red Inicio sigue usable sin
+      // él. Antes la excepción se escapaba sin captura.
+      debugPrint('No se pudo leer el perfil para el saludo: ${e.message}');
+    }
   }
 
   void _openAdminPanel() {
@@ -199,6 +205,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final position = await LocationService().getCurrentPosition();
     if (!mounted || position == null) return;
     setState(() => _userPosition = position);
+  }
+
+  /// "Reintentar" del estado de error: además de los negocios vuelve a pedir
+  /// los favoritos, porque sin red ambas lecturas fallan juntas y, si solo se
+  /// reintentara la primera, los corazones quedaban sin marcar.
+  void _retryLoad() {
+    unawaited(FavoritesService().preload());
+    unawaited(_loadBusinesses());
   }
 
   Future<void> _loadBusinesses() async {
@@ -354,10 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Expanded(
             child: _loadError != null
-                ? _LoadErrorState(
-                    message: _loadError!,
-                    onRetry: _loadBusinesses,
-                  )
+                ? _LoadErrorState(message: _loadError!, onRetry: _retryLoad)
                 : businesses == null
                 ? const Center(
                     child: CircularProgressIndicator(
@@ -1447,6 +1458,7 @@ class _LoadErrorState extends StatelessWidget {
     );
   }
 }
+
 /// "Explorá todos": grilla de dos columnas con paginación, debajo del
 /// carrusel de Destacados.
 ///

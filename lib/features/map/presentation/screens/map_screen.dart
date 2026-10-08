@@ -1766,7 +1766,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             Positioned.fill(
               child: _MapErrorOverlay(
                 message: _loadError!,
-                onRetry: _loadAllBusinessesAndFitCamera,
+                // También los favoritos: sin red ambas lecturas fallan juntas.
+                onRetry: () {
+                  unawaited(FavoritesService().preload());
+                  unawaited(_loadAllBusinessesAndFitCamera());
+                },
               ),
             ),
           // Oculto en ambas fases de viaje: el selector de modo (Fase 1) y

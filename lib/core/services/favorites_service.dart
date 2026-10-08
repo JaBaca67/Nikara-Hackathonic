@@ -50,6 +50,17 @@ class FavoritesService {
 
   static const _keyPrefix = 'favorite_ids_';
 
+  /// Copia local, **por usuario**, de lo último que se leyó bien de
+  /// `user_favorites`. Sirve solo para pintar los corazones cuando la lectura
+  /// remota falla (sin internet, sesión sin refrescar).
+  ///
+  /// Va en una clave distinta de `favorite_ids_<id>` a propósito: esa lista es
+  /// la de "solo locales + pendientes de subir", y la hidratación sube a la
+  /// tabla todo uuid que encuentre ahí. Si la copia viviera en esa clave, un
+  /// favorito quitado desde otro dispositivo se volvería a subir y
+  /// reaparecería.
+  static const _cachePrefix = 'favorite_cache_';
+
   /// Sin sesión los favoritos siguen funcionando (el modo invitado puede
   /// guardar), pero en su propio cajón: al iniciar sesión no se mezclan con los
   /// de la cuenta.
@@ -89,20 +100,97 @@ class FavoritesService {
   /// Qué id puede viajar a Postgres y cuál se queda en el dispositivo.
   static bool _isRemotable(String id) => _uuidPattern.hasMatch(id);
 
-  Future<void> _ensureHydrated() async {
-    final key = _currentKey;
-    if (_hydratedKey == key) return;
+  /// Mensaje único cuando no se pudo leer el set (red caída, Supabase con
+  /// error): lo usan [getFavoriteIds] y quien llame a [preload].
+  static const loadFailedMessage =
+      'No se pudieron cargar tus favoritos. Verifica tu internet e intenta de '
+      'nuevo.';
 
-    final local = await _readLocal(key);
+  /// Mensaje de [toggleFavorite] cuando el cambio no pudo llegar al servidor
+  /// por falta de conexión.
+  static const offlineToggleMessage =
+      'Sin conexión. No se pudo actualizar tu favorito.';
+
+  /// Cuántas veces se llamó a [preload]; solo para que los tests comprueben
+  /// que el "Reintentar" de una pantalla vuelve a pedir la carga.
+  @visibleForTesting
+  int preloadCallCount = 0;
+
+  /// Lectura en curso, para que dos pantallas que piden favoritos a la vez
+  /// (p. ej. Inicio y Perfil al arrancar) compartan una sola consulta en vez
+  /// de subir y leer dos veces. [_hydratingKey] dice a qué cuenta pertenece.
+  Future<bool>? _hydrating;
+  String? _hydratingKey;
+
+  /// Sube con cada [invalidate]. Una lectura que empezó antes de un cambio de
+  /// cuenta compara su número al terminar y, si no coincide, descarta su
+  /// resultado: sin esto podía llegar tarde y pisar los favoritos de la cuenta
+  /// nueva con los de la anterior.
+  int _generation = 0;
+
+  /// Carga el set de la cuenta activa si todavía no está cargado.
+  ///
+  /// Devuelve `false` si no se pudo leer la tabla (el notifier queda con lo
+  /// que hay en el dispositivo y **no** se marca como hidratado, así la próxima
+  /// lectura reintenta). Nunca lanza.
+  Future<bool> _ensureHydrated() {
+    final key = _currentKey;
+    if (_hydratedKey == key) return Future<bool>.value(true);
+    final inFlight = _hydrating;
+    if (inFlight != null && _hydratingKey == key) return inFlight;
+
+    late final Future<bool> future;
+    future = _hydrate(key, _generation).whenComplete(() {
+      if (identical(_hydrating, future)) _hydrating = null;
+    });
+    _hydrating = future;
+    _hydratingKey = key;
+    return future;
+  }
+
+  /// Publica [ids] solo si cambian. Importa por Perfil: escucha
+  /// [idsNotifier] y recarga entera con cada aviso, que vuelve a pedir los
+  /// favoritos. Con la red caída cada lectura fallida publicaba un `Set`
+  /// nuevo —distinto por identidad aunque tuviera lo mismo— y eso reiniciaba
+  /// el ciclo sin fin.
+  void _publish(Set<String> ids) {
+    if (setEquals(idsNotifier.value, ids)) return;
+    idsNotifier.value = ids;
+  }
+
+  Future<bool> _hydrate(String key, int generation) async {
+    // La sesión cambió (cuenta nueva o cierre de sesión) mientras se leía: el
+    // resultado ya no es de esta cuenta y no debe aplicarse.
+    bool stale() => generation != _generation || key != _currentKey;
+
+    final Set<String> local;
+    try {
+      local = await _readLocal(key);
+    } on Exception catch (e) {
+      debugPrint('[FavoritesService] no se pudo leer el almacenamiento: $e');
+      return false;
+    }
     final userId = _currentUserId;
     if (userId == null) {
-      idsNotifier.value = local;
-      _hydratedKey = key;
-      return;
+      if (!stale()) {
+        _publish(local);
+        _hydratedKey = key;
+      }
+      return true;
     }
 
     final localOnly = local.where((id) => !_isRemotable(id)).toSet();
     final pendingUpload = local.where(_isRemotable).toSet();
+
+    // Lo último que se leyó bien de esta cuenta se pinta ya, mientras se
+    // consulta al servidor: con la red caída, `postgrest` reintenta la lectura
+    // con esperas crecientes (unos 7 s) antes de rendirse, y los corazones no
+    // deben quedar vacíos todo ese rato. Si la consulta funciona, lo que diga
+    // el servidor reemplaza esto; no cuenta como "cargado".
+    final cached = await _readCache(userId);
+    if (!stale()) _publish({...local, ...cached});
+
+    final Set<String> remote;
     try {
       // Migración de una sola vez: lo que esta cuenta ya tenía guardado en el
       // dispositivo sube a la tabla y se retira de la copia local, así deja de
@@ -111,30 +199,63 @@ class FavoritesService {
         await _insertRemote(userId, pendingUpload);
         await _writeLocal(key, localOnly);
       }
-      final remote = await _readRemote(userId);
-      idsNotifier.value = {...localOnly, ...remote};
-      _hydratedKey = key;
-    } on PostgrestException catch (e) {
-      // Se muestra lo que hay en el dispositivo en vez de un corazón vacío, y
-      // **no** se marca como hidratado a propósito: así la próxima lectura
-      // reintenta contra la red en lugar de dejar la sesión entera degradada
-      // por un error puntual.
+      remote = await _readRemote(userId);
+    } on Exception catch (e) {
+      // Cualquier fallo (Postgrest, red caída, timeout), no solo los de la
+      // base: se pinta lo último que se leyó bien de esta cuenta (la copia) en
+      // vez de un corazón vacío, y **no** se marca como hidratado a propósito
+      // para que la próxima lectura vuelva a consultar al servidor en lugar de
+      // dejar la sesión entera degradada por un error puntual.
       debugPrint(
-        '[FavoritesService] _ensureHydrated: no se pudo leer user_favorites '
-        '(${e.code}) ${e.message} — se usan los favoritos locales.',
+        '[FavoritesService] no se pudo leer user_favorites: $e — se usa la '
+        'copia local.',
       );
-      idsNotifier.value = local;
+      if (!stale()) _publish({...local, ...cached});
+      return false;
+    }
+
+    // La copia se reemplaza con lo que dice el servidor, aunque la sesión haya
+    // cambiado mientras tanto: sigue siendo de `userId`.
+    await _writeCache(userId, remote);
+    if (!stale()) {
+      _publish({...localOnly, ...remote});
+      _hydratedKey = key;
+    }
+    return true;
+  }
+
+  /// Carga los favoritos de la cuenta activa **sin esperar a que alguna
+  /// pantalla los pida**. Inicio y Mapa solo escuchan [idsNotifier]; si nadie
+  /// lo llena, los corazones salen vacíos hasta que se abre Perfil. Se llama
+  /// al aparecer la app (`MainLayout`), así que también corre tras iniciar
+  /// sesión o cambiar de cuenta, que recrean esa pantalla.
+  ///
+  /// Devuelve `true` si quedaron cargados y `false` si falló; nunca lanza.
+  Future<bool> preload() async {
+    preloadCallCount++;
+    try {
+      return await _ensureHydrated();
+    } on Exception catch (e) {
+      debugPrint('[FavoritesService] preload falló: $e');
+      return false;
     }
   }
 
+  /// Lanza [FavoritesServiceException] (mensaje en español) si no se pudo
+  /// leer la tabla, para que quien muestra el listado —Perfil— enseñe su
+  /// estado de error en vez de un listado incompleto.
   Future<Set<String>> getFavoriteIds() async {
-    await _ensureHydrated();
+    final loaded = await _ensureHydrated();
+    if (!loaded) throw const FavoritesServiceException(loadFailedMessage);
     return idsNotifier.value;
   }
 
+  /// A diferencia de [getFavoriteIds] no lanza si la lectura falla: responde
+  /// con lo que haya en el dispositivo, porque quien pregunta solo pinta un
+  /// corazón y no vale romper el detalle de un negocio por eso.
   Future<bool> isFavorite(String id) async {
-    final ids = await getFavoriteIds();
-    return ids.contains(id);
+    await _ensureHydrated();
+    return idsNotifier.value.contains(id);
   }
 
   /// Agrega/quita [id], persiste y actualiza [idsNotifier]; devuelve el nuevo
@@ -163,17 +284,23 @@ class FavoritesService {
               .eq('item_type', _itemType)
               .eq('item_id', id);
         }
-      } on PostgrestException catch (e) {
+      } on PostgrestException {
+        // El texto de Postgrest viene en inglés y habla de la base de datos.
         throw FavoritesServiceException(
           nowFavorite
-              ? 'No se pudo guardar en favoritos: ${e.message}'
-              : 'No se pudo quitar de favoritos: ${e.message}',
+              ? 'No se pudo guardar en favoritos. Intenta de nuevo en un '
+                    'momento.'
+              : 'No se pudo quitar de favoritos. Intenta de nuevo en un '
+                    'momento.',
         );
       } catch (_) {
-        throw const FavoritesServiceException(
-          'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
-        );
+        // Sin red no se finge: el cambio no llegó al servidor, así que el
+        // corazón no se mueve. (No hay cola de cambios pendientes a propósito.)
+        throw const FavoritesServiceException(offlineToggleMessage);
       }
+      // Lo que se acaba de escribir también va a la copia, para que un
+      // arranque sin internet no la deje atrasada respecto de este cambio.
+      await _writeCache(userId, updated);
     } else {
       await _writeLocal(
         _currentKey,
@@ -201,9 +328,9 @@ class FavoritesService {
           .eq('item_type', _itemType)
           .eq('item_id', businessId);
       return (rows as List<dynamic>).length;
-    } on PostgrestException catch (e) {
-      throw FavoritesServiceException(
-        'No se pudieron contar los guardados: ${e.message}',
+    } on PostgrestException {
+      throw const FavoritesServiceException(
+        'No se pudieron contar los guardados. Intenta de nuevo en un momento.',
       );
     } catch (_) {
       throw const FavoritesServiceException(
@@ -217,7 +344,10 @@ class FavoritesService {
   /// sesión: sin esto los favoritos del perfil anterior se seguirían viendo
   /// hasta reiniciar la app, porque el singleton no se recrea.
   void invalidate() {
+    _generation++;
     _hydratedKey = null;
+    _hydrating = null;
+    _hydratingKey = null;
     idsNotifier.value = const <String>{};
   }
 
@@ -245,6 +375,35 @@ class FavoritesService {
         .map((row) => row['item_id'] as String? ?? '')
         .where((id) => id.isNotEmpty)
         .toSet();
+  }
+
+  /// Copia de lo último leído bien del servidor para [userId]. Nunca lanza:
+  /// es un respaldo, y si no se puede leer simplemente no hay copia.
+  Future<Set<String>> _readCache(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return (prefs.getStringList('$_cachePrefix$userId') ?? const <String>[])
+          .where(_isRemotable)
+          .toSet();
+    } on Exception catch (e) {
+      debugPrint('[FavoritesService] no se pudo leer la copia local: $e');
+      return const <String>{};
+    }
+  }
+
+  /// Reemplaza la copia de [userId] por [ids] (solo los uuid: los slugs ya
+  /// viven en su propia clave). Nunca lanza: un respaldo que no se pudo
+  /// guardar no debe romper una lectura que sí funcionó.
+  Future<void> _writeCache(String userId, Set<String> ids) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        '$_cachePrefix$userId',
+        ids.where(_isRemotable).toList(),
+      );
+    } on Exception catch (e) {
+      debugPrint('[FavoritesService] no se pudo guardar la copia local: $e');
+    }
   }
 
   Future<Set<String>> _readLocal(String key) async {

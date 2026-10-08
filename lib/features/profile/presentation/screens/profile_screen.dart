@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
@@ -138,6 +140,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoading = false;
       });
     } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    } on FavoritesServiceException catch (e) {
+      // Sin esto un fallo de red al leer los favoritos escapaba sin captura y
+      // dejaba la pantalla cargando para siempre; ahora muestra el mismo
+      // estado de error (con su "Reintentar") que los demás fallos de carga.
       if (!mounted) return;
       setState(() {
         _loadError = e.message;
@@ -399,6 +410,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   FilledButton.icon(
                     onPressed: () {
                       setState(() => _isLoading = true);
+                      // Primero los favoritos: si el fallo fue de red, así
+                      // `_loadAll` encuentra la lectura ya hecha (o en curso).
+                      unawaited(FavoritesService().preload());
                       _loadAll();
                     },
                     icon: const Icon(Icons.refresh),

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_main_screen.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
@@ -52,6 +55,16 @@ class _MainLayoutState extends State<MainLayout> {
   void initState() {
     super.initState();
     _tabController.requestedTab.addListener(_onTabRequested);
+    // Inicio y Mapa solo escuchan `FavoritesService.idsNotifier`, que nace
+    // vacío: sin esta carga los corazones salían vacíos hasta que se abría
+    // Perfil (el `PageView` no construye una pestaña hasta que se visita).
+    // Corre en cada arranque y también tras iniciar sesión o cambiar de
+    // cuenta, porque ambos recrean este widget.
+    //
+    // Sin aviso si falla: sin red, Inicio, Mapa y Perfil ya muestran su propio
+    // estado de error, y su "Reintentar" vuelve a llamar a `preload()`. Un
+    // snackbar encima sería el mismo mensaje dos veces.
+    unawaited(FavoritesService().preload());
   }
 
   @override
