@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: el splash del sistema solo admite color sólido; se deja en el color inicial
+         del degradado y con ícono transparente para que lo visible sea splash_bg. -->
+    <style name="SplashTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/splash_grad_0</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_isotipo</item>
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

@@ -4,6 +4,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Bloques visuales compartidos por las pantallas de detalle (`BusinessDetailScreen`, `EcoDetailScreen`), que antes duplicaban la misma jerarquía con widgets privados (Pantalla 3a de Figma sigue siendo la fuente de verdad de medidas/colores).
@@ -113,13 +115,20 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                       DetailCoverIconButton(
                         icon: Icons.arrow_back,
                         onTap: widget.onBack,
+                        label: 'Volver',
                       ),
                       Row(children: widget.actions),
                     ],
                   ),
                   const Spacer(),
                   IgnorePointer(child: widget.caption),
-                  const SizedBox(height: 20),
+                  // Reserva la franja que pisa [DetailQuickInfoCard] más aire
+                  // propio. Con los 20px de antes quedaban 2px entre el baseline
+                  // del título y el borde de la tarjeta, y el título usa
+                  // `height: 1.15` —más apretado que la caja natural de League
+                  // Spartan—, así que las colas de "g"/"y" se pintaban fuera de
+                  // su línea y el blanco de la tarjeta las tapaba.
+                  const SizedBox(height: kDetailQuickInfoOverlap + 16),
                 ],
               ),
             ),
@@ -136,7 +145,7 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.detailCoverCounterBg,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                     border: Border.all(
                       color: AppColors.detailCoverCounterBorder,
                     ),
@@ -174,30 +183,39 @@ class DetailCoverIconButton extends StatelessWidget {
     super.key,
     required this.icon,
     required this.onTap,
+    required this.label,
   });
 
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Descripción para lectores de pantalla. Obligatoria: el botón no tiene
+  /// texto visible, así que sin esto TalkBack/VoiceOver sólo anuncia "botón".
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-          child: Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surface100.withValues(alpha: 0.22),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.surface100.withValues(alpha: 0.4),
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: ClipOval(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.surface100.withValues(alpha: 0.22),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.surface100.withValues(alpha: 0.4),
+                ),
               ),
+              child: Icon(icon, size: 19, color: AppColors.surface100),
             ),
-            child: Icon(icon, size: 19, color: AppColors.surface100),
           ),
         ),
       ),
@@ -224,7 +242,7 @@ class DetailCoverTagPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Text(
         label,
@@ -235,6 +253,11 @@ class DetailCoverTagPill extends StatelessWidget {
     );
   }
 }
+
+/// Cuánto sube [DetailQuickInfoCard] sobre la portada. Lo consume también
+/// [DetailCoverImage] para reservar esa franja debajo de su caption — son los
+/// dos lados del mismo solape y moverlo en un solo lado los descuadra.
+const double kDetailQuickInfoOverlap = 18;
 
 /// Tarjeta flotante de datos rápidos, montada medio superpuesta a la portada.
 class DetailQuickInfoCard extends StatelessWidget {
@@ -248,7 +271,7 @@ class DetailQuickInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -258,14 +281,19 @@ class DetailQuickInfoCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i != 0)
-              Container(width: 1, height: 32, color: AppColors.profileDivider),
-            Expanded(child: items[i]),
+      // IntrinsicHeight para que el separador siga la altura real de la fila:
+      // con los 32px fijos de antes, un valor de dos líneas dejaba la línea
+      // divisoria flotando a media columna.
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i != 0) Container(width: 1, color: AppColors.profileDivider),
+              Expanded(child: items[i]),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -287,6 +315,7 @@ class DetailQuickInfoItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           label,
@@ -298,7 +327,10 @@ class DetailQuickInfoItem extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           value,
-          maxLines: 1,
+          // Dos líneas: la columna mide ~105px en un teléfono de 384dp y a
+          // una línea un horario o una ciudad compuesta ("San Juan de
+          // Limay") se cortaba a la mitad de la primera palabra.
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: AppTextStyles.quickInfoValue.copyWith(
@@ -326,10 +358,10 @@ class DetailSegmentedTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.segmentedTrackBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Row(
         children: [
@@ -363,7 +395,7 @@ class _SegmentButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.quickDuration,
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : Colors.transparent,
@@ -439,7 +471,7 @@ class DetailIconRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: Row(
@@ -479,7 +511,7 @@ class DetailProfileCard extends StatelessWidget {
     this.caption,
     this.captionColor,
     this.verified = false,
-    this.accent = AppColors.accent300,
+    this.accent = AppColors.oliveText,
     this.accentBackground = AppColors.detailActivityIconBg,
     this.onTap,
   });
@@ -500,7 +532,7 @@ class DetailProfileCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -537,7 +569,7 @@ class DetailProfileCard extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: accentBackground,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -609,7 +641,7 @@ class DetailMapCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         clipBehavior: Clip.antiAlias,
@@ -657,7 +689,7 @@ class DetailMapCard extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.settingsBackground,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
                     ),
                     child: Text(
                       actionLabel,

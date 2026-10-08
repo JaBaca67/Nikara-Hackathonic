@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Cabecera de perfil público, compartida por `OrganizationProfileScreen` y `PublicUserProfileScreen` para que ambos se lean como la misma pantalla con distinto contenido.
@@ -18,6 +19,9 @@ class PublicProfileHeader extends StatelessWidget {
     this.badgeLabel,
     this.verified = false,
     this.action,
+    this.circularAvatar = false,
+    this.banner,
+    this.details,
   });
 
   final String name;
@@ -38,6 +42,9 @@ class PublicProfileHeader extends StatelessWidget {
   final bool verified;
 
   final Widget? action;
+  final bool circularAvatar;
+  final Widget? banner;
+  final Widget? details;
 
   @override
   Widget build(BuildContext context) {
@@ -55,11 +62,13 @@ class PublicProfileHeader extends StatelessWidget {
             children: [
               Positioned.fill(
                 bottom: 44,
-                child: LocalImage(
-                  path: bannerPath,
-                  fallbackIcon: Icons.image_outlined,
-                  fallbackIconSize: 0,
-                ),
+                child:
+                    banner ??
+                    LocalImage(
+                      path: bannerPath,
+                      fallbackIcon: Icons.image_outlined,
+                      fallbackIconSize: 0,
+                    ),
               ),
               Positioned(
                 left: 16,
@@ -76,6 +85,7 @@ class PublicProfileHeader extends StatelessWidget {
                   avatar: avatar,
                   accent: accent,
                   badgeIcon: badgeIcon,
+                  circular: circularAvatar,
                 ),
               ),
               if (action != null)
@@ -93,7 +103,10 @@ class PublicProfileHeader extends StatelessWidget {
                   Flexible(
                     child: Text(
                       name,
-                      style: AppTextStyles.detailTitle.copyWith(fontSize: 21),
+                      style: AppTextStyles.detailTitle.copyWith(
+                        fontSize: circularAvatar ? 26 : 21,
+                        color: AppColors.neutral1100,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -120,7 +133,7 @@ class PublicProfileHeader extends StatelessWidget {
                     const Icon(
                       Icons.place_rounded,
                       size: 14,
-                      color: AppColors.settingsTextMuted,
+                      color: AppColors.neutral800,
                     ),
                     const SizedBox(width: 5),
                     Expanded(
@@ -128,6 +141,7 @@ class PublicProfileHeader extends StatelessWidget {
                         contextLine,
                         style: AppTextStyles.settingsSubtitle.copyWith(
                           fontSize: 12,
+                          color: AppColors.neutral800,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -144,6 +158,7 @@ class PublicProfileHeader extends StatelessWidget {
                   accent: accent,
                 ),
               ],
+              if (details != null) ...[const SizedBox(height: 14), details!],
             ],
           ),
         ),
@@ -157,11 +172,13 @@ class _AvatarWithBadge extends StatelessWidget {
     required this.avatar,
     required this.accent,
     required this.badgeIcon,
+    this.circular = false,
   });
 
   final Widget avatar;
   final Color accent;
   final IconData? badgeIcon;
+  final bool circular;
 
   @override
   Widget build(BuildContext context) {
@@ -173,10 +190,10 @@ class _AvatarWithBadge extends StatelessWidget {
           Container(
             width: 88,
             height: 88,
+            padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               color: AppColors.surface100,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.surface100, width: 3),
+              borderRadius: BorderRadius.circular(circular ? 100 : 28),
               boxShadow: const [
                 BoxShadow(
                   color: AppColors.mapControlShadowSoft,
@@ -185,8 +202,13 @@ class _AvatarWithBadge extends StatelessWidget {
                 ),
               ],
             ),
-            clipBehavior: Clip.antiAlias,
-            child: avatar,
+            // El recorte va dentro del padding y no sobre el borde: así el
+            // marco blanco es un anillo parejo y la foto llena su cuadrado,
+            // en vez de dejar franjas cuando no es cuadrada.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(circular ? 100 : 25),
+              child: SizedBox.expand(child: avatar),
+            ),
           ),
           if (badgeIcon != null)
             Positioned(
@@ -227,7 +249,7 @@ class _CredentialPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -289,7 +311,7 @@ class PublicProfileStats extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: Row(
@@ -316,7 +338,9 @@ class PublicProfileStats extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.quickInfoLabel,
+                    style: AppTextStyles.quickInfoLabel.copyWith(
+                      color: AppColors.neutral800,
+                    ),
                   ),
                 ],
               ),

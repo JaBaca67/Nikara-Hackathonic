@@ -5,11 +5,47 @@ App Flutter (móvil/web/desktop) de turismo y negocios locales en Nicaragua. UI 
 ## Stack
 
 - **Flutter** 3.44.5 / **Dart** ^3.12.2 (ver `flutter --version`).
-- **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`, `auditor`). Credenciales en `lib/core/supabase/supabase_config.dart`.
+- **Backend**: Supabase (`supabase_flutter`) — Auth + tabla `profiles` (roles: `turista`, `emprendedor`, `admin`). Credenciales en `lib/core/supabase/supabase_config.dart`. Hubo un cuarto rol `auditor` hasta el 2026-08-27 — se definió al inicio del proyecto pero nunca se usó en la práctica (nadie llegó a registrarse con él) y se retiró del sistema de permisos. **La frase "nada depende de él" fue falsa hasta el 2026-10-05**: los tres RPC de revisión de `019` seguían aceptándolo como rol autorizado, así que una fila con ese valor podía aprobar negocios, fundaciones y jornadas. `034` lo cierra; el valor sigue en el tipo `user_role` de Postgres y ahora sí es inofensivo (quitarlo de un enum obliga a recrear la columna de cuentas y sus policies — no vale el riesgo).
 - **Estado**: sin paquete de state management. Patrón: servicios singleton (`XService()` factory que devuelve una instancia cacheada) con getters síncronos, más `StatefulWidget`/`setState` en la UI. Ver `lib/core/services/auth_service.dart` como referencia canónica.
-- **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`) llamando a la Directions API de Google directamente desde Dart — necesita `GOOGLE_MAPS_API_KEY` vía `--dart-define-from-file=dart_defines.json` (ver `lib/core/config/maps_config.dart`), independiente de la key nativa del SDK de Maps en `android/local.properties`/`ios/Flutter/Maps.xcconfig`.
+- **Mapas**: `google_maps_flutter` + `geolocator`. Ruteo real ("Cómo llegar") vía `DirectionsService` (`lib/core/services/directions_service.dart`), que desde el 2026-10-06 llama a la Edge Function `get-directions` en vez de pegarle directo a Google — mismo patrón que `travel-assistant` (ver abajo). El SDK nativo de mapas (lo que pinta los tiles) es un asunto aparte, con su propia key por plataforma. Detalle completo en "API keys de Google Maps" más abajo.
+- **Notificaciones**: dos capas que no se confunden. **In-app** = tabla `notifications` de Supabase (campanita + listado, `NotificationService`). **Push al teléfono** = Firebase Cloud Messaging, que es *solo el transporte* — Supabase sigue siendo la única fuente de verdad, no hay Firestore ni Realtime Database y no deben agregarse (`pubspec.yaml` trae únicamente `firebase_core` y `firebase_messaging`). La cadena completa: se inserta una fila en `notifications` -> el trigger `on_notification_created` (033) llama a la Edge Function `send-push` -> esa función firma un JWT con la cuenta de servicio, lee `device_push_tokens` y habla con la API HTTP v1 de FCM -> Android dibuja el aviso. Funcionando de punta a punta desde el 2026-10-01.
 - **Persistencia local**: `shared_preferences` (sesión de invitado, favoritos, extras de perfil).
-- **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Fuente custom `Leelawadee`.
+- **UI**: `google_fonts`, `font_awesome_flutter`, `flutter_svg`. Sin fuentes empaquetadas — toda la tipografía sale de `google_fonts` (League Spartan + Nunito).
+
+## API keys de Google Maps
+
+Son **3 credenciales distintas** del mismo proyecto de Google Cloud, no una sola — confusión real que vale la pena dejar escrita. Cada una protege algo distinto y se configura distinto:
+
+| Key | Dónde vive | Para qué | Viaja al cliente |
+|---|---|---|---|
+| Directions | Secreto de Supabase (`GOOGLE_MAPS_API_KEY` en la Edge Function `get-directions`) | Calcular rutas reales ("Cómo llegar") | **No** — desde el 2026-10-06, nunca sale del servidor |
+| Android (SDK nativo) | `android/local.properties` → línea `MAPS_API_KEY=...` (gitignored) | Pintar los tiles del mapa en Android | Sí, siempre — la exige el SDK nativo |
+| iOS (SDK nativo) | `ios/Flutter/Maps.xcconfig` → `GOOGLE_MAPS_API_KEY=...` (gitignored) | Pintar los tiles del mapa en iOS | Sí, siempre — la exige el SDK nativo |
+
+### Por qué la de Directions se resolvió distinto de las otras dos
+
+Antes de esto, `DirectionsService` le pegaba directo a la Directions API desde Dart con una key leída de `.env` (vía `flutter_dotenv`, declarada en `--dart-define`-style). El síntoma del cambio de arquitectura: esa key viaja en texto plano dentro del APK compilado — se extrae con herramientas estándar — así que ocultarla en `.gitignore` no protegía nada que no estuviera ya expuesto en cualquier build público. La solución, igual que ya existía para `GEMINI_API_KEY` en `travel-assistant` (`supabase/functions/travel-assistant/index.ts`): una Edge Function (`supabase/functions/get-directions/index.ts`) que guarda la key como secreto de Supabase y nunca la devuelve al cliente. `DirectionsService` ahora llama `_client.functions.invoke('get-directions', ...)` en vez de `http.get` directo a Google; el parseo de la respuesta (incluido el mapeo de `status` a mensajes en español) no cambió, porque la función reenvía el JSON de Google tal cual.
+
+Efecto práctico: `.env`, `dart_defines.json` y `flutter_dotenv` quedaron sin uso real y se retiraron del proyecto (código, `pubspec.yaml`, `.gitignore` sigue ignorándolos por si quedan en disco en alguna máquina, no porque haga falta). Si volvés a ver `MapsConfig` o un import de `flutter_dotenv` en una rama vieja, es código muerto de antes del 2026-10-06.
+
+**Las keys nativas (Android/iOS) no se pueden resolver así.** No son llamadas HTTP que hace nuestro código — las usa el SDK de `google_maps_flutter` para pedir los tiles directo desde el teléfono a los servidores de Google. Tienen que estar compiladas dentro del APK/IPA sí o sí; no hay backend que meter en el medio sin dejar de usar el SDK oficial.
+
+### Configurar la key de Android en una máquina nueva
+
+Es la que explica el síntoma clásico "el mapa no carga, solo aparece el logo de Google en la esquina" — sin ella (o con una inválida) el SDK se inicializa pero no dibuja tiles.
+
+1. **Encontrarla**: en la máquina que ya tiene el proyecto andando, abrí `android/local.properties` — la línea `MAPS_API_KEY=...` (las otras líneas de ese archivo, `sdk.dir`/`flutter.sdk`, son locales de cada máquina y no se copian).
+2. **Pasarla**: por un canal privado (Slack/WhatsApp/Signal), nunca por git ni pegada en una sesión de Claude Code — el hook `SessionEnd` guarda la conversación entera en la bóveda de Obsidian, que es un repo git.
+3. **Configurarla en la máquina nueva**: crear o editar `android/local.properties` (Flutter/Android Studio lo autogeneran con `sdk.dir` al abrir el proyecto, pero sin la línea `MAPS_API_KEY`) y agregar `MAPS_API_KEY=<la_key>`. `android/app/build.gradle.kts` la lee de ahí y la inyecta en `AndroidManifest.xml` vía `manifestPlaceholders`.
+4. Si querés compilar para iOS, lo mismo con `ios/Flutter/Maps.xcconfig` → `GOOGLE_MAPS_API_KEY=<la_key_de_ios>` (es una credencial distinta a la de Android, restringida a bundle ID en vez de paquete+SHA-1).
+
+**Gotcha si después de esto el mapa sigue sin pintar**: la key de Android suele estar restringida en Google Cloud Console por *nombre de paquete + huella SHA-1 del certificado de firma*. Cada máquina genera su propio `debug.keystore` con una huella distinta por defecto, así que una key válida puede seguir siendo rechazada para la huella de la máquina nueva. Mirá el log de Android (`flutter run` en modo verbose, o Logcat) por un mensaje tipo "Authorization failure" / "API key not authorized" — si aparece, hay que entrar a Google Cloud Console → APIs & Services → Credentials → esa key → Application restrictions, y agregar la huella SHA-1 de la máquina nueva (se obtiene con `cd android && ./gradlew signingReport`).
+
+### Por qué NO se versionan las keys nativas (decisión cerrada, 2026-10-07)
+
+Se evaluó sacar `android/local.properties`/`ios/Flutter/Maps.xcconfig` del `.gitignore` y versionarlas con el valor real — el mismo razonamiento que ya se usa para la `anon key` de Supabase ("viaja en el APK de todas formas, así que ocultarla de git no protege nada que no esté ya expuesto"). **Se descartó** por un hecho que ese razonamiento no tenía en cuenta: `github.com/JaBaca67/Nikara-Hackathonic` es un repo **público** (decisión de José por el hackathon, la misma razón por la que `supabase/` entero está gitignored — ver abajo). La diferencia entre "expuesta en un APK compilado" y "expuesta en texto plano en un repo público de GitHub" no es cosmética: hay bots que escanean continuamente los commits públicos de GitHub buscando el patrón `AIzaSy...` y prueban a abusar la key en minutos u horas — no hace falta que nadie la busque a propósito. Decompilar un APK para sacar la key exige esfuerzo humano dirigido; que un bot la encuentre en un `git push` público es automático.
+
+La restricción de Google Cloud Console (paquete + huella SHA-1 para Android) **no cierra este riesgo del todo**: el paquete y la huella SHA-1 del certificado de firma se pueden extraer del propio APK publicado sin necesitar la clave privada, así que un atacante que ya tiene tu APK puede falsificar esos mismos valores en una petición hecha a mano. Esa restricción frena el reuso accidental entre apps, no a un bot dirigido que ya tiene tu key y tu APK. Con esta duda razonable, la decisión fue no arriesgar el presupuesto de la cuenta de Google Cloud: la key de Android/iOS sigue el proceso manual descrito arriba, indefinidamente, no como parche temporal.
 
 ## Arquitectura de carpetas
 
@@ -29,7 +65,7 @@ No todas las features tienen los tres subniveles (`data/domain/presentation`); a
 
 ```bash
 flutter pub get                    # instalar dependencias
-flutter run --dart-define-from-file=dart_defines.json  # levantar con la Directions API key (copia dart_defines.json.example)
+flutter run                        # levantar (la Directions API key ya no es un dart-define, ver "API keys de Google Maps")
 flutter run -d chrome              # levantar en web
 flutter run -d windows             # levantar en Windows desktop
 flutter analyze                    # linting estático (flutter_lints)
@@ -47,17 +83,309 @@ No hay codegen (sin `build_runner`, `freezed` ni `json_serializable`) — los mo
 - **Idioma**: identificadores de código en inglés; strings visibles al usuario y mensajes de error siempre en español. Los comentarios documentan el *por qué* (una restricción no obvia, una decisión de diseño), no el *qué* — el código ya se explica solo con buenos nombres.
 - **Servicios singleton**: `factory XService() => instance;` + constructor privado `XService._internal()`. No conviertas esto en Provider/Riverpod/Bloc sin discutirlo primero (ver regla abajo).
 - **Errores de Supabase**: capturar excepciones específicas primero (`PostgrestException`, `AuthException`), fallback genérico al final, y traducir siempre a un mensaje amigable en español (patrón `_friendlyAuthError` en `auth_service.dart`). Los métodos que llaman a Supabase devuelven un result object (ej. `AuthResult`) o lanzan una excepción propia (`AuthServiceException`) con `message` en español — nunca dejes escapar un `PostgrestException` crudo hacia la UI.
-- **Colores**: siempre desde `AppColors` (`lib/theme/app_colors.dart`). Nunca `Color(0xFFFFFFFF)`/`Color(0xFF000000)` puros ni hex literales sueltos — el sistema de diseño usa deliberadamente blanco/negro "suavizados" (`surface100`, `neutral1100`).
-- **Diseño**: la fuente de verdad es el archivo Figma "UI-NÍKARA"; los comentarios en `app_colors.dart`/`app_theme.dart` referencian nodos de Figma — mantén esa trazabilidad al agregar tokens nuevos.
+- **Colores y tipografía**: siempre desde `AppColors`/`AppTextStyles` (`lib/theme/`) — nunca un hex literal suelto ni un `Color(0x...)` inline en una pantalla. Ver "Sistema de diseño" abajo para la disciplina completa (primitivos vs. semánticos, tiers de pantalla).
+- **Diseño**: la fuente de verdad son (a) el archivo Figma "UI-NÍKARA" para layout/estructura de pantallas existentes, y (b) los prototipos del usuario en Claude Design para pantallas nuevas o rediseños (ver "Flujo Claude Design" abajo). Los comentarios en `app_colors.dart`/`app_theme.dart` referencian su origen (nodo de Figma o token semántico) — mantén esa trazabilidad al agregar tokens nuevos.
 - **Tests de widgets**: `AuthService` toca `Supabase.instance` de forma síncrona, así que **todo** widget test necesita en `setUpAll`: `SharedPreferences.setMockInitialValues({})` seguido de `Supabase.initialize(url: ..., publishableKey: 'test-anon-key-not-real')` con credenciales falsas — no hace falta un proyecto real. Repetir `setMockInitialValues({})` en `setUp` porque otros servicios leen `SharedPreferences` en cada test. Usar `tester.pump()` con duración explícita en vez de `pumpAndSettle()` en pantallas con `AuroraBackgroundWidget` (animación infinita que nunca deja que `pumpAndSettle` termine).
 - **Auditoría de overflow**: `test/overflow_audit_test.dart` renderiza pantallas con datos deliberadamente peores que cualquier input real (nombres/descripciones larguísimas) para forzar `RenderFlex overflow`. Al agregar una pantalla nueva con texto dinámico de negocio, considera agregarla a ese archivo.
+- **Validación visual antes de dar por terminada una pantalla**: ver "Protocolo de validación visual" abajo — es obligatorio, no opcional, para cualquier cambio que toque UI.
+
+## Sistema de diseño
+
+Fuente de verdad visual: Figma "UI-NÍKARA" para pantallas ya existentes, prototipos del usuario en Claude Design para pantallas nuevas/rediseños. Este sistema resuelve un problema real detectado en auditoría: `app_colors.dart` acumuló ~110 constantes (muchas duplicadas — colores distintos con el mismo hue, nombrados sin relación entre sí) y `AppTextStyles` mezclaba tipografía con color en el mismo getter, dos capas que deberían ser independientes. Lo de abajo es la disciplina que reemplaza ese patrón — no es una sugerencia de estilo, es la regla.
+
+### Primitivos de marca (los únicos 3 colores "de marca" que existen)
+
+Cada uno tiene como máximo 2 variantes — `Fill` (relleno de badges/pills/cards/CTA) y `Text` (texto/íconos interactivos, verificado a contraste ≥4.5:1 WCAG AA contra `background` y `surface`). Nunca se usa un tono intermedio inventado; si un caso de uso no encaja en Fill o Text, se discute antes de crear un tercer escalón.
+
+| Rol | Hex | Contraste vs. background/surface | Uso |
+|---|---|---|---|
+| `goldFill` | `#FDBE02` | — (no se usa como texto) | Rellenos, CTAs primarios, acentos decorativos, badges. |
+| `oliveFill` | `#C2CA5B` | — | Rellenos del badge/tag ECO, acentos decorativos claros. |
+| `oliveText` | `#6B7033` | 4.76 / 5.17 | Links, texto interactivo, íconos con significado ECO. Reemplaza al antiguo `accent300` (`#8B922A`, que medía solo 3.21 — **incumplía AA para texto normal**; esto no es solo limpieza, corrige un bug de accesibilidad real). |
+| `orangeFill` | `#FF8243` | — | Gradiente de la aurora, barra de pasos de Auth, tabla de categorías, insignias. **Adoptado oficialmente el 2026-10-05**: la auditoría de agosto lo había declarado eliminado "por cero usos", pero tenía 6 usos reales bajo el nombre `coral500`. |
+
+**No existe `orangeText`.** La especificación original declaraba `#C44B0E` para el acento naranja como texto, pero ninguna pantalla lo usa y no está en `app_colors.dart` — se declara el día que algo lo necesite, no antes.
+
+**Gold nunca es color de texto.** Su variante oscurecida a contraste seguro (`#8F6D0A`) deja de leerse como dorado y se lee como bronce — se decidió deliberadamente no usarla; Gold vive solo como relleno con texto oscuro (`textPrimary`/`textInverted`) encima.
+
+### Tokens semánticos (neutros + estado)
+
+- `background` = `#F7F3EC` (beige tostado), `surface` = `surface100` (`#FDFDFD`) — fondo de pantalla vs. fondo de tarjetas/inputs. **La distancia entre estos dos tokens es funcional, no decorativa**: hasta el 2026-08-25 `background` era el cream de Figma `#FFF9F0`, cuya diferencia de luminancia contra `surface` era 0.029 — imperceptible, así que ninguna tarjeta se leía como apoyada sobre el fondo. El valor actual la lleva a 0.083 y sale del prototipo de Claude Design, no de Figma. Al proponer un fondo nuevo, verificá que esa separación se mantenga.
+- `textPrimary` = `neutral1100` (`#121212`), `textSecondary` = un neutro cálido consolidado (el refactor debe unificar los ~8 grises casi duplicados hoy dispersos — `neutral600/700/800`, `settingsTextMuted`, `authBodyMuted`, etc. — en un único token; no crear una variante nueva por pantalla).
+- `textInverted` = `surface100`/blanco, para texto sobre fondos oscuros o sobre un `Fill` de marca saturado.
+- `border` = `cardBorder` (negro @ ~12%), ya existente — no se toca.
+- `error` = `formError` (`#D64545`) para validación inline de formularios; `destructive` = `settingsDanger` (`#CC5510`) para confirmaciones de acción destructiva (eliminar, cerrar sesión). Son dos tokens deliberadamente distintos, no uno — así ya se documentaba antes de esta auditoría y sigue siendo correcto. *Nota pendiente*: ambos miden 4.1–4.3:1 de contraste, ligeramente bajo el 4.5:1 estricto; aceptable para texto en negrita/con ícono de apoyo, pero es un ajuste menor a considerar en el refactor si se usan alguna vez como texto largo sin negrita.
+- `ecoAccent` = alias del par `oliveFill`/`oliveText` — el módulo ECO no tiene un cuarto color propio, hereda la familia Olive.
+
+Cualquier necesidad de color que no encaje en esta lista se **discute antes de escribir código**, nunca se resuelve agregando una constante nueva a `app_colors.dart` sobre la marcha.
+
+### Tiers de pantalla
+
+Dos categorías oficiales, declaradas explícitamente al crear o revisar una pantalla:
+
+- **Expresiva**: Auth (Splash/Login/Registro) y cualquier futura pantalla de onboarding o celebración. Única categoría autorizada a usar el gradiente completo de los 3 `Fill` (`AppGradients.authBackgroundColors`) y a sentirse "de marca" en toda la superficie.
+- **Funcional**: todo lo demás — Inicio, Mapa, Perfil, Ajustes, detalle de negocio, wizard de registro de negocio, módulo ECO. Fondo/superficie siempre desde `background`/`surface`, texto siempre desde la escala neutra, y **como máximo un acento de marca visible a la vez** (ej. un CTA en `goldFill`, o un badge en `ecoAccent`) — nunca combinar los 3 `Fill` en una pantalla Funcional, eso es lo que hoy hace que ECO y los perfiles externos se sientan "con ideas distintas sin razón".
+
+**Excepción autorizada — el módulo ECO** (decisión de José, 2026-08-25, tras la auditoría visual sobre dispositivo real): las pantallas de ECO **sí** pueden mostrar Gold y Olive al mismo tiempo. La razón es que ahí el oliva **no decora: comunica categoría** — es el color con el que el usuario distingue el contenido ecológico del resto de la app, así que un CTA dorado y un badge oliva conviviendo no son "dos ideas distintas sin razón", son dos significados distintos. Es la única excepción a la regla de un solo `Fill` en tier Funcional; cualquier otra se discute antes de escribir código. Esto cierra un pendiente que llevaba dos auditorías abierto y también responde la pregunta de tier que había quedado abierta en el prototipo del chatbot conversacional.
+
+Al tocar una pantalla existente que no respete su tier, es motivo válido de refactor incluso si no fue lo que se pidió explícitamente — pero se avisa primero, no se cambia en silencio.
+
+### Tipografía (`AppTextStyles`)
+
+Cada getter define únicamente `fontSize`, `fontWeight` y `height` (line-height). Nunca fija un `color`. El color se aplica en el widget por composición (`Text('...', style: AppTextStyles.body.copyWith(color: AppColors.textSecondary))`) o heredado del `ColorScheme`/`DefaultTextStyle` del árbol. Esto es un cambio de comportamiento respecto al código actual (donde ~60 de los ~90 getters ya traen color fijo) — el refactor de `app_theme.dart` debe extraer esos colores hacia el call site.
+
+### Movimiento (`AppMotion`)
+
+Toda duración y curva de animación sale de `lib/theme/app_motion.dart` — nunca un `Duration(milliseconds: ...)` ni un `Curves.x` literal en una pantalla, por la misma razón que no se escribe un hex suelto. La escala se derivó de la frecuencia real de uso en el código (no de Figma), igual que `AppSpacing`.
+
+| Token | Valor | Uso |
+|---|---|---|
+| `microDuration` | 150ms | Micro-interacciones: tap feedback, ícono que cambia de estado. |
+| `quickDuration` | 200ms | Cambios de color/tamaño acotados dentro de un mismo componente. |
+| `standardDuration` | 250ms | Transición estándar: entrada de una card, aparición de contenido. |
+| `largeDuration` | 320ms | Transición grande: cambio de tab, navegación entre pantallas. |
+| `enter` / `exit` | `easeOut` / `easeIn` | Elementos que entran / salen de la pantalla. |
+| `standard` | `easeInOut` | Transición sin dirección marcada. |
+| `emphasized` | `easeInOutCubic` | Transiciones grandes (píldora de navegación, cross-fade de tabs). |
+| `decelerate` | `easeOutCubic` | Elementos que se asientan desacelerando: sheets, chips, cámara del mapa. |
+| `overshoot` | `easeOutBack` | **Solo énfasis/celebración** (éxito, logo del Splash, entrada del sheet de Auth) — en una micro-interacción se lee como error de timing. |
+
+Las duraciones largas que quedan hardcodeadas son deliberadas y no se tokenizan: son animaciones *signature* de una sola pantalla (ciclo de 24s de la aurora, intro de 700ms y pulso de 1200ms del Splash, fade de 500ms al salir de él).
+
+**Reducir movimiento (accesibilidad).** `AppMotion.reduced(context)` lee el ajuste del sistema (Android: Accesibilidad > Eliminar animaciones; iOS: Reduce Motion) y `AppMotion.respect(context, d)` devuelve `Duration.zero` cuando está activo. Consultarlos en `didChangeDependencies`/`build`, nunca en `initState`, para que la pantalla reaccione si el ajuste cambia estando abierta. Ya respetado en: `pushSharedAxis`, la aurora (detiene el ticker infinito y queda en un frame fijo) y el Splash (logo en estado final, sin pulso; el temporizador de navegación sigue corriendo igual). Al agregar una animación nueva **continua o de pantalla completa**, respetarlo; para un cross-fade de 200ms no hace falta.
+
+`test/reduce_motion_test.dart` lo cubre, y aprovecha un efecto lateral útil: con el ajuste activo `pumpAndSettle()` **sí** termina sobre la aurora — es la prueba observable de que el ticker se detuvo (ver la nota de tests de widgets arriba, que explica por qué normalmente no termina).
+
+**Transiciones de pantalla.** Todas viven en `lib/shared/widgets/app_page_transition.dart` (paquete `animations`, oficial de Flutter y agnóstico de router). **No queda ni un `MaterialPageRoute` en `lib/`** desde el 2026-10-03 — si aparece uno nuevo, es un descuido, no el patrón. El movimiento se elige por lo que *significa* la navegación:
+
+| Helper | Movimiento | Cuándo |
+|---|---|---|
+| `pushSharedAxis` | Shared axis horizontal | Entrar en una jerarquía: lista → detalle, Perfil → Ajustes. Las dos pantallas se desplazan sobre el mismo eje, que es lo que comunica "esto está dentro de aquello". (53 usos) |
+| `pushSharedAxisReplacement` | Shared axis horizontal | Continuación de flujo donde la pantalla saliente ya no tiene sentido (el gate de identidad legal una vez verificada). (2 usos) |
+| `pushFadeThroughAndRemoveUntil` | Fade through | Cambio de raíz sin relación jerárquica: login, logout, cambio de cuenta, fin del alta de negocio. No hay un "atrás" al que volver, así que deslizar mentiría sobre la estructura. (9 usos) |
+| `sharedAxisRoute` | Shared axis horizontal | La ruta suelta, para empujar desde un `NavigatorState` sin `context` de pantalla — hoy solo el servicio de push vía `rootNavigatorKey`. |
+
+Las cuatro respetan "Eliminar animaciones" vía `AppMotion.respect`. La única transición que queda escrita a mano es el fade de salida del Splash (`splash_transition_screen.dart`), que es parte de su animación propia.
+
+### Flujo Claude Design
+
+El usuario prototipa en su dashboard de Claude Design de forma independiente y guarda cada export como una nota en `01_Nikara/Fuentes_Raw/Claude_Design/` de la bóveda (el `.png` en su subcarpeta `_img/`), con `pantalla`, `tier` y `estado` en el frontmatter. Su contraparte es `01_Nikara/Fuentes_Raw/Capturas_App/`, donde guarda capturas de la app **real corriendo** — no se confunden: Claude_Design es cómo debería verse, Capturas_App es cómo se ve hoy. La skill `nikara-capturas-visuales` abre y cruza ambas por el campo `pantalla`, así que no hace falta pegar imágenes en la terminal: alcanza con pedir "mirá el diseño de Perfil" o "compará el diseño contra lo implementado de Inicio".
+
+Cuando referencie una imagen con `@nombre_imagen.png` o pida mirar una pantalla:
+
+1. Analiza visualmente disposición de componentes, jerarquía, espaciados y formas — el usuario no la va a describir en texto.
+2. Traduce esa disposición a widgets de Flutter usando exclusivamente los tokens de este sistema de diseño (primitivos Fill/Text, semánticos, `AppTextStyles`) — nunca un hex nuevo leído "a ojo" de la captura, aunque la imagen muestre un tono que no está en la paleta. Si el prototipo pide un color fuera de los primitivos, se marca como pregunta abierta antes de codificar, no se inventa un token para resolverlo.
+3. Declara explícitamente el tier (Expresiva/Funcional) de la pantalla resultante antes de escribir código, y lo justifica si el prototipo del usuario sugiere lo contrario.
+
+### Skill de captura de tareas pendientes (`capturar-tarea-pendiente`)
+
+Skill de usuario (no vive en este repo) que dispara sola cuando José dice
+algo como "guardá esto para después" o "queda pendiente" en cualquier
+sesión de Claude Code — incluida una abierta en este repo. Guarda la idea
+como nota estructurada en `01_Nikara/Proyecto_Flutter/Tareas_Pendientes/`
+de la bóveda (o en `00_Sistema/Skills/` si es una idea de skill nueva, no
+una tarea de este proyecto). No hace falta hacer nada especial para que
+funcione — solo mencionar que algo queda pendiente.
+
+### Skill de auditoría de diseño (`nikara-design-audit`)
+
+Skill instalada a nivel de usuario (`~/.claude/skills/nikara-design-audit/`,
+no vive en este repo) — disponible en cualquier sesión de Claude Code sin
+importar la carpeta. Dispara sola al pedir "auditar el diseño", "revisar
+consistencia visual", o al tocar cualquier pantalla nueva (modo checklist
+preventivo antes de darla por terminada). Incluye un script determinístico
+(`scripts/scan_dart_tokens.py`) que detecta colores/tipografía fuera de
+tokens, desvíos de la escala `AppSpacing`/`AppRadius` (`lib/theme/
+app_spacing.dart`, nuevo — ver arriba, no está en Figma/Claude Design,
+se derivó de la frecuencia real de uso en el código), y violaciones de tier
+(2+ `Fill` de marca en una pantalla Funcional).
+
+**Estado tras la auditoría del 2026-08-25** (ejecutada con la skill sobre
+`lib/` entero, 46 archivos visuales):
+
+*Resuelto:*
+
+- **La familia verde se consolidó de 5 colores a 2.** `accent300` (3.21,
+  incumplía AA) y `ecoActive` (3.77, también incumplía — 58 usos en 20
+  archivos, no estaba documentado) colapsaron en `oliveText` (entonces
+  `#707536`, hoy `#6B7033` tras el cambio de fondo del 2026-08-25).
+  `ecoForest` `#3A7D3A` se renombró a `success`: no era un verde ECO, se
+  usaba en "contraseña fuerte", gamificación y pantalla de éxito — es un
+  token de estado, igual que `error` y `destructive`. Las tres constantes
+  viejas están eliminadas; 105 call sites migrados.
+- **Bug de accesibilidad crítico corregido.** Todos los badges ECO pintaban
+  texto blanco sobre el relleno lima: contraste **1.74:1** contra el mínimo
+  AA de 4.5:1. La causa raíz es instructiva — el sistema ya tenía la regla
+  correcta escrita *para Gold* ("relleno claro lleva texto oscuro encima")
+  pero nunca se aplicó a Olive, que es igual de claro (luminancia 1.69 vs
+  1.60). Ahora es tinta sobre lima: 10.61:1. **Regla general: ningún `Fill`
+  de marca lleva texto blanco encima — los tres son claros.**
+- **`app_colors.dart` tiene una capa canónica al inicio** con los primitivos
+  y los semánticos. Es la única capa que deberían tocar las pantallas
+  nuevas; la paleta histórica de Figma quedó debajo, marcada "en
+  consolidación".
+- **El badge ECO existía 6 veces** (4 paddings y 3 estilos tipográficos
+  distintos para un pill de 3 letras) — hoy es `EcoBadge` en
+  `lib/shared/widgets/eco_badge.dart`, el primer widget que consume
+  `AppSpacing`/`AppRadius`.
+- **Tier de `eco_main_screen.dart`**: badge "Empieza pronto", spinner y
+  "Reintentar" pasaron de Gold a Olive. **El CTA "Unirme" NO**: verificado
+  sobre dispositivo el 2026-10-03, renderiza `goldFill` (`#FDBD03` medido) y
+  el código lo fija a `primary500` con un comentario que lo justifica. Es
+  correcto bajo la excepción autorizada de ECO (Gold + Olive conviven porque
+  el oliva comunica categoría) — no "corregirlo" a Olive.
+
+*Pendiente:*
+
+- **Coexistencia Gold + Olive en Inicio y Mapa.** El escaneo dejó de marcar
+  `home_screen.dart` y `map_screen.dart`, pero **sólo porque el color se
+  movió dentro de `EcoBadge`** — visualmente el chip de categoría dorado y
+  el badge ECO oliva siguen viéndose al mismo tiempo. No confundir "el
+  script ya no lo detecta" con "está resuelto": es una decisión de diseño
+  todavía abierta.
+- **265 desvíos de la grilla de 4pt** en pantallas existentes. Los literales
+  que ya coincidían con la escala se migraron (adopción: de 0 a 394
+  referencias); lo que queda **sí cambiaría el render**, por eso no se tocó.
+  Dato útil para atacarlo: **6 reglas cubren el 61% y ninguna mueve más de
+  2px** — radio `14→12` (41 casos), padding `10→8` (40), padding `14→12` (35),
+  radio `18→16` (19), padding `6→4` (15), padding `18→16` (12). Concentrados
+  en `register_business_wizard` (43), `profile_screen` (27), `map_screen`
+  (22), `create_route_wizard_screen` (22) y `home_screen` (20).
+- **Targets táctiles por debajo de 48x48**: `_HeaderIconButton` es 36x36 y
+  `DetailCoverIconButton` 40x40. Ampliarlos desplaza layout — requiere
+  revisión visual.
+- El refactor de `AppTextStyles` (~60 de ~90 getters todavía fijan `color`).
+
+**Resuelto en el segundo bloque del mismo día** (todo de cero cambio visual,
+`analyze` limpio y 88/88 tests verdes tras cada paso):
+
+- **Accesibilidad de 6 a 23 anotaciones.** El patrón que conviene repetir: en
+  vez de anotar call sites sueltos, se agregó un `label` **requerido** a los
+  tres wrappers de ícono ya existentes (`DetailCoverIconButton`,
+  `_HeaderIconButton`, `_CircleIconButton`), así el compilador obliga a
+  etiquetar cualquier uso futuro. Para íconos sin wrapper, usar el parámetro
+  nativo `semanticLabel` de `Icon` — no envuelve nada, no puede alterar
+  layout.
+- **87 call sites migrados a los tokens semánticos** (`settingsDanger` →
+  `destructive`, `neutral1100` → `textPrimary`, `backgroundCream` →
+  `background`, `formError` → `error`, `cardBorder` → `border`).
+- **Segundo componente duplicado consolidado**: el botón circular de "volver"
+  estaba reimplementado byte a byte idéntico en tres archivos → hoy es
+  `CircleBackButton` en `lib/shared/widgets/circle_back_button.dart`.
+- **Los 8 `TextStyle(...)` inline NO son deuda** — falso positivo del escaneo,
+  ya verificado: 4 son `TextPainter` sobre canvas de `dart:ui` (bitmaps de los
+  pines del mapa, donde `google_fonts` no puede resolver familia) y 4 aplican
+  sólo color heredando la tipografía del tema, que es justo lo que pide la
+  regla de composición. No volver a reportarlos.
+- `authLink` `#6E7522` es un sexto oliva casi idéntico a `oliveText` —
+  candidato a colapsar, sin tocar por ahora (vive en Auth, tier Expresiva).
+
+*(`business_icons.dart` dispara el chequeo de tier pero es falso positivo —
+es una tabla `categoría → color`, nunca muestra dos `Fill` a la vez.
+`eco_badge.dart` también, por mencionar `[AppColors.goldFill]` en un
+comentario.)*
+
+## Protocolo de validación visual
+
+Método por defecto: **capturar del dispositivo Android real por `adb`**, no emular en un navegador. El teléfono de José (Samsung A56, `R5GYB58K0QH`) queda conectado y da el viewport móvil de verdad. `claude-in-chrome` pasa a ser respaldo para cuando no haya teléfono conectado — sirve para ver la app, pero **no logra fijar un viewport móvil**: `resize_window` reporta éxito y el viewport se queda en ~1456px, así que valida a un ancho que no existe en producción.
+
+Por qué el dispositivo real gana en las tres dimensiones que importan:
+
+- **Fidelidad**: 1080px físicos / densidad 450dpi = **384dp** de ancho lógico, justo en el rango 375–390 que hay que validar. Además usa las fuentes, el renderer (Impeller) y el recorte de notch reales.
+- **Costo**: una captura a 384dp cuesta ~425 tokens contra ~1589 de un screenshot de Chrome. Un recorte de una sección, ~155. Un muestreo de píxeles, ~0.
+- **Velocidad**: no hay que compilar para web ni esperar el arranque del navegador.
+
+La herramienta es `scripts/shot.py` de la skill `nikara-capturas-visuales` (vive en `~/.claude/skills/`, no en este repo). Trabaja **siempre en coordenadas de la imagen que devuelve**, y traduce sola a píxeles físicos — se puede mirar una captura, elegir un punto sobre ella y tocarlo sin hacer ninguna cuenta.
+
+```bash
+S=~/.claude/skills/nikara-capturas-visuales/scripts/shot.py
+python $S                                  # captura a 384dp -> PNG en el scratchpad
+python $S --crop 0,300,384,700             # solo una sección (mucho más barato)
+python $S --sample "60,570;250,575"        # imprime el hex de esos puntos, sin imagen
+python $S --tap 200,400                    # toca ese punto y captura el resultado
+python $S --swipe 200,700,200,300          # scroll hacia abajo
+python $S --back
+```
+
+Al terminar de codificar o refactorizar cualquier pantalla, antes de darla por terminada:
+
+1. Levantar la app en el dispositivo: `flutter run -d R5GYB58K0QH`.
+2. Navegar a la pantalla (con `--tap`/`--swipe`, o pidiéndole a José que la abra) y capturar.
+3. Compararla contra el export de Claude Design de esa misma `pantalla` (ver "Flujo Claude Design") o contra el nodo de Figma.
+4. Revisar explícitamente: `RenderFlex overflow`, texto cortado, botones/CTAs mal alineados o fuera del viewport.
+5. **Verificar los colores con `--sample`, no a ojo — y comparar contra la columna sRGB, no contra el hex crudo.** El framebuffer del A56 se captura con perfil **Display P3** (`iCCP` del PNG dice "Display P3 Gamut with sRGB Transfer"), no sRGB. Los grises y los colores poco saturados salen casi idénticos (`surface` `#FDFDFD` → `#FDFDFD`; `background` `#F7F3EC` → `#F6F3ED`), pero los primitivos de marca se desplazan mucho: **`goldFill` `#FDBE02` se captura como `#F3C142`**, `oliveFill` `#C2CA5B` como `#C3CA6B`, `oliveText` `#6B7033` como `#6C703B`. Comparar ese hex crudo contra el token da un falso positivo garantizado justo en los colores que más importan. `shot.py --sample` ya imprime las dos columnas (sRGB convertido + P3 capturado desde el 2026-10-03); **la comparación se hace contra la columna sRGB**. Segunda trampa: muestrear sobre una captura reescalada (el default de 384dp) promedia píxeles vecinos e inventa tonos en bordes y textos — para comparar un color contra un token hay que muestrear con `--width 1080`.
+6. **El muestreo también sirve para lo que el ojo no ve.** Una captura comprimida y un color casi correcto se ven iguales; el muestreo no. Así se encontró que las tarjetas de Inicio renderizaban `#FCF5E3` en vez del `#FDFDFD` que declaraba el código — un `BoxShadow` dorado dentro de un `Ink` sin `color` se pintaba encima del relleno en lugar de detrás. Ese bug era invisible a simple vista y explicaba por completo la queja de "las tarjetas no se ven como en el prototipo".
+7. Si algo no coincide, corregir antes de reportar la tarea como completa — no describir la discrepancia como "pendiente" y seguir adelante.
+
+Los gestos (`--tap`, `--swipe`, `--back`) están autorizados dentro de la app de Níkara. No se usan para salir de la app, tocar notificaciones, ni operar otras aplicaciones del teléfono.
+
+## Supabase & Security Guidelines
+
+**RLS está ACTIVO desde el 2026-10-01** en las 12 tablas (`supabase/sql/029_enable_rls.sql`), más la vista `public_profiles` (030) y los ajustes del linter (031/032). Antes estaba deshabilitado a propósito y el cliente de Flutter era el único punto que decidía qué fila le pertenece a quién; eso ya no es así — ahora el servidor lo evalúa en cada consulta, venga de la app o de un `curl` directo a Postgrest.
+
+Lo que **no** cambió: el filtrado por dueño en Dart sigue siendo obligatorio tal como describen las dos secciones de abajo. No es redundante — es lo que hace que las policies y las consultas coincidan, y lo que mantiene los mensajes de error en español en vez de un `[]` inexplicable.
+
+Dos categorías de consulta que **no se tratan igual**:
+
+### Consultas públicas — nunca se filtran por dueño
+
+Listar negocios (`getBusinesses`, `getBusinessesInBounds`, `getAllCategories` en `business_storage_service.dart`), listar jornadas ECO, ver el detalle de un negocio/organización de otro usuario: son lecturas intencionalmente cross-usuario — es la función central de la app (un turista tiene que ver negocios que no son suyos). Agregar `.eq('owner_id', currentUser.id)` aquí no es "más seguro", rompe la funcionalidad.
+
+### Consultas "mis X" y mutaciones — el filtro de dueño es obligatorio
+
+- **Lecturas personales** (`getMyOrganizations`, "mis negocios", "mis jornadas organizadas", "mis inscripciones ECO"): siempre `.eq('owner_id'|'organizer_id'|'user_id', supabase.auth.currentUser!.id)`. El id nunca llega como parámetro libre desde la UI sin validarlo contra la sesión activa.
+- **`update`/`delete`** sobre `businesses`/`organizations`/`routes` (`owner_id`), `eco_activities` (`organizer_id`), `eco_participants` (`user_id`): el filtro de dueño va **en la misma sentencia** de la mutación (`.eq('id', id).eq('owner_id', currentUser.id)`), no en un `select` + comparación manual antes de mutar. Dos gaps concretos que corrige esta regla: `business_storage_service.dart:178` borra por `.delete().eq('id', id)` sin `owner_id`; `eco_service.dart` valida `organizer_id` con un `select` separado (~líneas 443-450) en vez de filtrarlo en el propio `update`/`delete`.
+- **Inserciones**: la columna de dueño se estampa siempre con `supabase.auth.currentUser!.id`, nunca con un valor recibido de la UI.
+- Ninguna mutación se ejecuta sin comprobar antes que `supabase.auth.currentUser` no sea nulo — lanzar la excepción de servicio en español correspondiente si lo es (patrón ya usado en `createOrganization`).
+
+### Qué protege esto y qué no
+
+El filtrado en Dart ya no es "preparación": al activar RLS no cambió ningún resultado, que era exactamente la prueba de que estaba bien escrito. Hoy la seguridad real la da el servidor — verificado contra la REST API con la `anon key` el 2026-10-01: leer perfiles, cédulas, tokens de push o favoritos ajenos devuelve `[]`, e insertar a nombre de otro devuelve `42501 violates row-level security`.
+
+### Trabajar con RLS activo — lo que hay que saber antes de tocar una consulta
+
+- **`profiles` solo deja leer tu propia fila** (y todas si sos admin). Para datos de **otra** persona existe la vista **`public_profiles`** (`id`, `full_name`, `avatar_url`, `role`, `points` — sin email ni teléfono). `AuthService.getProfileById` elige el origen solo según de quién sea el perfil.
+- **Todo embed de PostgREST hacia un perfil ajeno va contra `public_profiles(...)`, nunca contra `profiles(...)`** — este último devuelve `null` silenciosamente, sin error. Ya pasó una vez: el 030 rompió de golpe el autor de las reseñas, el de las rutas en Comunidad y la lista de participantes ECO. Si un nombre o un avatar aparece vacío, mirá esto primero.
+- **Una policy se escribe contra lo que la app realmente muestra**, no contra lo que uno supone que debería mostrar. La lista de inscritos de una jornada es pública porque la pestaña "Participantes" es pública (031). Restringir una policy sin cambiar la UI no vuelve privado el dato: solo deja la pantalla vacía.
+- **Al crear una función nueva, `REVOKE EXECUTE ... FROM PUBLIC, ANON` antes del `GRANT`.** Son dos capas distintas y hay que cerrar las dos: Postgres concede `EXECUTE` a `PUBLIC` automáticamente, **y** Supabase trae un `ALTER DEFAULT PRIVILEGES` que además concede un grant **directo** a `anon`. Revocar solo PUBLIC deja el RPC abierto igual — comprobado el 2026-10-05 al crear `delete_own_user` (036): el revoke a PUBLIC corrió sin error y `has_function_privilege('anon', ...)` siguió dando `true`. Verificar siempre con esa función en vez de asumir que el revoke alcanzó (032).
+- **El dashboard de Supabase entra como superusuario**, así que ahí siempre vas a ver todas las filas. Para comprobar de verdad qué expone la app, hay que consultar la REST API con la `anon key`.
+
+### Avisos del linter que quedan encendidos a propósito
+
+> **`032_linter_fixes.sql` estuvo vacío (0 bytes) hasta el 2026-10-05**, pese a que esta sección lo describía en detalle. Los `REVOKE` se habían aplicado a mano desde el dashboard y el SQL nunca se guardó, así que el repo dejó de reconstruir la base: una instalación desde `supabase/sql/` habría dejado los cinco RPC abiertos a `anon`. El archivo ya tiene el contenido real y es idempotente. Lección general: **un cambio aplicado desde el dashboard no existe hasta estar en `supabase/sql/`** — el linter fue lo único que delató la diferencia. `audit_logs` quedó versionada en `035`. El mismo rastreo destapó que **`delete_own_user` nunca llegó a la base** pese a estar en `002` y ser lo que ejecuta "Eliminar cuenta" — restaurada en `036`. Un barrido de las 10 funciones del repo confirmó que esa era la única faltante.
+
+`security_definer_view` sobre `public_profiles` (es el mecanismo que la hace funcionar), `spatial_ref_sys` sin RLS y `postgis` en el esquema public (ambos de la extensión, no nuestros), e `is_admin()` ejecutable (las policies la necesitan; solo informa si **quien llama** es admin). Cada uno está explicado en `supabase/sql/032_linter_fixes.sql` — no "arreglarlos" sin leer esa justificación.
 
 ## Reglas estrictas — qué NO hacer
 
 - **No** agregues archivos a `lib/widgets/` — es una carpeta legacy de un solo archivo (`aurora_background_widget.dart`). Los widgets cross-feature van en `lib/shared/widgets/`; los widgets específicos de una feature van en `lib/features/<feature>/presentation/widgets/`.
 - **No** extiendas `lib/models/mock_data.dart` como fuente de datos real — es un remanente de antes de conectar Supabase (una sola referencia viva en todo `lib/`). Supabase es la fuente de verdad.
 - **No** introduzcas un paquete de state management (Provider, Riverpod, Bloc, GetX) sin acordarlo antes explícitamente con el usuario — el patrón actual de servicios singleton es una decisión deliberada, no un descuido.
-- **No** subas ni loguees la `service_role key` de Supabase en ningún archivo del cliente. La `anon key` en `supabase_config.dart` es intencional y pública (RLS está deshabilitada a propósito en este proyecto, según el comentario de esa clase); la `service_role key` nunca debe aparecer en `lib/`.
+- **No** subas ni loguees la `service_role key` de Supabase en ningún archivo del cliente. La `anon key` en `supabase_config.dart` es intencional y pública — viaja dentro del APK de todas formas, así que exponerla no es el riesgo; lo que la vuelve inofensiva es que RLS esté activo (ver arriba). La `service_role key` nunca debe aparecer en `lib/`: hoy vive solo en los secretos de Supabase y en el header del webhook de push.
 - **No** hagas `flutter build`/`flutter run` con `--release` sin que el usuario lo pida — son operaciones lentas, prefierir `flutter analyze` + `flutter test` para validar cambios.
 - **No** agregues dependencias nuevas en `pubspec.yaml` sin verificar antes que no exista ya una forma de resolverlo con lo instalado (revisa `dependencies:` completo antes de proponer un paquete nuevo).
 - **No** captures excepciones de Supabase de forma silenciosa (`catch (_) {}` sin mensaje) — siempre propaga o traduce el error, nunca lo tragues.
+
+### Seguridad en Git — qué nunca debe salir del entorno local
+
+- **Bajo ningún concepto** se commitea: `android/local.properties`, `ios/Flutter/Maps.xcconfig`, la carpeta `.claude/`, ni archivos `desktop.ini` (basura de sincronización de OneDrive/Windows, aparecen por decenas en este repo). Todos están en `.gitignore`. (`.env`/`dart_defines.json` quedaron sin uso real desde el 2026-10-06 — ver "API keys de Google Maps" — pero se dejan en la regla por si alguien aún los tiene en disco.)
+- `.claude/` está en `.gitignore` pero **no se retiró del tracking** lo que ya estaba versionado antes de esta regla (`settings.json`, los `SKILL.md` de los skills del equipo) — eso se mantiene intencional y visible para el resto del equipo. La regla nueva solo evita que basura futura (logs de sesión, skills experimentales sueltos, `desktop.ini`) se cuele con un `git add .`/`git add -A` descuidado.
+- Antes de cualquier commit, revisa `git status` — si aparece algo de la lista de arriba como `??` o modificado, es señal de que el `.gitignore` no lo está cubriendo y hay que arreglarlo antes de commitear, no ignorarlo manualmente archivo por archivo.
+- La `anon key` de Supabase en `supabase_config.dart` es pública a propósito (ver regla arriba); la `service_role key` nunca debe aparecer en `lib/` bajo ninguna circunstancia, ni pegarse en una sesión de Claude Code (el hook `SessionEnd` guarda la conversación entera en la bóveda, que es un repo git).
+
+### Segundo Cerebro Integration
+
+Este proyecto está enlazado a una bóveda de Obsidian ("segundo cerebro" de JOSE) en `G:\My Drive\JARVIS_JOSE`. Si la unidad `G:\` no está montada en esta máquina, continuar el trabajo normalmente sin la bóveda — no es una dependencia dura del proyecto.
+
+La bóveda **sí** es un repositorio git (`github.com/JaBaca67/JARVIS_JOSE`, privado): el plugin `obsidian-git` auto-commitea y pushea cada ~30 min. Eso es su respaldo y su historial — antes de una reorganización grande, commitear un punto de restauración. No hace falta commitear a mano cada cambio pequeño; el auto-commit lo cubre.
+
+La bóveda está organizada **por dominio de vida**, no solo por Níkara: `00_Sistema` (control), `01_Nikara`, `02_UAM` (universidad), `03_Personal`, `04_Recursos`, `05_Diario`, `06_Inbox` (captura única), `Templates`.
+
+**División de fuentes de verdad**: la bóveda de Obsidian es la fuente de verdad *lógica* del Command Center (qué existe, cómo se relaciona, qué skills/convenciones aplican — el "por qué" y el "qué"); Claude Design y las capturas en `01_Nikara/Fuentes_Raw/` (`Claude_Design/` + `Capturas_App/`) son la fuente de verdad *estética móvil* (cómo se ve una pantalla — el "cómo"). No se mezclan: una decisión visual se resuelve mirando Claude Design/Figma, nunca inventándola a partir de una nota de la bóveda; una pregunta de arquitectura o de qué skill/convención aplica se resuelve mirando la bóveda, nunca Claude Design.
+
+- **Antes de actuar**, lee `G:\My Drive\JARVIS_JOSE\00_Sistema\vault_index.md` — es el mapa de navegación de la bóveda y ahorra tener que recorrer todas las carpetas.
+- **Después de hacer cambios relevantes**, registra una línea en `G:\My Drive\JARVIS_JOSE\00_Sistema\log.md` (formato `YYYY-MM-DD — acción — detalle`).
+- El mapa conceptual del código (vistas de Flutter, servicios/conceptos técnicos, tablas de Supabase) vive como notas individuales en `00_Sistema/01_Graph_Imports/`, cada una enlazada de vuelta al archivo fuente real con `[[lib/...]]` / `[[supabase/sql/...]]`. Al agregar una vista, servicio o tabla nueva, considera agregar su nota correspondiente ahí.
+- El registro de skills activas/planeadas (nativas de Obsidian y propias de Níkara) vive en `00_Sistema/Skills/`, una nota por skill con frontmatter `type: jarvis_skill` — antes de asumir que una skill "existe" o está activa, revisa su `status` ahí en vez de asumirlo por el nombre.
+- Al crear notas de negocios locales o jornadas ECO en la bóveda, usa las plantillas en `Templates/` (`Template_Negocio_Local.md`, `Template_Jornada_Eco.md`, `Template_Proyecto_Flutter.md`).
+- Respeta la identidad visual de Níkara en cualquier nota o diagrama que generes: Gold `#FDBE02` (solo relleno), Olive `#C2CA5B` relleno / `#6B7033` texto, fondo Beige `#F7F3EC` y superficie `#FDFDFD`; tipografías **League Spartan** (títulos) y **Nunito** (cuerpo) — ver "Sistema de diseño" arriba y `lib/theme/app_colors.dart`.

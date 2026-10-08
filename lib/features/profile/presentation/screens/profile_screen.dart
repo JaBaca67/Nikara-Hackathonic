@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/gamification/badges_logic.dart';
@@ -6,18 +11,39 @@ import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
+import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
-import 'package:nikara_app/features/business/presentation/screens/edit_business_hub_screen.dart';
+import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/home/data/mock_destinations.dart';
 import 'package:nikara_app/features/home/domain/models/destination.dart';
+import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/passport_collection_screen.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
+import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
+import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/profile_face_sheet.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Figma nodes 377:483/421:361. Todo se calcula en vivo desde Supabase/[FavoritesService]/[UserStatsService], sin datos mock de respaldo.
+///
+/// **Control de cambio de cara — provisional.** El nombre de la cara activa con
+/// un chevron al lado, en la cabecera, abre la hoja de perfiles
+/// ([showProfileFaceSheet]). Es un gesto de trabajo, decidido sin prototipo de
+/// Claude Design, para que la interacción exista y se pueda probar; el pulido
+/// visual viene después. El avatar **no** cambió de función: sigue sirviendo
+/// para cambiar la foto de perfil, que es justo por qué el cambio de cara
+/// necesitaba un control propio y no podía colgarse de él.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onExploreRequested});
 
@@ -30,24 +56,27 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
   final _favoritesService = FavoritesService();
   final _userStatsService = UserStatsService();
   final _businessStorageService = BusinessStorageService();
+  final _faceService = ProfileFaceService();
 
   bool _isLoading = true;
   String? _loadError;
   UserModel? _profile;
-  String? _avatarPath;
+
+  /// Deshabilita el avatar mientras la foto nueva sube a Storage, para que no
+  /// se disparen dos subidas en paralelo.
+  bool _isSavingAvatar = false;
   List<DestinationModel> _favoriteDestinations = const [];
   List<BusinessModel> _favoriteBusinesses = const [];
+  List<TravelPostcard> _postcards = const [];
   UserStats _stats = const UserStats(
     tripsCount: 0,
     savedPlacesCount: 0,
     reviewsCount: 0,
   );
-  List<BusinessModel> _myBusinesses = const [];
-  int _activeTab = 0; // 0 = Favoritos, 1 = Insignias
+  int _activeTab = 0; // 0 = Favoritos, 1 = Pasaporte, 2 = Insignias
 
   @override
   void initState() {
@@ -55,6 +84,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Mantienen la pantalla sincronizada sin refresco manual, incluso mientras Profile está inerte en el IndexedStack de MainLayout.
     _favoritesService.idsNotifier.addListener(_onDataChanged);
     BusinessStorageService.revision.addListener(_onDataChanged);
+    PassportService.revision.addListener(_onDataChanged);
+    PassportService.openRequested.addListener(_onPassportRequested);
+    if (PassportService.openRequested.value) _onPassportRequested();
+    EcoService.revision.addListener(_onDataChanged);
+    ProfileFaceService.revision.addListener(_onFacesChanged);
     _loadAll();
   }
 
@@ -62,6 +96,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _favoritesService.idsNotifier.removeListener(_onDataChanged);
     BusinessStorageService.revision.removeListener(_onDataChanged);
+    PassportService.revision.removeListener(_onDataChanged);
+    PassportService.openRequested.removeListener(_onPassportRequested);
+    EcoService.revision.removeListener(_onDataChanged);
+    ProfileFaceService.revision.removeListener(_onFacesChanged);
     super.dispose();
   }
 
@@ -70,14 +108,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadAll();
   }
 
+  void _onPassportRequested() {
+    if (!mounted || !PassportService.openRequested.value) return;
+    setState(() => _activeTab = 1);
+    PassportService.openRequested.value = false;
+  }
+
+  /// Un cambio de cara no recarga favoritos ni estadísticas: solo cambia qué
+  /// se dibuja arriba, así que alcanza con reconstruir.
+  void _onFacesChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   Future<void> _loadAll() async {
     setState(() => _loadError = null);
     try {
       final profile = await _authService.getCurrentProfile();
-      final avatarPath = await _extrasService.getAvatarPath();
       final favoriteIds = await _favoritesService.getFavoriteIds();
       final stats = await _userStatsService.getStats();
       final allBusinesses = await _businessStorageService.getBusinesses();
+      final passport = await PassportService().getCollection();
       if (!mounted) return;
 
       // Los favoritos mezclan ids de DestinationModel y de BusinessModel en el mismo set: hay que cruzar ambas fuentes o se pierden los negocios favoritos.
@@ -88,23 +139,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .where((b) => favoriteIds.contains(b.id))
           .toList(growable: false);
 
-      final currentUserId = _authService.currentAuthUser?.id;
-      final myBusinesses = currentUserId == null
-          ? const <BusinessModel>[]
-          : allBusinesses
-                .where((b) => b.ownerId == currentUserId)
-                .toList(growable: false);
+      // Forzado: una cara nace cuando un admin aprueba la solicitud, del lado
+      // del servidor, así que el cliente no se entera por ningún evento local.
+      // Recargar acá es lo que hace que la cara nueva aparezca al volver al
+      // perfil.
+      await _faceService.load(force: true);
+      if (!mounted) return;
 
       setState(() {
         _profile = profile;
-        _avatarPath = avatarPath;
         _favoriteDestinations = favoriteDestinations;
         _favoriteBusinesses = favoriteBusinesses;
+        _postcards = passport.postcards;
         _stats = stats;
-        _myBusinesses = myBusinesses;
         _isLoading = false;
       });
     } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    } on PassportServiceException catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = e.message;
@@ -116,74 +172,98 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loadError = e.message;
         _isLoading = false;
       });
+    } on FavoritesServiceException catch (e) {
+      // Sin esto un fallo de red al leer los favoritos escapaba sin captura y
+      // dejaba la pantalla cargando para siempre; ahora muestra el mismo
+      // estado de error (con su "Reintentar") que los demás fallos de carga.
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
     }
   }
 
-  Future<void> _editBusiness(BusinessModel business) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => EditBusinessHubScreen(business: business),
-      ),
-    );
-    await _loadAll();
-  }
-
-  Future<void> _confirmDeleteBusiness(BusinessModel business) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('¿Eliminar negocio?'),
-        content: Text(
-          'Se eliminará "${business.name}" de forma permanente. Esta '
-          'acción no se puede deshacer.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: TextStyle(color: AppColors.settingsDanger),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await _businessStorageService.deleteBusiness(business.id);
-    await _loadAll();
-  }
-
   Future<void> _toggleFavorite(String id) async {
-    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya recarga la pantalla.
-    await _favoritesService.toggleFavorite(id);
+    // Sin _loadAll() manual: togglear notifica al listener de arriba, que ya
+    // recarga la pantalla. Se usa el contexto de la pantalla (no el de la
+    // tarjeta) porque al quitar un favorito la tarjeta desaparece de la lista
+    // y su aviso de "Deshacer" tiene que seguir pudiendo mostrar un error.
+    await toggleFavoriteWithFeedback(context, id);
   }
+
+  /// Mientras la galería está abierta (todavía no hay foto que guardar):
+  /// `_isSavingAvatar` solo cubre la subida, y un segundo toque aquí abriría
+  /// otro selector encima.
+  bool _isPickingAvatar = false;
 
   Future<void> _pickAvatar() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 800,
-    );
-    if (picked == null) return;
-    await _extrasService.updateAvatar(picked.path);
-    await _loadAll();
+    if (_isSavingAvatar || _isPickingAvatar) return;
+    _isPickingAvatar = true;
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        imageQuality: 85,
+      );
+    } on Exception {
+      // Permiso de galería denegado o el selector del sistema falló.
+      _isPickingAvatar = false;
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo abrir tu galería. Revisa los permisos de la app e '
+        'intenta de nuevo.',
+      );
+      return;
+    }
+    _isPickingAvatar = false;
+    if (picked == null || !mounted) return;
+
+    setState(() => _isSavingAvatar = true);
+    try {
+      await _authService.updateAvatar(picked);
+      await _loadAll();
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo actualizar tu foto. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingAvatar = false);
+    }
   }
 
   void _openSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+    pushSharedAxis(context, const SettingsScreen());
   }
 
-  void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+  Future<void> _viewPublicProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await pushSharedAxis(context, PublicUserProfileScreen(userId: profile.id));
+    if (mounted) await _loadAll();
+  }
+
+  /// Control provisional de cambio de cara — ver el docstring de la pantalla.
+  Future<void> _openFaceSheet() async {
+    final changed = await showProfileFaceSheet(context);
+    if (!mounted || !changed) return;
+    await _loadAll();
+  }
+
+  Future<void> _openAccountSwitcher() async {
+    await showAccountSwitcherSheet(context);
+    if (!mounted) return;
+    // Alternar de cuenta reconstruye la app entera, así que este recargar solo
+    // cubre el caso de cerrar la hoja sin cambiar nada.
+    await _loadAll();
   }
 
   void _showBadgeRequirement(BadgeInfo badge) {
@@ -191,7 +271,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Row(
           children: [
             Container(
@@ -245,7 +327,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
         title: Row(
           children: [
             Container(
@@ -278,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: badge.tint.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
                 '✓ Insignia obtenida',
@@ -325,14 +409,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         body: SafeArea(
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.wifi_off_rounded,
                     size: 44,
-                    color: AppColors.settingsDanger,
+                    color: AppColors.destructive,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -354,6 +438,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   FilledButton.icon(
                     onPressed: () {
                       setState(() => _isLoading = true);
+                      // Primero los favoritos: si el fallo fue de red, así
+                      // `_loadAll` encuentra la lectura ya hecha (o en curso).
+                      unawaited(FavoritesService().preload());
                       _loadAll();
                     },
                     icon: const Icon(Icons.refresh),
@@ -368,6 +455,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ),
+      );
+    }
+
+    // Con una cara de negocio o fundación puesta, la pestaña Perfil muestra el
+    // perfil de esa cara. La de turista es la única con la experiencia completa
+    // —favoritos, insignias, gamificación— y por eso es la que vive acá.
+    final activeFace = _faceService.activeFace;
+    if (activeFace != null && !activeFace.isTurista) {
+      return FaceProfileScreen(
+        face: activeFace,
+        onFaceTap: _openFaceSheet,
+        onSettingsTap: _openSettings,
       );
     }
 
@@ -400,17 +499,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ProfileHeaderCard(
-                      fullName: fullName,
-                      initials: initials,
-                      avatarPath: _avatarPath,
-                      tripsCount: _stats.tripsCount,
-                      badgesCount: unlockedCount,
-                      points: points,
-                      onAvatarTap: _pickAvatar,
-                      onEditTap: _openSettings,
-                      onSettingsTap: _openSettings,
-                      onShareTap: _showComingSoon,
+                    ProfileHeaderShell(
+                      actions: [
+                        ProfileHeaderIconButton(
+                          label: 'Cambiar de cuenta',
+                          icon: Icons.switch_account_outlined,
+                          onTap: _openAccountSwitcher,
+                        ),
+                        ProfileHeaderIconButton(
+                          label: 'Ver mi perfil público',
+                          icon: Icons.visibility_outlined,
+                          onTap: _viewPublicProfile,
+                        ),
+                        ProfileHeaderIconButton(
+                          label: 'Ajustes',
+                          icon: Icons.settings_outlined,
+                          onTap: _openSettings,
+                        ),
+                      ],
+                      avatar: ProfileFaceAvatar(
+                        imageUrl: _profile?.avatarUrl,
+                        initials: initials,
+                        label: 'Cambiar foto de perfil',
+                        isSaving: _isSavingAvatar,
+                        onTap: _pickAvatar,
+                      ),
+                      faceControl: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FaceSelectorControl(
+                            name: activeFace?.name ?? fullName,
+                            kindLabel: activeFace?.kind.label,
+                            onTap: _openFaceSheet,
+                          ),
+                          if (_profile?.publicOrigin.hasCountry == true)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: AppSpacing.xs,
+                              ),
+                              child: OriginBadge(
+                                origin: _profile!.publicOrigin,
+                              ),
+                            ),
+                        ],
+                      ),
+                      stats: [
+                        ProfileStat(
+                          value: '${_stats.tripsCount}',
+                          label: 'Viajes',
+                        ),
+                        ProfileStat(
+                          value: '$unlockedCount',
+                          label: 'Insignias',
+                        ),
+                        ProfileStat(value: '$points', label: 'Puntos'),
+                      ],
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -427,9 +571,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       // Cross-fade en vez de cambio instantáneo; la key por índice es lo que hace que AnimatedSwitcher detecte el cambio de tab.
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 280),
-                        switchInCurve: Curves.easeInOutCubic,
-                        switchOutCurve: Curves.easeInOutCubic,
+                        duration: AppMotion.standardDuration,
+                        switchInCurve: AppMotion.emphasized,
+                        switchOutCurve: AppMotion.emphasized,
                         transitionBuilder: (child, animation) =>
                             FadeTransition(opacity: animation, child: child),
                         child: _activeTab == 0
@@ -440,6 +584,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 onToggleFavorite: _toggleFavorite,
                                 onExplore: widget.onExploreRequested,
                               )
+                            : _activeTab == 1
+                            ? PassportTab(
+                                key: const ValueKey('pasaporte'),
+                                postcards: _postcards,
+                                onViewAll: () => pushSharedAxis(
+                                  context,
+                                  PassportCollectionScreen(
+                                    postcards: _postcards,
+                                  ),
+                                ),
+                              )
                             : _BadgesTab(
                                 key: const ValueKey('insignias'),
                                 badges: badges,
@@ -447,289 +602,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                       ),
                     ),
-                    // Solo bajo Favoritos: no tiene relación con insignias/gamificación. El divider + gap extra la distingue visualmente del contenido del tab.
-                    if (_activeTab == 0 && _myBusinesses.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-                        child: Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: AppColors.profileDivider,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                        child: _MyBusinessesSection(
-                          businesses: _myBusinesses,
-                          onEdit: _editBusiness,
-                          onDelete: _confirmDeleteBusiness,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileHeaderCard extends StatelessWidget {
-  const _ProfileHeaderCard({
-    required this.fullName,
-    required this.initials,
-    required this.avatarPath,
-    required this.tripsCount,
-    required this.badgesCount,
-    required this.points,
-    required this.onAvatarTap,
-    required this.onEditTap,
-    required this.onSettingsTap,
-    required this.onShareTap,
-  });
-
-  final String fullName;
-  final String initials;
-  final String? avatarPath;
-  final int tripsCount;
-  final int badgesCount;
-  final int points;
-  final VoidCallback onAvatarTap;
-  final VoidCallback onEditTap;
-  final VoidCallback onSettingsTap;
-  final VoidCallback onShareTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.surface100,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Perfil', style: AppTextStyles.profileScreenTitle),
-                Row(
-                  children: [
-                    _HeaderIconButton(
-                      icon: Icons.edit_outlined,
-                      onTap: onEditTap,
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIconButton(
-                      icon: Icons.settings_outlined,
-                      onTap: onSettingsTap,
-                    ),
-                    const SizedBox(width: 10),
-                    _HeaderIconButton(icon: Icons.ios_share, onTap: onShareTap),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _ProfileAvatar(
-                  avatarPath: avatarPath,
-                  initials: initials,
-                  onTap: onAvatarTap,
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    fullName,
-                    style: AppTextStyles.profileName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _StatsRow(
-            tripsCount: tripsCount,
-            badgesCount: badgesCount,
-            points: points,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeaderIconButton extends StatelessWidget {
-  const _HeaderIconButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: AppColors.profileDivider,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 16, color: AppColors.settingsTextDark),
-      ),
-    );
-  }
-}
-
-class _ProfileAvatar extends StatelessWidget {
-  const _ProfileAvatar({
-    required this.avatarPath,
-    required this.initials,
-    required this.onTap,
-  });
-
-  final String? avatarPath;
-  final String initials;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final path = avatarPath;
-    final hasPhoto = path != null && path.isNotEmpty;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 80,
-        height: 80,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.settingsAccent, AppColors.settingsDanger],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.settingsAccent.withValues(alpha: 0.35),
-              offset: const Offset(0, 4),
-              blurRadius: 10,
-            ),
-          ],
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(1.6),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.fromBorderSide(
-              BorderSide(color: AppColors.surface100, width: 1.6),
-            ),
-          ),
-          child: ClipOval(
-            child: hasPhoto
-                ? LocalImage(path: path)
-                : Container(
-                    color: AppColors.profileDivider,
-                    alignment: Alignment.center,
-                    child: Text(
-                      initials,
-                      style: AppTextStyles.h5.copyWith(
-                        color: AppColors.settingsTextDark,
-                      ),
-                    ),
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatsRow extends StatelessWidget {
-  const _StatsRow({
-    required this.tripsCount,
-    required this.badgesCount,
-    required this.points,
-  });
-
-  final int tripsCount;
-  final int badgesCount;
-  final int points;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.profileDivider, width: 0.8),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatColumn(
-              value: '$tripsCount',
-              label: 'Viajes',
-              showDivider: true,
-            ),
-          ),
-          Expanded(
-            child: _StatColumn(
-              value: '$badgesCount',
-              label: 'Insignias',
-              showDivider: true,
-            ),
-          ),
-          Expanded(
-            child: _StatColumn(
-              value: '$points',
-              label: 'Puntos',
-              showDivider: false,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatColumn extends StatelessWidget {
-  const _StatColumn({
-    required this.value,
-    required this.label,
-    required this.showDivider,
-  });
-
-  final String value;
-  final String label;
-  final bool showDivider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: showDivider
-          ? const BoxDecoration(
-              border: Border(
-                right: BorderSide(color: AppColors.profileDivider, width: 0.8),
-              ),
-            )
-          : null,
-      child: Column(
-        children: [
-          Text(value, style: AppTextStyles.profileStatValue),
-          const SizedBox(height: 2),
-          Text(label, style: AppTextStyles.profileStatLabel),
         ],
       ),
     );
@@ -744,10 +621,10 @@ class _LevelProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.cardGlowSoft,
@@ -848,9 +725,10 @@ class _ProfileTabSelector extends StatelessWidget {
   final int activeTab;
   final ValueChanged<int> onChanged;
 
-  static const _labels = ['Favoritos', 'Insignias'];
+  static const _labels = ['Favoritos', 'Pasaporte', 'Insignias'];
   static const _icons = [
     Icons.favorite_border_rounded,
+    Icons.menu_book_outlined,
     Icons.workspace_premium_outlined,
   ];
 
@@ -858,10 +736,10 @@ class _ProfileTabSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 52,
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: const [
           BoxShadow(
             color: AppColors.profileCardShadow,
@@ -871,25 +749,23 @@ class _ProfileTabSelector extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
         child: Stack(
           children: [
             Positioned.fill(
               child: AnimatedAlign(
-                duration: const Duration(milliseconds: 340),
-                curve: Curves.easeOutBack,
-                alignment: activeTab == 0
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
+                duration: AppMotion.largeDuration,
+                curve: AppMotion.overshoot,
+                alignment: Alignment(-1.0 + activeTab, 0),
                 child: FractionallySizedBox(
-                  widthFactor: 0.5,
+                  widthFactor: 1 / _labels.length,
                   heightFactor: 1,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [AppColors.primary500, AppColors.primary700],
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                   ),
                 ),
@@ -937,24 +813,26 @@ class _ProfileTabButton extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedDefaultTextStyle(
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.quickDuration,
         style: AppTextStyles.buttonMd.copyWith(
-          color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+          color: selected ? AppColors.textPrimary : AppColors.neutral700,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
+              duration: AppMotion.quickDuration,
               child: Icon(
                 icon,
                 key: ValueKey(selected),
-                size: 24,
-                color: selected ? AppColors.neutral1100 : AppColors.neutral700,
+                size: 20,
+                color: selected ? AppColors.textPrimary : AppColors.neutral700,
               ),
             ),
-            const SizedBox(width: 6),
-            Text(label),
+            const SizedBox(width: AppSpacing.xs),
+            Flexible(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
           ],
         ),
       ),
@@ -994,18 +872,40 @@ class _FavoritesTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final destination in destinations) ...[
+        for (final (index, destination) in destinations.indexed) ...[
           _FavoritePlaceCard(
-            destination: destination,
-            onFavoriteToggle: () => onToggleFavorite(destination.id),
-          ),
+                destination: destination,
+                onFavoriteToggle: () => onToggleFavorite(destination.id),
+              )
+              .animate(delay: AppMotion.microDuration * index)
+              .fadeIn(
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              )
+              .slideY(
+                begin: 0.08,
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              ),
           const SizedBox(height: 10),
         ],
-        for (final business in businesses) ...[
+        for (final (index, business) in businesses.indexed) ...[
           _FavoriteBusinessCard(
-            business: business,
-            onFavoriteToggle: () => onToggleFavorite(business.id),
-          ),
+                business: business,
+                onFavoriteToggle: () => onToggleFavorite(business.id),
+              )
+              .animate(
+                delay: AppMotion.microDuration * (destinations.length + index),
+              )
+              .fadeIn(
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              )
+              .slideY(
+                begin: 0.08,
+                duration: AppMotion.standardDuration,
+                curve: AppMotion.enter,
+              ),
           const SizedBox(height: 10),
         ],
       ],
@@ -1024,7 +924,7 @@ class _FavoritesEmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         children: [
@@ -1069,7 +969,7 @@ class _FavoritesEmptyState extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 textStyle: AppTextStyles.buttonLg,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
               ),
             ),
@@ -1153,11 +1053,12 @@ class _FavoritePlaceCard extends StatelessWidget {
           GestureDetector(
             onTap: onFavoriteToggle,
             child: const Padding(
-              padding: EdgeInsets.all(4),
+              padding: EdgeInsets.all(AppSpacing.xs),
               child: Icon(
                 Icons.favorite,
                 size: 20,
                 color: AppColors.favoriteActive,
+                semanticLabel: 'Quitar de favoritos',
               ),
             ),
           ),
@@ -1246,11 +1147,12 @@ class _FavoriteBusinessCard extends StatelessWidget {
           GestureDetector(
             onTap: onFavoriteToggle,
             child: const Padding(
-              padding: EdgeInsets.all(4),
+              padding: EdgeInsets.all(AppSpacing.xs),
               child: Icon(
                 Icons.favorite,
                 size: 20,
                 color: AppColors.favoriteActive,
+                semanticLabel: 'Quitar de favoritos',
               ),
             ),
           ),
@@ -1355,7 +1257,7 @@ class _BadgeCard extends StatelessWidget {
                   color: unlocked
                       ? badge.tint.withValues(alpha: 0.08)
                       : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
                 child: Text(
                   unlocked ? '✓ Obtenida' : 'Bloqueada',
@@ -1367,171 +1269,6 @@ class _BadgeCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Solo se renderiza cuando la cuenta es dueña de al menos un [BusinessModel] ([BusinessModel.ownerId]).
-class _MyBusinessesSection extends StatelessWidget {
-  const _MyBusinessesSection({
-    required this.businesses,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final List<BusinessModel> businesses;
-  final ValueChanged<BusinessModel> onEdit;
-  final ValueChanged<BusinessModel> onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Mis Negocios', style: AppTextStyles.detailSectionTitle),
-        const SizedBox(height: 10),
-        if (businesses.isEmpty)
-          Text(
-            'Aún no tienes negocios registrados.',
-            style: AppTextStyles.bodyText2.copyWith(
-              color: AppColors.settingsTextMuted,
-            ),
-          )
-        else
-          for (final business in businesses) ...[
-            _MyBusinessCard(
-              business: business,
-              onEdit: () => onEdit(business),
-              onDelete: () => onDelete(business),
-            ),
-            const SizedBox(height: 10),
-          ],
-      ],
-    );
-  }
-}
-
-class _MyBusinessCard extends StatelessWidget {
-  const _MyBusinessCard({
-    required this.business,
-    required this.onEdit,
-    required this.onDelete,
-  });
-
-  final BusinessModel business;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    final imagePath = business.localImagePaths.isNotEmpty
-        ? business.localImagePaths.first
-        : null;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.cardGlowSoft,
-            offset: Offset(0, 2),
-            blurRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 58,
-                  height: 52,
-                  child: LocalImage(
-                    path: imagePath,
-                    fallbackIcon: Icons.storefront_outlined,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      business.name,
-                      style: AppTextStyles.favoriteCardTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on,
-                          size: 9,
-                          color: AppColors.settingsTextMuted,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            business.city,
-                            style: AppTextStyles.favoriteCardCaption,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Editar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.wizardFocus,
-                    side: const BorderSide(color: AppColors.warmChipBorder),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline, size: 16),
-                  label: const Text('Eliminar'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.settingsDanger,
-                    side: BorderSide(
-                      color: AppColors.settingsDanger.withValues(alpha: 0.4),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

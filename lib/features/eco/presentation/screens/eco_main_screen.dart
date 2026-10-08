@@ -1,20 +1,34 @@
 import 'dart:async';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
 
 import 'package:nikara_app/features/eco/data/eco_service.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_discovery_header.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_participation.dart';
 import 'package:nikara_app/features/eco/utils/eco_icons.dart';
-import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/category_icons_row.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const String _kAllCategories = 'Todas';
 
-/// El carrusel promociona, no reemplaza el listado: las mismas actividades siguen apareciendo abajo en "Todas las actividades".
+enum _EcoActivityFilter { available, participating, finished }
+
+/// El carrusel promociona, no reemplaza el listado: las mismas actividades siguen apareciendo abajo en "Descubre más".
 const int _kFeaturedCount = 3;
 
 class EcoMainScreen extends StatefulWidget {
@@ -29,7 +43,11 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   String? _loadError;
   List<EcoActivityModel> _activities = const [];
   String _selectedCategory = _kAllCategories;
+  _EcoActivityFilter _activityFilter = _EcoActivityFilter.available;
   Future<void> Function()? _unsubscribe;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  GeographicDestination _destination = const GeographicDestination();
 
   final _featuredController = PageController();
   int _featuredPage = 0;
@@ -37,24 +55,44 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   @override
   void initState() {
     super.initState();
+    _destination = DiscoveryDestinationService().destination.value;
+    DiscoveryDestinationService().destination.addListener(
+      _onDestinationChanged,
+    );
     EcoService.revision.addListener(_onChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    DiscoveryDestinationService().destination.removeListener(
+      _onDestinationChanged,
+    );
     EcoService.revision.removeListener(_onChanged);
     _featuredController.dispose();
+    _searchController.dispose();
     unawaited(_unsubscribe?.call() ?? Future<void>.value());
     super.dispose();
   }
 
   void _onChanged() => unawaited(_load(silent: true));
 
+  void _onDestinationChanged() {
+    setState(() {
+      _destination = DiscoveryDestinationService().destination.value;
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
+  }
+
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() => _isLoading = true);
     try {
-      final activities = await EcoService().getUpcomingActivities();
+      final results = await Future.wait([
+        EcoService().getUpcomingActivities(),
+        EcoService().getPastActivities(),
+      ]);
+      final activities = [...results[0], ...results[1]];
       if (!mounted) return;
       setState(() {
         _activities = activities;
@@ -72,12 +110,29 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     }
   }
 
-  List<EcoActivityModel> get _filtered => _selectedCategory == _kAllCategories
-      ? _activities
-      : _activities.where((a) => a.category == _selectedCategory).toList();
-
-  int get _joinedCount =>
-      _activities.where((a) => a.isJoinedByCurrentUser).length;
+  List<EcoActivityModel> get _filtered => _activities.where((activity) {
+    final matchesFilter = switch (_activityFilter) {
+      _EcoActivityFilter.available => !activity.isPast,
+      _EcoActivityFilter.participating =>
+        !activity.isPast && activity.isJoinedByCurrentUser,
+      _EcoActivityFilter.finished => activity.isPast,
+    };
+    final matchesCategory =
+        _selectedCategory == _kAllCategories ||
+        activity.category == _selectedCategory;
+    final matchesSearch =
+        _searchQuery.isEmpty ||
+        normalizeForSearch(
+          '${activity.title} ${activity.description} ${activity.location} ${activity.category}',
+        ).contains(normalizeForSearch(_searchQuery));
+    return matchesFilter &&
+        matchesCategory &&
+        matchesSearch &&
+        _destination.matches(
+          municipalityByCode(activity.municipalityCode) ??
+              resolveLegacyEcoMunicipality(activity.location),
+        );
+  }).toList();
 
   /// Primero las que aún no se unió (leen como "únete a esta"), luego el resto, siempre en orden de proximidad.
   List<EcoActivityModel> get _featured {
@@ -97,42 +152,78 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     if (_featuredController.hasClients) _featuredController.jumpToPage(0);
   }
 
-  Future<void> _openDetail(EcoActivityModel activity) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EcoDetailScreen(activity: activity)),
-    );
+  void _selectActivityFilter(_EcoActivityFilter filter) {
+    setState(() {
+      _activityFilter = filter;
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
   }
 
-  Future<void> _toggleJoin(EcoActivityModel activity) async {
-    if (!await GuestGuard.allow(context, GuestFeature.eco)) return;
-    final joining = !activity.isJoinedByCurrentUser;
-    _applyOptimistic(activity.id, joining: joining);
+  void _onSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value.trim();
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
+  }
+
+  Future<void> _openFilterSheet() async {
+    final result = await showGeographicDestinationPicker(
+      context,
+      initial: _destination,
+    );
+    if (!mounted || result == null) return;
+    DiscoveryDestinationService().destination.value = result.destination;
+  }
+
+  Future<void> _openDetail(EcoActivityModel activity) async {
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
+  }
+
+  /// Actividades cuyo "Unirme"/"Unido" está en curso: bloquean el segundo
+  /// toque de esa tarjeta y muestran su spinner.
+  final Set<String> _joiningIds = {};
+
+  /// Unirse o salir según el estado actual. Los avisos, la confirmación al
+  /// salir y los casos especiales viven en [EcoParticipation]. El estado de la
+  /// tarjeta solo cambia con lo que devuelve el servidor: no se finge antes.
+  Future<void> _toggleJoin(
+    EcoActivityModel activity, {
+    bool confirmedLeave = false,
+  }) async {
+    if (_joiningIds.contains(activity.id)) return;
+    setState(() => _joiningIds.add(activity.id));
     try {
-      if (joining) {
-        await EcoService().joinActivity(activity.id);
-      } else {
-        await EcoService().leaveActivity(activity.id);
+      // El reintento parte de la copia más reciente, no de la que se tocó.
+      void retry({bool leaving = false}) {
+        final latest = _activities.firstWhere(
+          (a) => a.id == activity.id,
+          orElse: () => activity,
+        );
+        unawaited(_toggleJoin(latest, confirmedLeave: leaving));
       }
-    } on EcoServiceException catch (e) {
-      _applyOptimistic(activity.id, joining: !joining);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+
+      final updated = activity.isJoinedByCurrentUser
+          ? await EcoParticipation.leave(
+              context,
+              activity,
+              confirmed: confirmedLeave,
+              onRetry: () => retry(leaving: true),
+            )
+          : await EcoParticipation.join(context, activity, onRetry: retry);
+      if (!mounted || updated == null) return;
+      _replaceActivity(updated);
+    } finally {
+      if (mounted) setState(() => _joiningIds.remove(activity.id));
     }
   }
 
-  void _applyOptimistic(String activityId, {required bool joining}) {
+  void _replaceActivity(EcoActivityModel updated) {
     setState(() {
       _activities = [
         for (final a in _activities)
-          if (a.id == activityId)
-            a.withParticipation(
-              isJoined: joining,
-              participantCount: a.participantCount + (joining ? 1 : -1),
-            )
-          else
-            a,
+          if (a.id == updated.id) updated else a,
       ];
     });
   }
@@ -143,213 +234,185 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
     final featured = _featured;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.primary500),
-              )
-            : _loadError != null
-            ? _EcoErrorState(message: _loadError!, onRetry: _load)
-            : RefreshIndicator(
-                color: AppColors.ecoActive,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                  children: [
-                    const _EcoHeader(),
-                    const SizedBox(height: 18),
-                    _CategoryFilterRow(
-                      selected: _selectedCategory,
-                      onSelected: _selectCategory,
-                    ),
-                    const SizedBox(height: 16),
-                    if (_joinedCount > 0) ...[
-                      _JoinedBanner(count: _joinedCount),
-                      const SizedBox(height: 16),
-                    ],
-                    if (filtered.isEmpty)
-                      const _EcoEmptyState()
-                    else ...[
-                      if (featured.isNotEmpty) ...[
-                        _FeaturedCarousel(
-                          activities: featured,
-                          controller: _featuredController,
-                          page: _featuredPage,
-                          onPageChanged: (page) =>
-                              setState(() => _featuredPage = page),
-                          onOpen: _openDetail,
-                          onJoin: _toggleJoin,
-                        ),
-                        const SizedBox(height: 22),
-                      ],
-                      Text(
-                        'Todas las actividades',
-                        style: AppTextStyles.sectionTitle.copyWith(
-                          color: AppColors.settingsTextDark,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      for (final activity in filtered)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: EcoActivityCard(
-                            activity: activity,
-                            onTap: () => _openDetail(activity),
-                          ),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _EcoHeader extends StatelessWidget {
-  const _EcoHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: AppColors.ecoGreen500.withValues(alpha: 0.25),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.eco_rounded,
-            color: AppColors.ecoActive,
-            size: 22,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Actividades Ambientales',
-                style: AppTextStyles.homeGreeting,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Iniciativas verificadas cerca de ti',
-                style: AppTextStyles.settingsSubtitle,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CategoryFilterRow extends StatelessWidget {
-  const _CategoryFilterRow({required this.selected, required this.onSelected});
-
-  final String selected;
-  final ValueChanged<String> onSelected;
-
-  static const _categories = [_kAllCategories, ...kEcoCategories];
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 38,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        itemCount: _categories.length,
-        itemBuilder: (context, index) {
-          final category = _categories[index];
-          final isSelected = category == selected;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => onSelected(category),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.ecoActive
-                      : AppColors.surface100,
-                  borderRadius: BorderRadius.circular(999),
-                  border: isSelected
-                      ? null
-                      : Border.all(color: AppColors.mapControlBorder),
-                ),
-                child: Text(
-                  category,
-                  style: AppTextStyles.mapRowTitle.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected
-                        ? AppColors.surface100
-                        : AppColors.settingsTextMuted,
-                  ),
-                ),
-              ),
+      backgroundColor: AppColors.background,
+      body: Column(
+        children: [
+          SearchHeaderWidget(
+            headerContent: EcoDiscoveryHeader(
+              availableCount: _isLoading || _loadError != null
+                  ? null
+                  : _activities.where((activity) => !activity.isPast).length,
             ),
-          );
-        },
+            showNotifications: false,
+            searchHint: _destination.isActive
+                ? 'Buscar en ${_destination.label}...'
+                : 'Buscar actividades ambientales...',
+            controller: _searchController,
+            onSearchChanged: _onSearchChanged,
+            onFilterTap: _openFilterSheet,
+            categoryContent: CategoryIconsRow(
+              categories: kEcoCategories,
+              labelBuilder: ecoCategoryLabel,
+              iconBuilder: ecoCategoryIcon,
+              iconColor: AppColors.oliveText,
+              allLabel: _kAllCategories,
+              selected: _selectedCategory == _kAllCategories
+                  ? null
+                  : _selectedCategory,
+              onSelect: (category) =>
+                  _selectCategory(category ?? _kAllCategories),
+            ),
+          ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.oliveText,
+                      ),
+                    )
+                  : _loadError != null
+                  ? _EcoErrorState(message: _loadError!, onRetry: _load)
+                  : RefreshIndicator(
+                      color: AppColors.oliveText,
+                      onRefresh: _load,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppSpacing.xl,
+                          AppSpacing.xxl,
+                          AppSpacing.xl,
+                          AppSpacing.xxxl,
+                        ),
+                        children: [
+                          _ActivityFilterButtons(
+                            selected: _activityFilter,
+                            onSelected: _selectActivityFilter,
+                          ),
+                          const SizedBox(height: AppSpacing.xxl),
+                          if (filtered.isEmpty)
+                            _destination.isActive
+                                ? Text(
+                                    'No hay próximas jornadas que coincidan en ${_destination.label}.',
+                                  )
+                                : _EcoEmptyState(filter: _activityFilter)
+                          else ...[
+                            if (featured.isNotEmpty) ...[
+                              _FeaturedCarousel(
+                                activities: featured,
+                                controller: _featuredController,
+                                page: _featuredPage,
+                                onPageChanged: (page) =>
+                                    setState(() => _featuredPage = page),
+                                onOpen: _openDetail,
+                                onJoin: _toggleJoin,
+                                joiningIds: _joiningIds,
+                              ),
+                              const SizedBox(height: AppSpacing.xxxl),
+                            ],
+                            Text(
+                              'Descubre más',
+                              style: AppTextStyles.sectionTitle.copyWith(
+                                color: AppColors.settingsTextDark,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.lg),
+                            for (final (index, activity) in filtered.indexed)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.md,
+                                ),
+                                child:
+                                    EcoActivityCard(
+                                          activity: activity,
+                                          onTap: () => _openDetail(activity),
+                                        )
+                                        .animate(
+                                          delay:
+                                              AppMotion.microDuration * index,
+                                        )
+                                        .fadeIn(
+                                          duration: AppMotion.standardDuration,
+                                          curve: AppMotion.enter,
+                                        )
+                                        .slideY(
+                                          begin: 0.08,
+                                          duration: AppMotion.standardDuration,
+                                          curve: AppMotion.enter,
+                                        ),
+                              ),
+                          ],
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _JoinedBanner extends StatelessWidget {
-  const _JoinedBanner({required this.count});
+class _ActivityFilterButtons extends StatelessWidget {
+  const _ActivityFilterButtons({
+    required this.selected,
+    required this.onSelected,
+  });
 
-  final int count;
+  final _EcoActivityFilter selected;
+  final ValueChanged<_EcoActivityFilter> onSelected;
+
+  static const _items = [
+    (_EcoActivityFilter.available, 'Disponibles'),
+    (_EcoActivityFilter.participating, 'Participando'),
+    (_EcoActivityFilter.finished, 'Finalizadas'),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.ecoGreen500.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.ecoGreen500.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         children: [
-          Container(
-            width: 28,
-            height: 28,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: AppColors.ecoActive,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check_rounded,
-              size: 16,
-              color: AppColors.surface100,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              count == 1
-                  ? 'Ya te uniste a 1 actividad'
-                  : 'Ya te uniste a $count actividades',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                fontSize: 13,
-                color: AppColors.settingsTextDark,
+          for (final (filter, label) in _items)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: selected == filter,
+                child: GestureDetector(
+                  onTap: () => onSelected(filter),
+                  child: AnimatedContainer(
+                    duration: AppMotion.quickDuration,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 11,
+                      horizontal: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected == filter
+                          ? AppColors.oliveText
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      style: AppTextStyles.mapRowTitle.copyWith(
+                        fontSize: 11,
+                        color: selected == filter
+                            ? AppColors.surface100
+                            : AppColors.settingsTextDark,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -364,16 +427,20 @@ class _FeaturedCarousel extends StatelessWidget {
     required this.onPageChanged,
     required this.onOpen,
     required this.onJoin,
+    required this.joiningIds,
   });
 
-  static const _cardHeight = 340.0;
+  static const _cardHeight = 360.0;
 
   final List<EcoActivityModel> activities;
   final PageController controller;
   final int page;
   final ValueChanged<int> onPageChanged;
   final ValueChanged<EcoActivityModel> onOpen;
-  final ValueChanged<EcoActivityModel> onJoin;
+  final Future<void> Function(EcoActivityModel) onJoin;
+
+  /// Actividades con un "Unirme"/"Unido" en curso (spinner y sin segundo toque).
+  final Set<String> joiningIds;
 
   @override
   Widget build(BuildContext context) {
@@ -390,11 +457,12 @@ class _FeaturedCarousel extends StatelessWidget {
             itemBuilder: (context, index) {
               final activity = activities[index];
               return Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: AppSpacing.xs),
                 child: _FeaturedCard(
                   activity: activity,
                   onTap: () => onOpen(activity),
                   onJoin: () => onJoin(activity),
+                  isJoining: joiningIds.contains(activity.id),
                 ),
               );
             },
@@ -407,15 +475,15 @@ class _FeaturedCarousel extends StatelessWidget {
             children: [
               for (var i = 0; i < activities.length; i++)
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration: AppMotion.quickDuration,
                   margin: const EdgeInsets.symmetric(horizontal: 3),
                   width: i == current ? 18 : 6,
                   height: 6,
                   decoration: BoxDecoration(
                     color: i == current
-                        ? AppColors.ecoActive
+                        ? AppColors.oliveText
                         : AppColors.mapControlBorder,
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
                   ),
                 ),
             ],
@@ -431,26 +499,20 @@ class _FeaturedCard extends StatelessWidget {
     required this.activity,
     required this.onTap,
     required this.onJoin,
+    required this.isJoining,
   });
 
   final EcoActivityModel activity;
   final VoidCallback onTap;
-  final VoidCallback onJoin;
+  final Future<void> Function() onJoin;
+  final bool isJoining;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.mapControlBorder),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.mapCardShadow,
-            offset: Offset(0, 8),
-            blurRadius: 26,
-          ),
-        ],
+        borderRadius: BorderRadius.circular(AppRadius.xl),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -459,12 +521,12 @@ class _FeaturedCard extends StatelessWidget {
           GestureDetector(
             onTap: onTap,
             child: SizedBox(
-              height: 150,
+              height: 145,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   LocalImage(
-                    path: null,
+                    path: activity.imageUrl,
                     fallbackIcon: ecoCategoryIcon(activity.category),
                     fallbackIconSize: 36,
                   ),
@@ -486,14 +548,14 @@ class _FeaturedCard extends StatelessWidget {
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.primary500,
-                          borderRadius: BorderRadius.circular(999),
+                          color: AppColors.oliveFill,
+                          borderRadius: BorderRadius.circular(AppRadius.pill),
                         ),
                         child: Text(
                           'Empieza pronto',
                           style: AppTextStyles.mapRowTitle.copyWith(
                             fontSize: 11,
-                            color: AppColors.settingsTextDark,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ),
@@ -504,20 +566,18 @@ class _FeaturedCard extends StatelessWidget {
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Flexible(
-                    child: Text(
-                      activity.title,
-                      style: AppTextStyles.sectionTitle.copyWith(
-                        color: AppColors.settingsTextDark,
-                        fontSize: 18,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    activity.title,
+                    style: AppTextStyles.sectionTitle.copyWith(
+                      color: AppColors.settingsTextDark,
+                      fontSize: 18,
                     ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   Flexible(
@@ -534,29 +594,25 @@ class _FeaturedCard extends StatelessWidget {
                       Expanded(
                         child: SizedBox(
                           height: 46,
-                          child: ElevatedButton(
+                          // Mismo CTA que el detalle: dorado con tinta oscura
+                          // (el módulo ECO puede combinar Gold y Olive), con
+                          // spinner y sin segundo toque mientras se guarda.
+                          child: AppLoadingButton(
+                            label:
+                                activity.isFull &&
+                                    !activity.isJoinedByCurrentUser
+                                ? 'Cupo lleno'
+                                : activity.isJoinedByCurrentUser
+                                ? 'Unido'
+                                : 'Unirme',
+                            isLoading: isJoining,
                             onPressed:
-                                activity.status == EcoActivityStatus.completed
+                                activity.status ==
+                                        EcoActivityStatus.completed ||
+                                    (activity.isFull &&
+                                        !activity.isJoinedByCurrentUser)
                                 ? null
                                 : onJoin,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary500,
-                              foregroundColor: AppColors.settingsTextDark,
-                              disabledBackgroundColor:
-                                  AppColors.settingsBackground,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              textStyle: AppTextStyles.mapRowTitle.copyWith(
-                                fontSize: 14,
-                              ),
-                            ),
-                            child: Text(
-                              activity.isJoinedByCurrentUser
-                                  ? 'Unido'
-                                  : 'Unirme',
-                            ),
                           ),
                         ),
                       ),
@@ -573,7 +629,9 @@ class _FeaturedCard extends StatelessWidget {
                                 color: AppColors.mapControlBorder,
                               ),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(
+                                  AppRadius.md,
+                                ),
                               ),
                               textStyle: AppTextStyles.mapRowTitle.copyWith(
                                 fontSize: 13,
@@ -614,7 +672,7 @@ class _OrganizerChip extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(logo == null ? 10 : 5, 5, 10, 5),
         decoration: BoxDecoration(
           color: AppColors.detailCoverCounterBg,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -656,7 +714,9 @@ class _OrganizerChip extends StatelessWidget {
 }
 
 class _EcoEmptyState extends StatelessWidget {
-  const _EcoEmptyState();
+  const _EcoEmptyState({required this.filter});
+
+  final _EcoActivityFilter filter;
 
   @override
   Widget build(BuildContext context) {
@@ -667,7 +727,14 @@ class _EcoEmptyState extends StatelessWidget {
           const Icon(Icons.eco_outlined, size: 40, color: AppColors.neutral400),
           const SizedBox(height: 12),
           Text(
-            'No hay actividades en esta categoría todavía.',
+            switch (filter) {
+              _EcoActivityFilter.available =>
+                'No hay actividades disponibles en esta categoría.',
+              _EcoActivityFilter.participating =>
+                'Aún no participas en actividades de esta categoría.',
+              _EcoActivityFilter.finished =>
+                'Todavía no hay actividades finalizadas en esta categoría.',
+            },
             textAlign: TextAlign.center,
             style: AppTextStyles.settingsSubtitle,
           ),
@@ -687,14 +754,14 @@ class _EcoErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(
               Icons.wifi_off_rounded,
               size: 40,
-              color: AppColors.settingsDanger,
+              color: AppColors.destructive,
             ),
             const SizedBox(height: 12),
             Text(
@@ -714,8 +781,8 @@ class _EcoErrorState extends StatelessWidget {
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Reintentar'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary500,
-                foregroundColor: AppColors.textInk,
+                backgroundColor: AppColors.oliveText,
+                foregroundColor: AppColors.textInverted,
               ),
             ),
           ],

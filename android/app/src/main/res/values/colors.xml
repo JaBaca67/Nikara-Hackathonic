@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash_background">#FFD028</color>
+    <!-- Degradado de Auth (AppGradients): sunsetStart → sunsetMid2 → sunsetEnd. -->
+    <color name="splash_gradient_start">#FFD028</color>
+    <color name="splash_gradient_center">#FF8A35</color>
+    <color name="splash_gradient_end">#F97316</color>
+</resources>

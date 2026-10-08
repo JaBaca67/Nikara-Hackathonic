@@ -1,0 +1,266 @@
+{
+  "researched_at": "2026-10-07",
+  "base_date": "2026-10-17",
+  "activities": [
+    {
+      "slug": "reforestacion",
+      "category": "Reforestación",
+      "title": "Reforestar el bosque de pino de Tomabú",
+      "municipality": "Estelí",
+      "department": "Estelí",
+      "municipality_code": "2515",
+      "location": "Reserva Natural Tomabú (sector por confirmar), Estelí, Estelí",
+      "day_offset": 0,
+      "max_capacity": 20,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nSiembra y seguimiento de árboles nativos, con explicación del bosque de pino y el cuidado de sus fuentes de agua. Referencia real: jornada estudiantil de reforestación documentada por INATEC en Tomabú.",
+      "requirements": [
+        "Botas o zapatos cerrados",
+        "Guantes de trabajo",
+        "Agua y protección solar",
+        "Herramientas y especies definidas por el responsable técnico"
+      ],
+      "source": {
+        "url": "https://www.tecnacional.edu.ni/noticias/jornada-reforestacion-reserva-natural-tomabu/",
+        "published": "2019-06-26",
+        "publisher": "INATEC"
+      },
+      "image_url": "https://www.tecnacional.edu.ni/media/REFORESTACION-ESTUDIANTES-INATEC-NICARAGUA-TECNOLOGICO-NACIONAL_3.jpg",
+      "image_credit": "INATEC",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "fauna",
+      "category": "Fauna",
+      "title": "Tortugas marinas de Quelantaro",
+      "municipality": "Villa El Carmen",
+      "department": "Managua",
+      "municipality_code": "5520",
+      "location": "Quelantaro / costa de Villa El Carmen, Villa El Carmen, Managua",
+      "day_offset": 3,
+      "max_capacity": 12,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nRecorrido educativo sobre conservación de tortugas marinas y sus playas de anidación. Inspirado en el festival de protección documentado por INTUR en Quelantaro. La observación y cualquier liberación dependen del responsable autorizado y de la temporada; no se promete avistamiento.",
+      "requirements": [
+        "Guía local y autorización del área",
+        "No tocar ni alimentar fauna",
+        "Ropa cómoda y agua",
+        "Respetar instrucciones sobre luces y distancia"
+      ],
+      "source": {
+        "url": "https://www.intur.gob.ni/2017/01/23/realizan-festival-proteger-tortugas-marinas/",
+        "published": "2017-01-23",
+        "publisher": "INTUR"
+      },
+      "image_url": "https://www.intur.gob.ni/wp-content/uploads/2017/01/V-festival-uniendo-esfuerzo-por-las-tortugas-marinas-Quelantaro.jpg",
+      "image_credit": "INTUR",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "limpieza",
+      "category": "Limpieza",
+      "title": "Jornada costera en El Tránsito",
+      "municipality": "Nagarote",
+      "department": "León",
+      "municipality_code": "3550",
+      "location": "Comunidad El Tránsito, Nagarote, León",
+      "day_offset": 6,
+      "max_capacity": 20,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nJornada costera de recolección y separación de residuos comunes, seguida de una conversación sobre el cuidado del océano. Referencia real: brigadas comunitarias e Instituto Douglas Vázquez Galeano limpiaron las costas y calles de El Tránsito en 2024.",
+      "requirements": [
+        "Guantes y zapatos cerrados",
+        "Agua y protección solar",
+        "Bolsas para separación",
+        "Disposición de residuos coordinada por la organización"
+      ],
+      "source": {
+        "url": "https://www.vivanicaragua.com.ni/2024/03/03/sociales/nagarote-playa-limpia-bonita/",
+        "published": "2024-03-03",
+        "publisher": "Viva Nicaragua / brigadas de Nagarote"
+      },
+      "image_url": "https://api.vivanicaragua.com.ni/contenido/archivos/2024/03/WhatsApp-Image-2024-03-01-at-12.45.19-1.jpeg?ssl=1&w=800",
+      "image_credit": "Viva Nicaragua / brigadas de Nagarote",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "reciclaje",
+      "category": "Reciclaje",
+      "title": "Artesanía circular en San Juan de Limay",
+      "municipality": "San Juan de Limay",
+      "department": "Estelí",
+      "municipality_code": "2520",
+      "location": "San Juan de Limay, San Juan de Limay, Estelí",
+      "day_offset": 9,
+      "max_capacity": 15,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nAcercamiento a la economía circular mediante una demostración de artesanía con madera recuperada. Referencia real: MARENA documentó el aprovechamiento de residuos de madera en Artesanías Don Chico, San Juan de Limay. La visita a un taller requiere acuerdo previo; no hay convenio confirmado.",
+      "requirements": [
+        "Material limpio y no peligroso",
+        "Herramientas usadas solo por el facilitador",
+        "Agua",
+        "Coordinar el acceso con el anfitrión"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2026/09/17/reciclamos-en-armonia-con-la-madre-tierra/",
+        "published": "2026-09-17",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2026/09/1-5.jpg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "agua",
+      "category": "Agua y cuencas",
+      "title": "Caminata por la cuenca del río Dipilto",
+      "municipality": "Dipilto",
+      "department": "Nueva Segovia",
+      "municipality_code": "0530",
+      "location": "Cuenca del río Dipilto, Dipilto, Nueva Segovia",
+      "day_offset": 12,
+      "max_capacity": 15,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nCaminata interpretativa para conocer el bosque ribereño y aprender cómo una comunidad protege su agua. Referencia real: taller regional de MARENA sobre experiencias y gestión comunitaria de la cuenca del río Dipilto. El recorrido propuesto no incluye análisis de potabilidad ni ingreso al cauce.",
+      "requirements": [
+        "Guía local",
+        "Zapatos con buena tracción",
+        "Agua y ropa para lluvia",
+        "No ingresar al río ni tomar muestras sin supervisión"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2022/08/18/concluye-taller-regional-sobre-experiencias-en-el-manejo-de-cuencas-hidrograficas/",
+        "published": "2022-08-18",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2022/08/299480518_436094625225750_1597213819617244843_n.jpg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "suelos",
+      "category": "Suelos y agroecología",
+      "title": "Suelos vivos en la Serranía de Amerrisque",
+      "municipality": "San Pedro de Lóvago",
+      "department": "Chontales",
+      "municipality_code": "6530",
+      "location": "Comarca El Juste, Serranía de Amerrisque, San Pedro de Lóvago, Chontales",
+      "day_offset": 15,
+      "max_capacity": 15,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nTaller demostrativo sobre cobertura del suelo, prácticas agroforestales y prevención de la erosión. Referencia real: capacitación de MARENA con productores y comunitarios de El Juste, San Pedro de Lóvago. Las demostraciones propuestas requieren permiso de la finca y acompañamiento técnico.",
+      "requirements": [
+        "Zapatos cerrados y guantes",
+        "Agua",
+        "Permiso del anfitrión",
+        "No excavar ni aplicar productos sin supervisión"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2022/07/01/marena-desarrolla-taller-sobre-la-conservacion-de-los-suelos-en-chontales/",
+        "published": "2022-07-01",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2022/07/be02daa8-3d2c-43f0-bea2-7adf5c16aa25-1.jpg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "viveros",
+      "category": "Jardinería y viveros",
+      "title": "Viveros forestales de Jinotega",
+      "municipality": "Jinotega",
+      "department": "Jinotega",
+      "municipality_code": "1035",
+      "location": "Municipio de Jinotega; vivero por confirmar, Jinotega, Jinotega",
+      "day_offset": 18,
+      "max_capacity": 15,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nExperiencia de siembra en bolsas, germinación y cuidado de plantas forestales y ornamentales. Referencia real: acompañamiento de MARENA a viveros del departamento, incluido el de la Escuela Alfredo Alegría en Jinotega. El vivero y facilitador de esta propuesta están pendientes de coordinación.",
+      "requirements": [
+        "Guantes y zapatos cerrados",
+        "Agua",
+        "Sustratos y semillas definidos por el facilitador",
+        "Sin uso de plaguicidas por participantes"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2023/05/16/delegacion-marena-jinotega-brinda-acompanamiento-a-viveros-forestales-y-frutales/",
+        "published": "2023-05-16",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2023/05/1bf3aea9-b069-4cba-8c56-480def403eb5.jpg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "educacion",
+      "category": "Educación ambiental",
+      "title": "Clasificación de residuos en Muy Muy",
+      "municipality": "Muy Muy",
+      "department": "Matagalpa",
+      "municipality_code": "4045",
+      "location": "Municipio de Muy Muy, Muy Muy, Matagalpa",
+      "day_offset": 21,
+      "max_capacity": 20,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nTaller participativo para reconocer residuos y practicar su clasificación con materiales limpios. Referencia real: capacitación de MARENA al Instituto Padre José Bartocci de Muy Muy sobre residuos comunes y aparatos eléctricos. La propuesta turística se centra en aprendizaje; no incluye manipular residuos peligrosos ni desmontar electrónicos.",
+      "requirements": [
+        "Material limpio para demostración",
+        "Cuaderno opcional",
+        "Agua",
+        "RAEE y residuos peligrosos a cargo de gestores especializados"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2022/02/01/marena-imparte-taller-para-el-manejo-de-los-raee-a-estudiantes-de-matagalpa/",
+        "published": "2022-02-01",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2022/02/3.jpeg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "biodiversidad",
+      "category": "Monitoreo de biodiversidad",
+      "title": "Observación de biodiversidad en Peñas Blancas",
+      "municipality": "El Cuá",
+      "department": "Jinotega",
+      "municipality_code": "1010",
+      "location": "Comunidad Peñas Blancas, Macizo de Peñas Blancas, El Cuá, Jinotega",
+      "day_offset": 24,
+      "max_capacity": 10,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nRecorrido de observación para registrar aves y otras especies sin interferir con su hábitat. Referencia real: monitoreo de biodiversidad de MARENA en el Macizo de Peñas Blancas durante agosto de 2024. El macizo abarca El Cuá, El Tuma-La Dalia y Rancho Grande; el acceso exacto se coordinará con el guía.",
+      "requirements": [
+        "Guía local y acceso autorizado",
+        "Binoculares opcionales",
+        "Zapatos de montaña y ropa de lluvia",
+        "Sin captura, cebos ni alimentación de animales"
+      ],
+      "source": {
+        "url": "https://www.marena.gob.ni/2024/08/30/reserva-natural-macizo-de-penas-blancas-un-ecosistema-lleno-de-vida-animal/",
+        "published": "2024-08-30",
+        "publisher": "MARENA"
+      },
+      "image_url": "https://www.marena.gob.ni/wp-content/uploads/2024/08/WhatsApp-Image-2024-08-29-at-12.08.04-PM-6.jpeg",
+      "image_credit": "MARENA",
+      "image_is_historical_reference": true
+    },
+    {
+      "slug": "saneamiento",
+      "category": "Saneamiento ambiental",
+      "title": "Saneamiento ambiental en La Trinidad",
+      "municipality": "La Trinidad",
+      "department": "Estelí",
+      "municipality_code": "2525",
+      "location": "Municipio de La Trinidad, La Trinidad, Estelí",
+      "day_offset": 27,
+      "max_capacity": 15,
+      "description": "Actividad de demostración de Níkara. Fecha y punto de encuentro ilustrativos, pendientes de confirmación.\n\nTaller comunitario para comprender cómo los residuos afectan drenajes y saneamiento, con observación desde zonas seguras y mapeo de puntos de acumulación. Base real: obras de saneamiento de ENACAL en La Trinidad y riesgos por inundaciones descritos en la entrevista municipal. La propuesta no incluye operar alcantarillas ni intervenir infraestructura sanitaria.",
+      "requirements": [
+        "Facilitador técnico",
+        "Zapatos cerrados y agua",
+        "No abrir manjoles ni entrar a cauces",
+        "Punto de encuentro y recorrido por confirmar"
+      ],
+      "source": {
+        "url": "https://www.enacal.com.ni/noticias/nuevas-np/NP12-09-2022.html",
+        "published": "2022-09-12",
+        "publisher": "ENACAL + entrevista municipal"
+      },
+      "image_url": "https://www.enacal.com.ni/noticias/nuevas-np/image-np/NP1209221.jpg?download=1",
+      "image_credit": "ENACAL + entrevista municipal",
+      "image_is_historical_reference": true
+    }
+  ]
+}

@@ -5,17 +5,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/register_screen.dart';
+import 'package:nikara_app/features/ai_assistant/domain/models/assistant_models.dart';
+import 'package:nikara_app/features/ai_assistant/domain/models/assistant_place.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_cards.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/domain/models/organization_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
+import 'package:nikara_app/features/eco/presentation/screens/edit_organization_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_activity_card.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
 import 'package:nikara_app/features/map/presentation/screens/map_screen.dart';
+import 'package:nikara_app/core/models/profile_face.dart';
+import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
@@ -32,12 +40,57 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// enough to break any card/header that isn't actually protected by
 /// `maxLines`/`Expanded`/`Flexible`, instead of only ever being exercised
 /// against today's short seed data.
+/// Mismo criterio que [_stressBusiness]: el `reason` lo redacta un modelo de
+/// lenguaje, así que no hay garantía de largo aunque el prompt pida brevedad.
+final _stressPlace = AssistantPlace(
+  id: 'stress-place',
+  kind: AssistantItemKind.business,
+  name:
+      'Complejo Ecoturístico y Balneario Familiar Laguna Escondida del '
+      'Bosque Nuboso de Nicaragua',
+  subtitle:
+      'Eco Turismo y Aventura Extrema en la Montaña Nublada · San Juan de '
+      'Río Coco, Madriz',
+  reason:
+      'Te lo recomiendo porque combina senderos interpretativos de bosque '
+      'nuboso con avistamiento de aves endémicas, prácticas de turismo '
+      'regenerativo certificadas y una vista panorámica que abarca tres '
+      'departamentos en un día despejado.',
+  isEco: true,
+  latitude: 13.5,
+  longitude: -86.1,
+);
+
+final _stressItinerary = AssistantItinerary(
+  title:
+      'Escapada Regenerativa de Dos Días por el Bosque Nuboso y las '
+      'Comunidades Alfareras del Norte de Nicaragua',
+  days: [
+    for (var day = 1; day <= 3; day++)
+      AssistantItineraryDay(
+        day: day,
+        stops: [
+          for (var i = 0; i < 3; i++)
+            AssistantStop(
+              id: 'stress-place',
+              kind: AssistantItemKind.business,
+              note:
+                  'Arrancá temprano para aprovechar la luz de la mañana y '
+                  'coordiná con la cooperativa local la visita guiada al '
+                  'taller de barro antes del almuerzo.',
+            ),
+        ],
+      ),
+  ],
+);
+
 final _stressBusiness = BusinessModel(
   id: 'stress-test-id',
   name:
       'Complejo Ecoturístico y Balneario Familiar Laguna Escondida del '
       'Bosque Nuboso de Nicaragua',
   category: 'Eco Turismo y Aventura Extrema en la Montaña Nublada',
+  subcategory: 'Reserva natural y mirador comunitario de altura',
   description:
       'Una descripción extremadamente larga que simula lo que un dueño de '
       'negocio ansioso por vender su experiencia podría escribir sin '
@@ -52,8 +105,6 @@ final _stressBusiness = BusinessModel(
   longitude: -86.2514,
   contactPhone: '+505 8888 8888',
   instagramLink: 'complejoecoturisticoybalneariofamiliarlagunaescondida',
-  allowsReservations: true,
-  price: 123456.99,
   amenities: const [
     'Wifi',
     'Estacionamiento',
@@ -73,6 +124,16 @@ final _stressBusiness = BusinessModel(
     'Tour de Café',
     'Fotografía',
   ],
+  dayPassEnabled: true,
+  dayPassPrice: 999.99,
+  dayPassIncludes: dayPassIncludesPresets,
+  dayPassSchedule:
+      'Todos los días del año excepto feriados nacionales y los primeros '
+      'lunes de cada mes por mantenimiento programado de las instalaciones',
+  dayPassNotes:
+      'Cupo limitado a un número reducido de visitantes por día, se '
+      'recomienda confirmar con al menos 48 horas de anticipación por '
+      'temporada alta y disponibilidad de parqueo en el sitio',
   hostName: 'Bartolomé de las Casas y Fuentes Rodríguez de la Vega Hernández',
   ownerId: 'stress-owner-id',
 );
@@ -116,6 +177,23 @@ final _stressActivity = EcoActivityModel(
     'Guantes de jardinería (opcional, la organización presta algunos)',
   ],
   createdAt: DateTime(2030, 1, 1),
+  // Inscritos con nombre y foto: ejercita la pila de avatares reales de la
+  // tarjeta y las filas enlazables de la pestaña "Participantes".
+  participants: [
+    EcoParticipant(
+      userId: 'stress-participant-1',
+      joinedAt: DateTime(2030, 1, 2),
+      fullName: 'María Auxiliadora de los Ángeles Sandoval Bermúdez',
+      avatarUrl:
+          'https://example.supabase.co/storage/v1/object/public/'
+          'avatars/stress/1.jpg',
+    ),
+    EcoParticipant(
+      userId: 'stress-participant-2',
+      joinedAt: DateTime(2030, 1, 3),
+      fullName: 'Juan',
+    ),
+  ],
   participantCount: 18,
 );
 
@@ -253,6 +331,12 @@ void main() {
             '$exception',
       );
     }
+    // Desmonta antes de terminar y deja correr el reloj: las pantallas que se
+    // suscriben a Realtime cierran su canal en dispose(), y ese cierre agenda
+    // un timer de desconexión que, sin drenar, haría fallar el test por
+    // "pending timers" aunque el layout esté bien.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(minutes: 1));
   }
 
   testWidgets('LoginScreen no desborda en pantallas pequeñas', (tester) async {
@@ -320,6 +404,57 @@ void main() {
         fallbackName: _stressActivity.organizerName,
       ),
       'PublicUserProfileScreen',
+    );
+  });
+
+  testWidgets('CreateEcoActivityScreen no desborda en pantallas pequeñas', (
+    tester,
+  ) async {
+    // Audita el formulario vacío: el peor caso de texto dinámico (nombres de
+    // fundación en "Publicar como") ya lo cubre OrganizationProfileScreen, y
+    // sin sesión la lista de fundaciones viene vacía de todas formas.
+    await expectNoOverflow(
+      tester,
+      const CreateEcoActivityScreen(),
+      'CreateEcoActivityScreen',
+    );
+  });
+
+  testWidgets('PublicUserProfileScreen con foto de perfil no desborda', (
+    tester,
+  ) async {
+    // Con avatar remoto: en el test la descarga falla y cae al placeholder,
+    // que es justo el camino que antes dejaba el hueco en blanco.
+    await expectNoOverflow(
+      tester,
+      const PublicUserProfileScreen(
+        userId: 'stress-organizer-id',
+        fallbackName: 'Bartolomé de las Casas y Fuentes Rodríguez de la Vega',
+      ),
+      'PublicUserProfileScreen (con foto)',
+    );
+  });
+
+  testWidgets('CreateEcoActivityScreen en modo edición no desborda', (
+    tester,
+  ) async {
+    // Precargado con los peores textos posibles: el formulario de edición
+    // pinta el título/descripción/requisitos guardados dentro de los campos y
+    // las pastillas, no solo placeholders cortos.
+    await expectNoOverflow(
+      tester,
+      CreateEcoActivityScreen(existingActivity: _stressActivity),
+      'CreateEcoActivityScreen (edición)',
+    );
+  });
+
+  testWidgets('EditOrganizationScreen no desborda en pantallas pequeñas', (
+    tester,
+  ) async {
+    await expectNoOverflow(
+      tester,
+      EditOrganizationScreen(organization: _stressOrganization),
+      'EditOrganizationScreen',
     );
   });
 
@@ -427,11 +562,82 @@ void main() {
     await expectNoOverflow(tester, const MapScreen(), 'MapScreen');
   });
 
+  // Las tarjetas del asistente renderizan texto que viene de dos fuentes sin
+  // tope de largo: el nombre/categoría del negocio (que escribe su dueño) y el
+  // motivo que redacta el modelo de lenguaje, que puede ignorar la
+  // instrucción de "una oración" y devolver un párrafo.
+  testWidgets(
+    'AssistantRecommendationCard con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        Scaffold(
+          body: AssistantRecommendationCard(
+            place: _stressPlace,
+            onOpenProfile: () {},
+            onShowOnMap: () {},
+          ),
+        ),
+        'AssistantRecommendationCard',
+      );
+    },
+  );
+
+  testWidgets('AssistantItineraryCard con contenido extremo no desborda', (
+    tester,
+  ) async {
+    await expectNoOverflow(
+      tester,
+      Scaffold(
+        body: SingleChildScrollView(
+          child: AssistantItineraryCard(
+            itinerary: _stressItinerary,
+            placeResolver: (_) => _stressPlace,
+            onSave: () {},
+            isSaving: false,
+            isSaved: false,
+          ),
+        ),
+      ),
+      'AssistantItineraryCard',
+    );
+  });
+
   testWidgets('ProfileScreen no desborda en pantallas pequeñas', (
     tester,
   ) async {
     await expectNoOverflow(tester, const ProfileScreen(), 'ProfileScreen');
   });
+
+  testWidgets(
+    'FaceProfileScreen de negocio con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        FaceProfileScreen(
+          face: ProfileFace.fromBusiness(_stressBusiness),
+          onFaceTap: () {},
+          onSettingsTap: () {},
+        ),
+        'FaceProfileScreen (negocio)',
+      );
+    },
+  );
+
+  testWidgets(
+    'FaceProfileScreen de fundación con contenido extremo no desborda',
+    (tester) async {
+      await expectNoOverflow(
+        tester,
+        FaceProfileScreen(
+          face: ProfileFace.fromOrganization(_stressOrganization),
+          onFaceTap: () {},
+          onSettingsTap: () {},
+        ),
+        'FaceProfileScreen (fundación)',
+      );
+    },
+  );
 
   testWidgets('SettingsScreen no desborda en pantallas pequeñas', (
     tester,
@@ -446,6 +652,21 @@ void main() {
       tester,
       const RegisterBusinessWizard(),
       'RegisterBusinessWizard',
+    );
+  });
+
+  testWidgets('RegisterBusinessWizard con pase de día activo no desborda '
+      '(Paso 3, categoría Hospedaje)', (tester) async {
+    // category: 'Hospedaje' es lo que revela la tarjeta "Pase de día" en
+    // el wizard — _stressBusiness usa otra categoría a propósito para no
+    // mezclar ambos casos de estrés.
+    await expectNoOverflow(
+      tester,
+      RegisterBusinessWizard(
+        existingBusiness: _stressBusiness.copyWith(category: 'Hospedaje'),
+        initialStep: 2,
+      ),
+      'RegisterBusinessWizard (Paso 3, pase de día)',
     );
   });
 }

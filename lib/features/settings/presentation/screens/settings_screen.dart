@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
+import 'package:nikara_app/core/utils/validators.dart';
+import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
-import 'package:nikara_app/features/business/presentation/screens/register_business_wizard.dart';
+import 'package:nikara_app/features/business/presentation/screens/legal_identity_gate_screen.dart';
 import 'package:nikara_app/features/eco/presentation/screens/create_eco_activity_screen.dart';
-import 'package:nikara_app/features/eco/presentation/screens/create_organization_screen.dart';
+import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de Ajustes (nodo Figma 361:323). Los toggles de
@@ -24,6 +32,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _name = '';
   String _email = '';
   String _phone = '';
+  UserRole _role = UserRole.turista;
+
+  /// Cuentas guardadas además de la activa; alimenta el subtítulo de la fila
+  /// "Cambiar de cuenta".
+  int _otherAccountsCount = 0;
 
   bool _tripAlerts = true;
   bool _ecoCampaigns = true;
@@ -35,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadProfile();
+    _loadSavedAccounts();
   }
 
   Future<void> _loadProfile() async {
@@ -44,7 +58,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _name = profile.fullName;
       _email = profile.email;
       _phone = profile.phone;
+      _role = profile.role;
     });
+  }
+
+  void _openAdminPanel() {
+    pushSharedAxis(context, const AdminShellScreen());
+  }
+
+  Future<void> _loadSavedAccounts() async {
+    final accounts = await _authService.getSavedAccounts();
+    if (!mounted) return;
+    setState(() => _otherAccountsCount = accounts.length);
+  }
+
+  String get _savedAccountsCaption => switch (_otherAccountsCount) {
+    0 => 'Agrega otra cuenta y alterna sin volver a iniciar sesión',
+    1 => '1 cuenta más guardada en este dispositivo',
+    final n => '$n cuentas más guardadas en este dispositivo',
+  };
+
+  Future<void> _openAccountSwitcher() async {
+    await showAccountSwitcherSheet(context);
+    if (!mounted) return;
+    // La hoja puede haber quitado una cuenta guardada (o haber guardado la
+    // activa por primera vez), así que el contador se recalcula al cerrarla.
+    await _loadSavedAccounts();
   }
 
   Future<void> _openEditProfile() async {
@@ -59,7 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _email = result.$2;
       _phone = result.$3;
     });
-    _showSnack('Perfil actualizado');
+    AppSnackbar.showSuccess(context, 'Perfil actualizado');
   }
 
   Future<void> _openChangePassword() async {
@@ -67,285 +106,279 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (_) => const _ChangePasswordDialog(),
     );
-    if (changed == true && mounted) _showSnack('Contraseña actualizada');
+    if (changed == true && mounted) {
+      AppSnackbar.showSuccess(context, 'Contraseña actualizada');
+    }
   }
 
+  /// Mientras corre cerrar sesión o eliminar la cuenta: bloquea la pantalla
+  /// (`AppBusyOverlay`) y el botón atrás, porque ambas acciones terminan
+  /// sacando a la persona de Ajustes y no admiten un segundo disparo.
+  bool _isBusy = false;
+  String _busyMessage = '';
+
   Future<void> _confirmLogout() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Cerrar sesión',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
-          '¿Seguro que quieres cerrar tu sesión de Níkara?',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Cerrar sesión',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.settingsDanger,
-              ),
-            ),
-          ),
-        ],
-      ),
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Cerrar sesión',
+      message: '¿Seguro que quieres cerrar tu sesión de Níkara?',
+      confirmLabel: 'Cerrar sesión',
     );
-    if (confirmed != true) return;
-    await _authService.signOut();
-    await GuestSessionService().exitGuestMode();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _isBusy = true;
+      _busyMessage = 'Cerrando sesión…';
+    });
+    try {
+      await _authService.signOut();
+      await GuestSessionService().exitGuestMode();
+      if (!mounted) return;
+      pushFadeThroughAndRemoveUntil(context, const LoginScreen());
+    } on AuthServiceException catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo cerrar la sesión. Verifica tu internet e intenta de nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
   }
 
   Future<void> _confirmDeleteAccount() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Eliminar cuenta',
-          style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
-        ),
-        content: Text(
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar cuenta',
+      message:
           'Esta acción es permanente: se borrará tu perfil y toda tu '
           'información de Níkara, y no podrás recuperarla. ¿Seguro que '
           'quieres eliminar tu cuenta?',
-          style: AppTextStyles.body,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar cuenta',
-              style: AppTextStyles.settingsRowTitle.copyWith(
-                color: AppColors.settingsDanger,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar cuenta',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
+    setState(() {
+      _isBusy = true;
+      _busyMessage = 'Eliminando tu cuenta…';
+    });
     try {
       await _authService.deleteAccount();
+      await GuestSessionService().exitGuestMode();
+      if (!mounted) return;
+      pushFadeThroughAndRemoveUntil(context, const LoginScreen());
     } on AuthServiceException catch (e) {
       if (!mounted) return;
-      _showSnack(e.message);
-      return;
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo eliminar tu cuenta. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
     }
-    await GuestSessionService().exitGuestMode();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: AppColors.settingsBackground,
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _SettingsHeader(onBack: () => Navigator.of(context).maybePop()),
-              const SizedBox(height: 20),
+      // El header blanco (surface100) llega hasta y=0 y absorbe la barra de
+      // estado con su propio color, en vez de que el Scaffold pinte una
+      // franja de settingsBackground (beige) detrás — ver home_screen.dart.
+      body: SingleChildScrollView(
+        physics: const ClampingScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SettingsHeader(onBack: () => Navigator.of(context).maybePop()),
+            const SizedBox(height: 20),
+            _SettingsSection(
+              label: 'Mi cuenta',
+              children: [
+                _SettingsRow(
+                  icon: Icons.person_outline,
+                  title: 'Editar perfil',
+                  onTap: _openEditProfile,
+                ),
+                _SettingsRow(
+                  icon: Icons.lock_outline,
+                  title: 'Cambiar contraseña',
+                  onTap: _openChangePassword,
+                ),
+                _SettingsRow(
+                  icon: Icons.mail_outline,
+                  title: 'Correo electrónico',
+                  value: _email,
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.call_outlined,
+                  title: 'Teléfono',
+                  value: _phone,
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+                ),
+              ],
+            ),
+            if (_role.canAccessAdminPanel)
               _SettingsSection(
-                label: 'Mi cuenta',
+                label: 'Equipo Níkara',
                 children: [
                   _SettingsRow(
-                    icon: Icons.person_outline,
-                    title: 'Editar perfil',
-                    onTap: _openEditProfile,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.lock_outline,
-                    title: 'Cambiar contraseña',
-                    onTap: _openChangePassword,
-                  ),
-                  _SettingsRow(
-                    icon: Icons.mail_outline,
-                    title: 'Correo electrónico',
-                    value: _email,
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.call_outlined,
-                    title: 'Teléfono',
-                    value: _phone,
-                    onTap: () => _showSnack('Próximamente'),
+                    icon: Icons.shield_outlined,
+                    iconTint: AppColors.oliveText,
+                    title: 'Panel de administración',
+                    caption: _role.permissionsSummary,
+                    onTap: _openAdminPanel,
                   ),
                 ],
               ),
-              _SettingsSection(
-                label: 'Notificaciones',
-                children: [
-                  _SettingsToggleRow(
-                    icon: Icons.notifications_none,
-                    title: 'Novedades de viaje',
-                    value: _tripAlerts,
-                    onChanged: (v) => setState(() => _tripAlerts = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.eco_outlined,
-                    title: 'Campañas ecológicas',
-                    value: _ecoCampaigns,
-                    onChanged: (v) => setState(() => _ecoCampaigns = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.local_offer_outlined,
-                    title: 'Ofertas y promociones',
-                    value: _offers,
-                    onChanged: (v) => setState(() => _offers = v),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Privacidad',
-                children: [
-                  _SettingsToggleRow(
-                    icon: Icons.person_outline,
-                    title: 'Perfil público',
-                    value: _publicProfile,
-                    onChanged: (v) => setState(() => _publicProfile = v),
-                  ),
-                  _SettingsToggleRow(
-                    icon: Icons.location_on_outlined,
-                    title: 'Compartir ubicación',
-                    value: _shareLocation,
-                    onChanged: (v) => setState(() => _shareLocation = v),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Para negocios turísticos',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.storefront_outlined,
-                    iconTint: AppColors.accent300,
-                    title: 'Registrar mi negocio',
-                    caption: 'Llega a más viajeros en Nicaragua',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterBusinessWizard(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Comunidad ECO',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.eco_outlined,
-                    iconTint: AppColors.ecoActive,
-                    title: 'Registrar actividad ECO',
-                    caption: 'Organiza una jornada ambiental',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CreateEcoActivityScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _SettingsRow(
-                    icon: Icons.groups_outlined,
-                    iconTint: AppColors.ecoActive,
-                    title: 'Registrar / Gestionar Fundación',
-                    caption: 'Publica jornadas a nombre de tu organización',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const CreateOrganizationScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Soporte',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.help_outline,
-                    title: 'Centro de ayuda',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.description_outlined,
-                    title: 'Términos y condiciones',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                  _SettingsRow(
-                    icon: Icons.info_outline,
-                    title: 'Acerca de Níkara',
-                    value: 'v1.0.0',
-                    onTap: () => _showSnack('Próximamente'),
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Sesión',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.logout,
-                    iconTint: AppColors.settingsDanger,
-                    titleColor: AppColors.settingsDanger,
-                    title: 'Cerrar sesión',
-                    onTap: _confirmLogout,
-                  ),
-                ],
-              ),
-              _SettingsSection(
-                label: 'Zona de peligro',
-                children: [
-                  _SettingsRow(
-                    icon: Icons.delete_forever_outlined,
-                    iconTint: AppColors.settingsDanger,
-                    titleColor: AppColors.settingsDanger,
-                    title: 'Eliminar cuenta',
-                    caption: 'Borra tu perfil y datos de forma permanente',
-                    onTap: _confirmDeleteAccount,
-                  ),
-                ],
-              ),
-            ],
-          ),
+            _SettingsSection(
+              label: 'Notificaciones',
+              children: [
+                _SettingsToggleRow(
+                  icon: Icons.notifications_none,
+                  title: 'Novedades de viaje',
+                  value: _tripAlerts,
+                  onChanged: (v) => setState(() => _tripAlerts = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.eco_outlined,
+                  title: 'Campañas ecológicas',
+                  value: _ecoCampaigns,
+                  onChanged: (v) => setState(() => _ecoCampaigns = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.local_offer_outlined,
+                  title: 'Ofertas y promociones',
+                  value: _offers,
+                  onChanged: (v) => setState(() => _offers = v),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Privacidad',
+              children: [
+                _SettingsToggleRow(
+                  icon: Icons.person_outline,
+                  title: 'Perfil público',
+                  value: _publicProfile,
+                  onChanged: (v) => setState(() => _publicProfile = v),
+                ),
+                _SettingsToggleRow(
+                  icon: Icons.location_on_outlined,
+                  title: 'Compartir ubicación',
+                  value: _shareLocation,
+                  onChanged: (v) => setState(() => _shareLocation = v),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Para negocios turísticos',
+              children: [
+                _SettingsRow(
+                  icon: Icons.storefront_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar mi negocio',
+                  caption: 'Llega a más viajeros en Nicaragua',
+                  onTap: () => openBusinessRegistrationFlow(context),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Comunidad ECO',
+              children: [
+                _SettingsRow(
+                  icon: Icons.eco_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar actividad ECO',
+                  caption: 'Organiza una jornada ambiental',
+                  onTap: () {
+                    pushSharedAxis(context, const CreateEcoActivityScreen());
+                  },
+                ),
+                _SettingsRow(
+                  icon: Icons.groups_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Registrar / Gestionar Fundación',
+                  caption: 'Publica jornadas a nombre de tu organización',
+                  onTap: () => openOrganizationRegistrationFlow(context),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Soporte',
+              children: [
+                _SettingsRow(
+                  icon: Icons.help_outline,
+                  title: 'Centro de ayuda',
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.description_outlined,
+                  title: 'Términos y condiciones',
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+                ),
+                _SettingsRow(
+                  icon: Icons.info_outline,
+                  title: 'Acerca de Níkara',
+                  value: 'v1.0.0',
+                  onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Sesión',
+              children: [
+                _SettingsRow(
+                  icon: Icons.switch_account_outlined,
+                  iconTint: AppColors.oliveText,
+                  title: 'Cambiar de cuenta',
+                  caption: _savedAccountsCaption,
+                  onTap: _openAccountSwitcher,
+                ),
+                _SettingsRow(
+                  icon: Icons.logout,
+                  iconTint: AppColors.destructive,
+                  titleColor: AppColors.destructive,
+                  title: 'Cerrar sesión',
+                  onTap: _confirmLogout,
+                ),
+              ],
+            ),
+            _SettingsSection(
+              label: 'Zona de peligro',
+              children: [
+                _SettingsRow(
+                  icon: Icons.delete_forever_outlined,
+                  iconTint: AppColors.destructive,
+                  titleColor: AppColors.destructive,
+                  title: 'Eliminar cuenta',
+                  caption: 'Borra tu perfil y datos de forma permanente',
+                  onTap: _confirmDeleteAccount,
+                ),
+              ],
+            ),
+          ],
         ),
+      ),
+    );
+
+    return PopScope(
+      canPop: !_isBusy,
+      child: AppBusyOverlay(
+        visible: _isBusy,
+        message: _busyMessage,
+        child: scaffold,
       ),
     );
   }
@@ -360,7 +393,12 @@ class _SettingsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface100,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        MediaQuery.of(context).padding.top + AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.xl,
+      ),
       child: Row(
         children: [
           GestureDetector(
@@ -375,6 +413,7 @@ class _SettingsHeader extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.arrow_back,
+                semanticLabel: 'Volver',
                 size: 18,
                 color: AppColors.settingsTextDark,
               ),
@@ -415,12 +454,12 @@ class _SettingsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.only(top: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text(
               label.toUpperCase(),
               style: AppTextStyles.settingsSectionLabel,
@@ -602,8 +641,6 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   late final _emailController = TextEditingController(text: widget.email);
   late final _phoneController = TextEditingController(text: widget.phone);
 
-  static final _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
-
   @override
   void dispose() {
     _nameController.dispose();
@@ -625,7 +662,9 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text(
         'Editar perfil',
         style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -638,27 +677,21 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
             TextFormField(
               controller: _nameController,
               decoration: const InputDecoration(labelText: 'Nombre'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Ingresa tu nombre' : null,
+              validator: validateFullName,
             ),
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(labelText: 'Correo'),
-              validator: (v) {
-                final trimmed = v?.trim() ?? '';
-                if (trimmed.isEmpty) return 'Ingresa un correo';
-                if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
-                return null;
-              },
+              validator: validateEmail,
             ),
             TextFormField(
               controller: _phoneController,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(labelText: 'Teléfono'),
-              validator: (v) => (v == null || v.trim().isEmpty)
-                  ? 'Ingresa tu teléfono'
-                  : null,
+              // Antes solo exigía que no estuviera vacío: un teléfono de 3
+              // dígitos pasaba y quedaba guardado en el perfil.
+              validator: validatePhone,
             ),
           ],
         ),
@@ -710,7 +743,9 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface100,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+      ),
       title: Text(
         'Cambiar contraseña',
         style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
@@ -732,8 +767,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               controller: _newController,
               obscureText: true,
               decoration: const InputDecoration(labelText: 'Nueva contraseña'),
-              validator: (v) =>
-                  (v == null || v.length < 6) ? 'Mínimo 6 caracteres' : null,
+              validator: validatePassword,
             ),
             TextFormField(
               controller: _confirmController,
@@ -741,9 +775,8 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
               decoration: const InputDecoration(
                 labelText: 'Confirmar contraseña',
               ),
-              validator: (v) => v != _newController.text
-                  ? 'Las contraseñas no coinciden'
-                  : null,
+              validator: (v) =>
+                  validatePasswordConfirmation(v, _newController.text),
             ),
           ],
         ),

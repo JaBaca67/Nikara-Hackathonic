@@ -1,8 +1,34 @@
 import 'package:flutter/material.dart';
 
+/// Etiquetas breves para la fila móvil; los formularios conservan el nombre completo.
+String ecoCategoryLabel(String category) => switch (category) {
+  'Agua y cuencas' => 'Agua',
+  'Suelos y agroecología' => 'Suelos',
+  'Jardinería y viveros' => 'Viveros',
+  'Educación ambiental' => 'Educación',
+  'Monitoreo de biodiversidad' => 'Biodiversidad',
+  'Saneamiento ambiental' => 'Saneamiento',
+  _ => category,
+};
+
 /// `category`/`requirements` son texto libre en Supabase (mismo criterio que `business_icons.dart`): se empareja por palabra clave con un ícono genérico de respaldo.
 IconData ecoCategoryIcon(String category) {
   final value = category.toLowerCase();
+  if (value.contains('recicl')) return Icons.recycling_rounded;
+  if (value.contains('cuenca') || value.contains('agua')) {
+    return Icons.water_drop_rounded;
+  }
+  if (value.contains('suelo') || value.contains('agroec')) {
+    return Icons.agriculture_rounded;
+  }
+  if (value.contains('vivero') || value.contains('jardin')) {
+    return Icons.local_florist_rounded;
+  }
+  if (value.contains('educación')) return Icons.school_rounded;
+  if (value.contains('monitoreo') || value.contains('biodiversidad')) {
+    return Icons.travel_explore_rounded;
+  }
+  if (value.contains('saneamiento')) return Icons.health_and_safety_rounded;
   if (value.contains('refores') || value.contains('árbol')) {
     return Icons.park_rounded;
   }

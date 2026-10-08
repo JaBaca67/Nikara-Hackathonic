@@ -1,0 +1,14 @@
+<!-- Illustration adapted from the user's Níkara ecotourism HTML export. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F6F2D6"/><stop offset="1" stop-color="#D8E6C2"/></linearGradient></defs>
+  <rect width="300" height="200" fill="url(#sky)"/>
+  <circle cx="232" cy="46" r="18" fill="#FFD86B" opacity=".95"/>
+  <path d="M0 112 C40 82 80 84 120 102 C160 72 210 74 300 98 L300 200 L0 200 Z" fill="#A9C27A"/>
+  <rect x="-10" y="100" width="320" height="14" rx="7" fill="#FFFBF3" opacity=".6"/>
+  <path d="M0 142 C60 112 110 118 160 134 C200 114 250 114 300 130 L300 200 L0 200 Z" fill="#7FA046"/>
+  <g fill="#5E7F1F"><circle cx="18" cy="128" r="9"/><circle cx="36" cy="131" r="11"/><circle cx="52" cy="134" r="9"/><circle cx="70" cy="128" r="11"/><circle cx="196" cy="129" r="9"/><circle cx="214" cy="132" r="11"/><circle cx="232" cy="126" r="9"/><circle cx="252" cy="129" r="11"/><circle cx="272" cy="132" r="9"/></g>
+  <g transform="translate(116 140)"><rect x="2" y="10" width="28" height="18" fill="#FFFBF3"/><path d="M-3 12 L16 0 L35 12 Z" fill="#C7483F"/><rect x="13" y="17" width="7" height="11" fill="#442816" opacity=".75"/></g>
+  <rect x="-10" y="154" width="320" height="10" rx="5" fill="#FFFBF3" opacity=".45"/>
+  <path d="M0 176 C80 160 200 166 300 172 L300 200 L0 200 Z" fill="#4F6E1C"/>
+  <g transform="translate(46 178)" fill="#E79AC3"><ellipse cy="-6" rx="3.6" ry="7"/><ellipse cy="-6" rx="3.6" ry="7" transform="rotate(72)"/><ellipse cy="-6" rx="3.6" ry="7" transform="rotate(144)"/><ellipse cy="-6" rx="3.6" ry="7" transform="rotate(216)"/><ellipse cy="-6" rx="3.6" ry="7" transform="rotate(288)"/><circle r="2.6" fill="#FDBE02"/></g>
+</svg>

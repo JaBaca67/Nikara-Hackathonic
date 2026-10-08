@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:nikara_app/shared/widgets/origin_badge.dart';
+import 'package:nikara_app/shared/widgets/user_avatar.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -6,19 +10,30 @@ import 'package:uuid/uuid.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/features/business/data/business_post_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
+import 'package:nikara_app/features/business/domain/models/business_post_model.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/features/business/utils/business_schedule.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
+import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/detail_sections.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de detalle de [BusinessModel], sin precio ni CTA de reserva — mismo pivote "discovery-first" ya aplicado al rediseño del Mapa.
@@ -36,13 +51,16 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
 
   final _favoritesService = FavoritesService();
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
   final _businessStorageService = BusinessStorageService();
 
   int _tab = 0;
   bool _isFavorite = false;
   UserModel? _currentProfile;
-  String? _currentAvatarPath;
+
+  /// Perfil del dueño real del negocio, sea o no la sesión actual. Antes solo
+  /// se resolvía cuando el dueño era el usuario logueado, así que al cambiar
+  /// de cuenta el anfitrión aparecía como texto libre y sin perfil que abrir.
+  UserModel? _ownerProfile;
   Position? _userPosition;
 
   /// Se actualiza in-place al enviar una reseña para reflejar el cambio sin salir y reentrar a la pantalla.
@@ -60,9 +78,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   @override
   void initState() {
     super.initState();
+    // El corazón sigue al servicio y no solo a los toques de esta pantalla:
+    // "Deshacer" (del aviso de favorito quitado) cambia el favorito por fuera
+    // de aquí y, sin esto, el corazón se quedaba vacío.
+    _favoritesService.idsNotifier.addListener(_syncFavorite);
     _loadFavoriteState();
     _loadCurrentUser();
     _loadUserPosition();
+  }
+
+  @override
+  void dispose() {
+    _favoritesService.idsNotifier.removeListener(_syncFavorite);
+    super.dispose();
+  }
+
+  void _syncFavorite() {
+    if (!mounted) return;
+    final isFavorite = _favoritesService.idsNotifier.value.contains(
+      _business.id,
+    );
+    if (isFavorite != _isFavorite) setState(() => _isFavorite = isFavorite);
   }
 
   Future<void> _loadFavoriteState() async {
@@ -72,12 +108,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   }
 
   Future<void> _loadCurrentUser() async {
-    final profile = await _authService.getCurrentProfile();
-    final avatarPath = await _extrasService.getAvatarPath();
+    UserModel? profile;
+    UserModel? owner;
+    try {
+      profile = await _authService.getCurrentProfile();
+      final ownerId = _business.ownerId;
+      if (ownerId.isEmpty) {
+        owner = null;
+      } else if (ownerId == profile?.id) {
+        // Mismo perfil: se evita el segundo round-trip.
+        owner = profile;
+      } else {
+        owner = await _authService.getProfileById(ownerId);
+      }
+    } on AuthServiceException {
+      // RLS solo deja leer `profiles` a cuentas autenticadas: en modo
+      // invitado el bloque cae al `hostName` de texto libre, como antes.
+    }
     if (!mounted) return;
     setState(() {
       _currentProfile = profile;
-      _currentAvatarPath = avatarPath;
+      _ownerProfile = owner;
     });
   }
 
@@ -88,42 +139,125 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     setState(() => _userPosition = position);
   }
 
+  /// El propio dueño va a su ProfileScreen (editable); cualquier otro
+  /// visitante va al perfil público de esa persona. Antes esto abría siempre
+  /// ProfileScreen, así que tocar "Anfitrión" en un negocio ajeno te llevaba a
+  /// tu propio perfil.
   void _openOwnerProfile() {
-    Navigator.of(
+    final ownerId = _business.ownerId;
+    if (ownerId.isEmpty) return;
+    if (ownerId == _currentProfile?.id) {
+      pushSharedAxis(context, const ProfileScreen());
+      return;
+    }
+    pushSharedAxis(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+      PublicUserProfileScreen(
+        userId: ownerId,
+        fallbackName: _business.hostName,
+      ),
+    );
   }
 
   Future<void> _toggleFavorite() async {
     if (!await GuestGuard.allow(context, GuestFeature.favoritos)) return;
     if (!mounted) return;
-    final nowFavorite = await _favoritesService.toggleFavorite(_business.id);
+    if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) return;
     if (!mounted) return;
+    // Desde que los favoritos viven en `user_favorites`, guardar puede fallar
+    // por red. El corazón no se mueve si eso pasa (`null`): pintarlo lleno
+    // haría creer que el negocio quedó guardado cuando no se escribió ninguna
+    // fila. Si quitó el favorito, el helper ofrece "Deshacer"; ese cambio
+    // vuelve por `idsNotifier` (ver `_syncFavorite`).
+    final nowFavorite = await toggleFavoriteWithFeedback(context, _business.id);
+    if (nowFavorite == null || !mounted) return;
     setState(() => _isFavorite = nowFavorite);
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Próximamente')));
+    AppSnackbar.showInfo(context, 'Próximamente');
   }
 
   Future<void> _addToRoute() async {
     await AddToRouteBottomSheet.showForBusiness(context, _business);
   }
 
-  Future<void> _openWriteReview() async {
-    final draft = await showModalBottomSheet<_ReviewDraft>(
+  /// Tope para publicar una reseña. Sin red la petición puede quedarse
+  /// colgada mucho más que esto, y el botón no debe girar para siempre.
+  static const _reviewPublishTimeout = Duration(seconds: 15);
+
+  /// Desde que la persona toca "Enviar" hasta que la fila queda escrita (o
+  /// falla): con esto la misma reseña no se publica dos veces.
+  bool _isSubmittingReview = false;
+
+  /// Última reseña que no se pudo publicar. Se conserva para no perder lo que
+  /// la persona escribió: "Reintentar" la reenvía y "Escribir una reseña" la
+  /// vuelve a mostrar prellenada.
+  ReviewDraft? _failedReviewDraft;
+
+  /// Con [retry] la hoja se abre con la reseña fallida y la envía sola, para
+  /// que el spinner se vea en el botón "Enviar reseña".
+  Future<void> _openWriteReview({bool retry = false}) async {
+    if (_isSubmittingReview) return;
+    if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface100,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => const _WriteReviewSheet(),
+      builder: (context) => WriteReviewSheet(
+        initialDraft: _failedReviewDraft,
+        autoSubmit: retry && _failedReviewDraft != null,
+        onSubmit: _submitReview,
+      ),
     );
-    if (draft == null || !mounted) return;
+  }
 
+  /// Lo llama la hoja al tocar "Enviar reseña", mientras sigue abierta (así
+  /// el spinner y el bloqueo viven en ese botón). Devuelve `true` si se
+  /// publicó, `false` si falló (ya avisó con `AppSnackbar`) y `null` si
+  /// ignoró la llamada por haber otra en curso.
+  Future<bool?> _submitReview(ReviewDraft draft) async {
+    if (_isSubmittingReview) return null;
+    setState(() => _isSubmittingReview = true);
+    try {
+      // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
+      // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
+      // mostrarla igual haría creer que quedó publicada para todos.
+      final review = await _publishReview(draft).timeout(_reviewPublishTimeout);
+      if (!mounted) return true;
+      setState(() {
+        _failedReviewDraft = null;
+        _businessState = _businessState.copyWith(
+          reviews: [..._businessState.reviews, review],
+        );
+      });
+      AppSnackbar.showSuccess(context, '¡Gracias por tu reseña!');
+      return true;
+    } on TimeoutException {
+      _failReview(
+        draft,
+        'La publicación tardó demasiado. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } on ReviewServiceException catch (e) {
+      _failReview(draft, e.message);
+    } on Exception {
+      _failReview(
+        draft,
+        'No se pudo publicar tu reseña. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmittingReview = false);
+    }
+    return false;
+  }
+
+  Future<ReviewModel> _publishReview(ReviewDraft draft) async {
     final profile = _currentProfile ?? await _authService.getCurrentProfile();
     final authorName = profile != null && profile.fullName.trim().isNotEmpty
         ? profile.fullName
@@ -138,17 +272,21 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       date: DateTime.now(),
       mediaPaths: draft.mediaPaths,
     );
-
     await _businessStorageService.addReview(_business, review);
-    if (!mounted) return;
-    setState(() {
-      _businessState = _businessState.copyWith(
-        reviews: [..._businessState.reviews, review],
-      );
-    });
+    return review;
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('¡Gracias por tu reseña! +20 puntos')),
+  /// Guarda la reseña y avisa con un "Reintentar". La hoja se cierra después
+  /// de esto (el aviso quedaría tapado por ella), por eso el texto se guarda
+  /// aquí y no en la hoja.
+  void _failReview(ReviewDraft draft, String message) {
+    if (!mounted) return;
+    _failedReviewDraft = draft;
+    AppSnackbar.showError(
+      context,
+      message,
+      actionLabel: 'Reintentar',
+      onAction: () => unawaited(_openWriteReview(retry: true)),
     );
   }
 
@@ -157,10 +295,9 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     final lat = _business.latitude;
     final lng = _business.longitude;
     if (lat == null || lng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Este negocio todavía no tiene ubicación en el mapa.'),
-        ),
+      AppSnackbar.showInfo(
+        context,
+        'Este negocio todavía no tiene ubicación en el mapa.',
       );
       return;
     }
@@ -193,23 +330,22 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                 DetailCoverIconButton(
                   icon: Icons.add_road_rounded,
                   onTap: _addToRoute,
+                  label: 'Agregar a una ruta',
                 ),
                 const SizedBox(width: 8),
                 DetailCoverIconButton(
                   icon: _isFavorite ? Icons.favorite : Icons.favorite_border,
                   onTap: _toggleFavorite,
-                ),
-                const SizedBox(width: 8),
-                DetailCoverIconButton(
-                  icon: Icons.ios_share,
-                  onTap: _showComingSoon,
+                  label: _isFavorite
+                      ? 'Quitar de favoritos'
+                      : 'Agregar a favoritos',
                 ),
               ],
             ),
             Transform.translate(
-              offset: const Offset(0, -18),
+              offset: const Offset(0, -kDetailQuickInfoOverlap),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: _QuickInfoCard(
                   business: _business,
                   distanceKm: _distanceKm,
@@ -228,12 +364,14 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                    ),
                     child: _tab == 0
                         ? _InformationTab(
                             business: _business,
                             currentProfile: _currentProfile,
-                            currentAvatarPath: _currentAvatarPath,
+                            ownerProfile: _ownerProfile,
                             onOwnerTap: _openOwnerProfile,
                             onDirections: _openDirections,
                             onReport: _showComingSoon,
@@ -263,13 +401,25 @@ class _CoverCaption extends StatelessWidget {
 
   final BusinessModel business;
 
+  String get _categoryLabel {
+    final category =
+        businessCategoryPresetFor(business.category) ?? business.category;
+    if (business.subcategory.isEmpty) return category;
+    return '${business.subcategory} · $category';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        DetailCoverTagPill(label: business.category),
+        DetailCoverTagPill(
+          // Categoría normalizada: cruda, un dato semilla pintaba acá
+          // "Finca cafetalera · Agroturismo / Fincas", con la categoría
+          // repitiendo lo que la subcategoría ya dice.
+          label: _categoryLabel,
+        ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -310,24 +460,21 @@ class _CoverCaption extends StatelessWidget {
   }
 }
 
-/// Vive aquí y no en [DetailQuickInfoCard] porque el valor de "Hoy" sale del horario libre del negocio, no de un campo estructurado.
+/// Vive aquí y no en [DetailQuickInfoCard] porque el valor del horario sale
+/// del texto libre del negocio, no de un campo estructurado.
 class _QuickInfoCard extends StatelessWidget {
   const _QuickInfoCard({required this.business, required this.distanceKm});
 
   final BusinessModel business;
   final double? distanceKm;
 
-  /// Solo la primera línea del horario libre; nunca un "Abierto/Cerrado" inventado.
-  String get _todayValue {
-    final schedules = business.schedules.trim();
-    if (schedules.isEmpty) return 'No especificado';
-    final firstLine = schedules.split('\n').first.trim();
-    return firstLine.isEmpty ? 'No especificado' : firstLine;
-  }
-
   @override
   Widget build(BuildContext context) {
     final km = distanceKm;
+    // La etiqueta la decide el propio horario: "Hoy" solo si se pudo resolver
+    // la franja del día, "Horario" si es prosa libre — nunca un
+    // "Abierto/Cerrado" inventado.
+    final schedule = businessScheduleSummary(business.schedules);
     return DetailQuickInfoCard(
       items: [
         DetailQuickInfoItem(
@@ -339,11 +486,11 @@ class _QuickInfoCard extends StatelessWidget {
           value: km == null ? '—' : '${km.toStringAsFixed(0)} km',
         ),
         DetailQuickInfoItem(
-          label: 'Hoy',
-          value: _todayValue,
+          label: schedule.label,
+          value: schedule.value,
           valueColor: business.schedules.trim().isEmpty
               ? AppColors.settingsTextMuted
-              : AppColors.accent300,
+              : AppColors.oliveText,
         ),
       ],
     );
@@ -355,7 +502,7 @@ class _InformationTab extends StatefulWidget {
   const _InformationTab({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onOwnerTap,
     required this.onDirections,
     required this.onReport,
@@ -363,7 +510,7 @@ class _InformationTab extends StatefulWidget {
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onOwnerTap;
   final VoidCallback onDirections;
   final VoidCallback onReport;
@@ -374,6 +521,36 @@ class _InformationTab extends StatefulWidget {
 
 class _InformationTabState extends State<_InformationTab> {
   bool _showAllActivities = false;
+  List<BusinessPostModel> _posts = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosts();
+  }
+
+  @override
+  void didUpdateWidget(_InformationTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.business.id != widget.business.id) _loadPosts();
+  }
+
+  /// Anuncios es contenido secundario del detalle: si falla la carga, la
+  /// sección simplemente no aparece en vez de tumbar el resto de la
+  /// pantalla con un error.
+  Future<void> _loadPosts() async {
+    // 'draft' = BusinessModel armado por el wizard para "Vista previa", sin
+    // fila real en Supabase — no tiene anuncios que cargar.
+    if (widget.business.id == 'draft') return;
+    try {
+      final posts = await BusinessPostService().getPostsForBusiness(
+        widget.business.id,
+      );
+      if (mounted) setState(() => _posts = posts);
+    } on BusinessPostServiceException {
+      // Se queda en la lista vacía (ver doc de arriba).
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -394,12 +571,12 @@ class _InformationTabState extends State<_InformationTab> {
         SocialContact.facebook(business.facebookLink),
       if (business.tiktokLink.isNotEmpty)
         SocialContact.tiktok(business.tiktokLink),
-      if (business.socialMediaLink.isNotEmpty)
-        SocialContact.link(business.socialMediaLink),
     ];
 
     final sections = <Widget>[
+      if (_posts.isNotEmpty) _AnnouncementsSection(posts: _posts),
       _DescriptionSection(business: business),
+      if (business.dayPassEnabled) _DayPassSection(business: business),
       if (business.activities.isNotEmpty)
         _ActivitiesSection(
           activities: business.activities,
@@ -410,12 +587,13 @@ class _InformationTabState extends State<_InformationTab> {
         ),
       if (business.amenities.isNotEmpty)
         _ServicesSection(amenities: business.amenities),
-      _HostSection(
-        business: business,
-        currentProfile: widget.currentProfile,
-        currentAvatarPath: widget.currentAvatarPath,
-        onTap: widget.onOwnerTap,
-      ),
+      if (business.showHost)
+        _HostSection(
+          business: business,
+          currentProfile: widget.currentProfile,
+          ownerProfile: widget.ownerProfile,
+          onTap: widget.onOwnerTap,
+        ),
       _ScheduleSection(business: business),
       if (contacts.isNotEmpty) _ContactSection(contacts: contacts),
       _DirectionsSection(business: business, onTap: widget.onDirections),
@@ -474,7 +652,7 @@ class _DescriptionSection extends StatelessWidget {
               const Icon(
                 Icons.expand_more,
                 size: 15,
-                color: AppColors.accent300,
+                color: AppColors.oliveText,
               ),
             ],
           ),
@@ -494,7 +672,12 @@ class _FullDescriptionSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,6 +701,7 @@ class _FullDescriptionSheet extends StatelessWidget {
                     ),
                     child: const Icon(
                       Icons.close,
+                      semanticLabel: 'Cerrar',
                       size: 18,
                       color: AppColors.settingsTextDark,
                     ),
@@ -620,7 +804,7 @@ class _ActivitiesSection extends StatelessWidget {
                   Icon(
                     expanded ? Icons.expand_less : Icons.chevron_right,
                     size: 15,
-                    color: AppColors.accent300,
+                    color: AppColors.oliveText,
                   ),
                 ],
               ),
@@ -649,20 +833,11 @@ class _ActivityRow extends StatelessWidget {
     return DetailIconRow(
       icon: activityIcon(label),
       label: activityLabel(label),
-      iconColor: isEco ? AppColors.accent300 : AppColors.settingsTextMuted,
+      iconColor: isEco ? AppColors.oliveText : AppColors.settingsTextMuted,
       iconBackground: isEco
           ? AppColors.detailActivityIconBg
           : AppColors.settingsBackground,
-      trailing: isEco
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.detailActivityIconBg,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text('ECO', style: AppTextStyles.detailEcoBadge),
-            )
-          : null,
+      trailing: isEco ? const EcoBadge() : null,
     );
   }
 }
@@ -685,7 +860,7 @@ class _ServicesSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(AppRadius.pill),
                 border: Border.all(color: AppColors.mapControlBorder),
               ),
               child: Row(
@@ -714,7 +889,228 @@ class _ServicesSection extends StatelessWidget {
   }
 }
 
-/// Muestra el texto libre real de [BusinessModel.schedules] en vez de fabricar un horario estructurado por día que el modelo no tiene.
+/// Tarjeta informativa, no un CTA de reserva: igual que el resto del
+/// detalle, termina en el mismo botón de WhatsApp de [_ContactBar] — el
+/// flujo de reservas en vivo se eliminó por completo en agosto 2026.
+class _DayPassSection extends StatelessWidget {
+  const _DayPassSection({required this.business});
+
+  final BusinessModel business;
+
+  void _contact(BuildContext context) {
+    launchWhatsApp(
+      context,
+      business.contactPhone,
+      message:
+          'Hola, vi el pase de día de ${business.name} en Níkara y me '
+          'gustaría más información.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final price = business.dayPassPrice;
+    return DetailSection(
+      title: 'Pase de día',
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface100,
+          borderRadius: BorderRadius.circular(AppRadius.md),
+          border: Border.all(color: AppColors.mapControlBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (price != null)
+              Text(
+                '\$${price.toStringAsFixed(price % 1 == 0 ? 0 : 2)} por persona',
+                style: AppTextStyles.detailActivityLabel.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            if (business.dayPassIncludes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final item in business.dayPassIncludes)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.settingsBackground,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            amenityIcon(item),
+                            size: 15,
+                            color: AppColors.settingsTextMuted,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              item,
+                              style: AppTextStyles.detailServicePill,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+            if (business.dayPassSchedule.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 15,
+                    color: AppColors.settingsTextMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      business.dayPassSchedule,
+                      style: AppTextStyles.detailDescriptionText,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (business.dayPassNotes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 15,
+                    color: AppColors.settingsTextMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      business.dayPassNotes,
+                      style: AppTextStyles.detailDescriptionText.copyWith(
+                        color: AppColors.settingsTextMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: business.contactPhone.isEmpty
+                  ? null
+                  : () => _contact(context),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Preguntar por el pase de día',
+                      style: AppTextStyles.detailInlineLink,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 15,
+                    color: AppColors.oliveText,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Canal de novedades del negocio ("promo del día", un pase de día puntual,
+/// un evento, un aviso de cierre) — publicado manualmente por el dueño desde
+/// `ManageBusinessPostsScreen`. No lleva "editar"/"borrar" acá: esa gestión
+/// vive solo en el flujo del dueño, esta es la vista pública de solo lectura.
+class _AnnouncementsSection extends StatelessWidget {
+  const _AnnouncementsSection({required this.posts});
+
+  final List<BusinessPostModel> posts;
+
+  @override
+  Widget build(BuildContext context) {
+    return DetailSection(
+      title: 'Anuncios',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < posts.length; i++) ...[
+            _AnnouncementCard(post: posts[i]),
+            if (i != posts.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementCard extends StatelessWidget {
+  const _AnnouncementCard({required this.post});
+
+  final BusinessPostModel post;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface100,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.mapControlBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            post.relativeTime(),
+            style: AppTextStyles.wizardCaption.copyWith(
+              color: AppColors.settingsTextMuted,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(post.body, style: AppTextStyles.detailDescriptionText),
+          if (post.imageUrl != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: LocalImage(path: post.imageUrl),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Nunca fabrica un horario que el modelo no tenga: la prosa libre se muestra
+/// literal y solo el formato estructurado del wizard se traduce a días y horas
+/// legibles (crudo decía "1,2,3,4,5: 07:00–18:00").
 class _ScheduleSection extends StatelessWidget {
   const _ScheduleSection({required this.business});
 
@@ -722,13 +1118,14 @@ class _ScheduleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lines = businessScheduleLines(business.schedules);
     return DetailSection(
       title: 'Horarios',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(color: AppColors.mapControlBorder),
         ),
         child: Row(
@@ -741,11 +1138,21 @@ class _ScheduleSection extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                business.schedules.trim().isEmpty
-                    ? 'Horario no especificado'
-                    : business.schedules,
-                style: AppTextStyles.detailScheduleLabel,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (lines.isEmpty)
+                    Text(
+                      'Horario no especificado',
+                      style: AppTextStyles.detailScheduleLabel,
+                    )
+                  else
+                    for (var i = 0; i < lines.length; i++) ...[
+                      if (i != 0) const SizedBox(height: AppSpacing.xs),
+                      Text(lines[i], style: AppTextStyles.detailScheduleLabel),
+                    ],
+                ],
               ),
             ),
           ],
@@ -769,36 +1176,58 @@ class _ContactSection extends StatelessWidget {
   }
 }
 
-/// Al ser la app local por dispositivo (sin sesión compartida), solo se resuelve a un perfil real cuando [BusinessModel.ownerId] coincide con la sesión actual; el resto cae al [BusinessModel.hostName] de texto libre.
+/// El anfitrión se resuelve contra `profiles` por [BusinessModel.ownerId], sin
+/// importar qué cuenta esté activa; [BusinessModel.hostName] queda solo como
+/// respaldo para negocios sin `owner_id` (los sembrados) o cuando `profiles` no
+/// es legible (modo invitado).
 class _HostSection extends StatelessWidget {
   const _HostSection({
     required this.business,
     required this.currentProfile,
-    required this.currentAvatarPath,
+    required this.ownerProfile,
     required this.onTap,
   });
 
   final BusinessModel business;
   final UserModel? currentProfile;
-  final String? currentAvatarPath;
+  final UserModel? ownerProfile;
   final VoidCallback onTap;
 
-  bool get _isLinkedToCurrentUser =>
+  bool get _isOwnBusiness =>
       business.ownerId.isNotEmpty &&
       currentProfile != null &&
       business.ownerId == currentProfile!.id;
 
+  /// Una cuenta admin puede registrar y operar negocios como cualquier otra
+  /// (ver CLAUDE.md > seguridad): lo que no debe pasar es que su identidad
+  /// real quede a la vista de otros usuarios en una pantalla pública. Esto
+  /// solo oculta el nombre/foto que se **dibujan** — la fila en
+  /// `businesses.owner_id` sigue siendo la real (así el propio dueño puede
+  /// seguir editando su negocio), así que sigue siendo legible por cualquiera
+  /// que consulte la REST API directo con la anon key mientras RLS esté
+  /// deshabilitada. El propio dueño admin sigue viendo su nombre real al
+  /// entrar a su propio negocio; solo se enmascara para otros usuarios.
+  bool get _maskOwnerIdentity {
+    if (_isOwnBusiness) return false;
+    return ownerProfile?.role == UserRole.admin;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isLinked = _isLinkedToCurrentUser;
+    final owner = ownerProfile;
+    final maskIdentity = _maskOwnerIdentity;
     return DetailSection(
       title: 'Anfitrión',
       child: _HostRow(
         hostName: business.hostName,
-        linkedName: isLinked ? currentProfile!.fullName : null,
-        linkedAvatarPath: isLinked ? currentAvatarPath : null,
+        linkedName: maskIdentity ? null : owner?.fullName,
+        linkedAvatarUrl: maskIdentity ? null : owner?.avatarUrl,
+        isOwnBusiness: _isOwnBusiness,
         hasWhatsapp: business.contactPhone.isNotEmpty,
-        onTap: isLinked ? onTap : null,
+        // Hay perfil que abrir siempre que exista owner_id: el propio va a
+        // ProfileScreen, el ajeno al perfil público. Enmascarado = tampoco
+        // hay a dónde llevar el toque.
+        onTap: business.ownerId.isEmpty || maskIdentity ? null : onTap,
       ),
     );
   }
@@ -809,14 +1238,16 @@ class _HostRow extends StatelessWidget {
   const _HostRow({
     required this.hostName,
     required this.linkedName,
-    required this.linkedAvatarPath,
+    required this.linkedAvatarUrl,
+    required this.isOwnBusiness,
     required this.hasWhatsapp,
     required this.onTap,
   });
 
   final String hostName;
   final String? linkedName;
-  final String? linkedAvatarPath;
+  final String? linkedAvatarUrl;
+  final bool isOwnBusiness;
   final bool hasWhatsapp;
   final VoidCallback? onTap;
 
@@ -826,7 +1257,7 @@ class _HostRow extends StatelessWidget {
     final displayName = linkedName != null && linkedName.trim().isNotEmpty
         ? linkedName
         : (hostName.isEmpty ? 'Anfitrión Níkara' : hostName);
-    final avatarPath = linkedAvatarPath;
+    final avatarPath = linkedAvatarUrl;
     final initial = displayName.trim().isEmpty
         ? '?'
         : displayName.trim()[0].toUpperCase();
@@ -835,7 +1266,7 @@ class _HostRow extends StatelessWidget {
       avatar: avatarPath != null && avatarPath.isNotEmpty
           ? LocalImage(path: avatarPath)
           : Container(
-              color: AppColors.accent300,
+              color: AppColors.oliveText,
               alignment: Alignment.center,
               child: Text(
                 initial,
@@ -844,12 +1275,12 @@ class _HostRow extends StatelessWidget {
             ),
       name: displayName,
       verified: true,
-      caption: hasWhatsapp || onTap != null
-          ? (onTap != null
-                ? 'Toca para ver el perfil'
-                : 'Disponible por WhatsApp')
-          : null,
-      captionColor: onTap != null ? AppColors.accent300 : null,
+      caption: onTap != null
+          ? (isOwnBusiness
+                ? 'Tu negocio · toca para ver tu perfil'
+                : 'Toca para ver el perfil')
+          : (hasWhatsapp ? 'Disponible por WhatsApp' : null),
+      captionColor: onTap != null ? AppColors.oliveText : null,
       onTap: onTap,
     );
   }
@@ -919,7 +1350,7 @@ class _ReviewsTab extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,
               side: const BorderSide(color: AppColors.primary500),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -974,7 +1405,7 @@ class _ReviewsEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
       child: Column(
         children: [
           const Icon(
@@ -1013,11 +1444,11 @@ class _RatingSummaryCard extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Row(
@@ -1058,7 +1489,7 @@ class _RatingSummaryCard extends StatelessWidget {
               children: [
                 for (var star = 5; star >= 1; star--)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
                     child: _RatingBarRow(
                       star: star,
                       fraction: total == 0 ? 0 : counts[star] / total,
@@ -1095,7 +1526,7 @@ class _RatingBarRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(AppRadius.pill),
             child: LinearProgressIndicator(
               value: fraction,
               minHeight: 6,
@@ -1122,6 +1553,17 @@ class _ReviewCard extends StatelessWidget {
 
   final ReviewModel review;
 
+  void _openAuthor(BuildContext context) {
+    if (review.authorId.isEmpty) return;
+    pushSharedAxis(
+      context,
+      PublicUserProfileScreen(
+        userId: review.authorId,
+        fallbackName: review.authorName,
+      ),
+    );
+  }
+
   String get _relativeDate {
     final days = DateTime.now().difference(review.date).inDays;
     if (days <= 0) return 'hoy';
@@ -1138,11 +1580,11 @@ class _ReviewCard extends StatelessWidget {
         : review.authorName.trim()[0].toUpperCase();
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.cardBorder),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.border),
         boxShadow: AppColors.cardShadow,
       ),
       child: Column(
@@ -1150,24 +1592,35 @@ class _ReviewCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: AppColors.ecoForest,
-                child: Text(
-                  initial,
-                  style: AppTextStyles.reviewAuthor.copyWith(
-                    color: AppColors.surface100,
-                  ),
+              InkWell(
+                onTap: review.authorId.isEmpty
+                    ? null
+                    : () => _openAuthor(context),
+                customBorder: const CircleBorder(),
+                child: UserAvatar(
+                  avatarUrl: review.authorAvatarUrl,
+                  initials: initial,
+                  size: 32,
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(review.authorName, style: AppTextStyles.reviewAuthor),
-                    Text(_relativeDate, style: AppTextStyles.reviewMeta),
-                  ],
+                child: InkWell(
+                  onTap: review.authorId.isEmpty
+                      ? null
+                      : () => _openAuthor(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        review.authorName,
+                        style: AppTextStyles.reviewAuthor,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(_relativeDate, style: AppTextStyles.reviewMeta),
+                    ],
+                  ),
                 ),
               ),
               Row(
@@ -1184,6 +1637,11 @@ class _ReviewCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
+          if (review.authorOrigin.hasCountry)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: OriginBadge(origin: review.authorOrigin),
+            ),
           Text(review.comment, style: AppTextStyles.reviewComment),
           if (review.mediaPaths.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -1255,9 +1713,9 @@ class _ContactBar extends StatelessWidget {
                 backgroundColor: AppColors.settingsBackground,
                 foregroundColor: AppColors.settingsTextDark,
                 side: const BorderSide(color: AppColors.mapControlBorder),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.detailBottomBarSecondary,
               ),
@@ -1276,13 +1734,13 @@ class _ContactBar extends StatelessWidget {
                         backgroundColor: AppColors.segmentedTrackBg,
                         foregroundColor: AppColors.settingsTextMuted,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                       ),
                     )
                   : DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                         boxShadow: const [
                           BoxShadow(
                             color: AppColors.detailPrimaryButtonGlow,
@@ -1303,7 +1761,7 @@ class _ContactBar extends StatelessWidget {
                           backgroundColor: AppColors.primary500,
                           foregroundColor: AppColors.settingsTextDark,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(AppRadius.md),
                           ),
                           textStyle: AppTextStyles.detailBottomBarPrimary,
                         ),
@@ -1318,8 +1776,9 @@ class _ContactBar extends StatelessWidget {
 }
 
 /// [BusinessDetailScreen] (no el sheet) estampa identidad, id y timestamp para construir el [ReviewModel] real.
-class _ReviewDraft {
-  const _ReviewDraft({
+@visibleForTesting
+class ReviewDraft {
+  const ReviewDraft({
     required this.rating,
     required this.comment,
     required this.mediaPaths,
@@ -1331,17 +1790,52 @@ class _ReviewDraft {
 }
 
 /// Usa `pickMultipleMedia` como control único para fotos y videos, ya que no hay un picker de video separado en el proyecto.
-class _WriteReviewSheet extends StatefulWidget {
-  const _WriteReviewSheet();
+///
+/// Publica desde dentro: [onSubmit] corre mientras la hoja sigue abierta, así
+/// "Enviar reseña" muestra el spinner y queda bloqueado mientras dura, y la
+/// hoja no se puede cerrar a medio publicar. [onSubmit] devuelve `true` si se
+/// publicó, `false` si falló y `null` si ignoró la llamada; la hoja se cierra
+/// salvo con `null`.
+@visibleForTesting
+class WriteReviewSheet extends StatefulWidget {
+  const WriteReviewSheet({
+    super.key,
+    required this.onSubmit,
+    this.initialDraft,
+    this.autoSubmit = false,
+  });
+
+  final Future<bool?> Function(ReviewDraft draft) onSubmit;
+
+  /// Reseña que no se pudo publicar: la hoja se abre con ese texto.
+  final ReviewDraft? initialDraft;
+
+  /// Envía [initialDraft] apenas se muestra la hoja ("Reintentar").
+  final bool autoSubmit;
 
   @override
-  State<_WriteReviewSheet> createState() => _WriteReviewSheetState();
+  State<WriteReviewSheet> createState() => _WriteReviewSheetState();
 }
 
-class _WriteReviewSheetState extends State<_WriteReviewSheet> {
-  int _rating = 5;
-  final _commentController = TextEditingController();
-  final List<XFile> _media = [];
+class _WriteReviewSheetState extends State<WriteReviewSheet> {
+  late int _rating = widget.initialDraft?.rating.round().clamp(1, 5) ?? 5;
+  late final _commentController = TextEditingController(
+    text: widget.initialDraft?.comment ?? '',
+  );
+  late final List<XFile> _media = [
+    ...?widget.initialDraft?.mediaPaths.map(XFile.new),
+  ];
+  bool _isPublishing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoSubmit) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_submit());
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -1357,21 +1851,30 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
 
   void _removeMedia(int index) => setState(() => _media.removeAt(index));
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_isPublishing) return;
     final comment = _commentController.text.trim();
     if (comment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Escribe un comentario antes de enviar')),
-      );
+      AppSnackbar.showInfo(context, 'Escribe un comentario antes de enviar');
       return;
     }
-    Navigator.of(context).pop(
-      _ReviewDraft(
-        rating: _rating.toDouble(),
-        comment: comment,
-        mediaPaths: _media.map((x) => x.path).toList(),
-      ),
-    );
+    setState(() => _isPublishing = true);
+    bool? result;
+    try {
+      result = await widget.onSubmit(
+        ReviewDraft(
+          rating: _rating.toDouble(),
+          comment: comment,
+          mediaPaths: _media.map((x) => x.path).toList(),
+        ),
+      );
+    } finally {
+      // Con resultado la hoja se cierra, así que no se vuelve a habilitar el
+      // botón un instante antes de desaparecer.
+      if (mounted && result == null) setState(() => _isPublishing = false);
+    }
+    if (result == null || !mounted) return;
+    Navigator.of(context).pop();
   }
 
   InputDecoration _commentDecoration() {
@@ -1382,13 +1885,13 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
       fillColor: AppColors.surface100,
       contentPadding: const EdgeInsets.all(14),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         borderSide: BorderSide(
           color: AppColors.neutral600.withValues(alpha: 0.35),
         ),
@@ -1402,183 +1905,186 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Escribir una reseña',
-                  style: AppTextStyles.detailSectionTitle,
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: AppColors.segmentedTrackBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      size: 18,
-                      color: AppColors.settingsTextDark,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+    // Mientras se publica la hoja no se cierra (ni con atrás, ni arrastrando,
+    // ni con la X): cerrarla a medio enviar dejaría la reseña sin dueño.
+    return PopScope(
+      canPop: !_isPublishing,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  for (var i = 1; i <= 5; i++)
-                    GestureDetector(
-                      onTap: () => setState(() => _rating = i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Icon(
-                          i <= _rating
-                              ? Icons.star_rounded
-                              : Icons.star_border_rounded,
-                          size: 40,
-                          color: AppColors.primary500,
-                        ),
+                  Text(
+                    'Escribir una reseña',
+                    style: AppTextStyles.detailSectionTitle,
+                  ),
+                  GestureDetector(
+                    onTap: _isPublishing
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: AppColors.segmentedTrackBg,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        semanticLabel: 'Cerrar',
+                        size: 18,
+                        color: AppColors.settingsTextDark,
                       ),
                     ),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Tu comentario',
-              style: AppTextStyles.detailActivityLabel.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _commentController,
-              maxLines: 4,
-              decoration: _commentDecoration(),
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: _pickMedia,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.surface200.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.primary500.withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Column(
+              const SizedBox(height: 20),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: AppColors.primary500,
-                      size: 28,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Adjuntar fotos o videos',
-                      style: AppTextStyles.subtitle2,
-                    ),
+                    for (var i = 1; i <= 5; i++)
+                      GestureDetector(
+                        onTap: () => setState(() => _rating = i),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xs,
+                          ),
+                          child: Icon(
+                            i <= _rating
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            size: 40,
+                            color: AppColors.primary500,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-            ),
-            if (_media.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 72,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _media.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final path = _media[index].path;
-                    return Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: SizedBox(
-                            width: 72,
-                            height: 72,
-                            child: isVideoPath(path)
-                                ? Container(
-                                    color: AppColors.neutral800,
-                                    alignment: Alignment.center,
-                                    child: const Icon(
-                                      Icons.videocam,
-                                      color: AppColors.surface100,
-                                    ),
-                                  )
-                                : LocalImage(path: path),
+              const SizedBox(height: 20),
+              Text(
+                'Tu comentario',
+                style: AppTextStyles.detailActivityLabel.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _commentController,
+                maxLines: 4,
+                decoration: _commentDecoration(),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _pickMedia,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface200.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: AppColors.primary500.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppColors.primary500,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Adjuntar fotos o videos',
+                        style: AppTextStyles.subtitle2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_media.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 72,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _media.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final path = _media[index].path;
+                      return Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            child: SizedBox(
+                              width: 72,
+                              height: 72,
+                              child: isVideoPath(path)
+                                  ? Container(
+                                      color: AppColors.neutral800,
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.videocam,
+                                        color: AppColors.surface100,
+                                      ),
+                                    )
+                                  : LocalImage(path: path),
+                            ),
                           ),
-                        ),
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: () => _removeMedia(index),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: AppColors.removeButtonBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 14,
-                                color: AppColors.surface100,
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeMedia(index),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.removeButtonBackground,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  semanticLabel: 'Quitar foto',
+                                  size: 14,
+                                  color: AppColors.surface100,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              // Sin doble toque: mientras `_submit` no termina, el botón queda
+              // deshabilitado con spinner (`isLoading` cubre el envío
+              // automático de "Reintentar").
+              SizedBox(
+                width: double.infinity,
+                child: AppLoadingButton(
+                  label: 'Enviar reseña',
+                  isLoading: _isPublishing,
+                  onPressed: _submit,
                 ),
               ),
             ],
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary500,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  'Enviar reseña',
-                  style: AppTextStyles.buttonLg.copyWith(
-                    color: AppColors.textInk,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

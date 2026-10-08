@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 String digitsOnly(String value) => value.replaceAll(RegExp(r'[^0-9]'), '');
@@ -32,15 +35,14 @@ Future<void> launchWhatsApp(
 Future<void> _launch(BuildContext context, Uri uri) async {
   final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
   if (!launched && context.mounted) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('No se pudo abrir $uri')));
+    AppSnackbar.showError(context, 'No se pudo abrir $uri');
   }
 }
 
 class SocialContact {
   const SocialContact({
     required this.icon,
+    this.brandIcon,
     required this.label,
     required this.handle,
     required this.tint,
@@ -49,6 +51,7 @@ class SocialContact {
   });
 
   final IconData icon;
+  final FaIconData? brandIcon;
 
   final String label;
 
@@ -67,6 +70,7 @@ class SocialContact {
         : '?text=${Uri.encodeComponent(message)}';
     return SocialContact(
       icon: Icons.chat,
+      brandIcon: FontAwesomeIcons.whatsapp,
       label: 'WhatsApp',
       handle: phone.trim(),
       tint: AppColors.detailWhatsappIcon,
@@ -78,6 +82,7 @@ class SocialContact {
   factory SocialContact.phone(String phone) {
     return SocialContact(
       icon: Icons.call_rounded,
+      brandIcon: FontAwesomeIcons.phone,
       label: 'Llamar',
       handle: phone.trim(),
       tint: AppColors.settingsTextMuted,
@@ -90,6 +95,7 @@ class SocialContact {
     final handle = _extractHandle(handleOrLink, hostFragment: 'instagram.com');
     return SocialContact(
       icon: Icons.photo_camera,
+      brandIcon: FontAwesomeIcons.instagram,
       label: 'Instagram',
       handle: handle.isEmpty ? '' : '@$handle',
       tint: AppColors.favoriteActive,
@@ -102,6 +108,7 @@ class SocialContact {
     final handle = _extractHandle(handleOrLink, hostFragment: 'facebook.com');
     return SocialContact(
       icon: Icons.thumb_up,
+      brandIcon: FontAwesomeIcons.facebookF,
       label: 'Facebook',
       handle: '',
       tint: AppColors.wizardFacebookIcon,
@@ -121,15 +128,6 @@ class SocialContact {
       uri: Uri.parse('https://www.tiktok.com/@$handle'),
     );
   }
-
-  factory SocialContact.link(String link) => SocialContact(
-    icon: Icons.link_rounded,
-    label: 'Enlace',
-    handle: '',
-    tint: AppColors.neutral600,
-    iconBackground: AppColors.neutral600.withValues(alpha: 0.1),
-    uri: Uri.parse(link),
-  );
 }
 
 class SocialHub extends StatelessWidget {
@@ -165,14 +163,14 @@ class _SocialHubCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.surface100,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             border: Border.all(color: AppColors.mapControlBorder),
           ),
           child: Row(
@@ -185,7 +183,9 @@ class _SocialHubCard extends StatelessWidget {
                   color: contact.iconBackground,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(contact.icon, color: contact.tint, size: 19),
+                child: contact.brandIcon == null
+                    ? Icon(contact.icon, color: contact.tint, size: 19)
+                    : FaIcon(contact.brandIcon!, color: contact.tint, size: 19),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -216,7 +216,7 @@ class _SocialHubCard extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.settingsBackground,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
                 ),
                 child: Text('Abrir', style: AppTextStyles.detailPillAction),
               ),

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppColors.sunsetStart/Mid1/Mid2/End (lib/theme/app_colors.dart), mismos valores. -->
+    <color name="splash_grad_0">#FFD028</color>
+    <color name="splash_grad_1">#FDB828</color>
+    <color name="splash_grad_2">#FF8A35</color>
+    <color name="splash_grad_3">#F97316</color>
+</resources>

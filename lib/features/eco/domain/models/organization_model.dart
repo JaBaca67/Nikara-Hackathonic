@@ -1,3 +1,8 @@
+import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/utils/input_sanitizers.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
+
 /// Fila de `public.organizations` (supabase/sql/010_organizations.sql); una persona (`owner_id`) puede tener varias.
 class OrganizationModel {
   const OrganizationModel({
@@ -5,10 +10,15 @@ class OrganizationModel {
     required this.name,
     required this.handle,
     this.description = '',
+    this.municipalityCode,
     this.logoUrl,
     this.bannerUrl,
     required this.ownerId,
     this.isVerified = true,
+    this.reviewStatus = ReviewStatus.pendiente,
+    this.rejectionReason,
+    this.reviewedAt,
+    this.reviewedBy,
     required this.createdAt,
   });
 
@@ -19,6 +29,11 @@ class OrganizationModel {
   final String handle;
 
   final String description;
+  final String? municipalityCode;
+  String? get city => municipalityByCode(municipalityCode)?.city;
+  String? get municipality =>
+      municipalityByCode(municipalityCode)?.municipality;
+  String? get countryCode => municipalityCode == null ? null : 'NI';
 
   /// Puede ser URL http(s) o ruta local de `image_picker` indistintamente.
   final String? logoUrl;
@@ -29,9 +44,29 @@ class OrganizationModel {
   /// Siempre `true` hoy por el default de la tabla (sin flujo de auditoría aún); el cliente solo lo lee, nunca lo escribe.
   final bool isVerified;
 
+  /// Estado de revisión (`organizations.status`, migración 019). Paralelo a
+  /// [isVerified]: decide si la fundación se publica, no si lleva sello.
+  final ReviewStatus reviewStatus;
+
+  /// Motivo del rechazo; solo con valor cuando [reviewStatus] es
+  /// [ReviewStatus.rechazado].
+  final String? rejectionReason;
+
+  final DateTime? reviewedAt;
+  final String? reviewedBy;
+
   final DateTime createdAt;
 
   String get handleTag => '@$handle';
+
+  /// Compara [query] contra nombre y handle — mismo buscador del panel de
+  /// admin, sin tildes en ningún lado (ver [normalizeForSearch]).
+  bool matchesQuery(String query) {
+    final q = normalizeForSearch(query.trim());
+    if (q.isEmpty) return true;
+    return normalizeForSearch(name).contains(q) ||
+        normalizeForSearch(handle).contains(q);
+  }
 
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
@@ -40,13 +75,15 @@ class OrganizationModel {
   }
 
   /// Ej: "@Cocibolca Vive!" -> "cocibolcavive".
-  static String normalizeHandle(String raw) {
-    return raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9._]'), '')
-        .replaceAll(RegExp(r'^[._]+'), '');
-  }
+  ///
+  /// Delega en [sanitizeOrganizationHandle] para que la regla viva en un
+  /// solo lugar: el formulario la valida con `validateOrganizationHandle`
+  /// (que usa ese mismo sanitizador) y `OrganizationService` la aplica al
+  /// guardar. Antes eran dos implementaciones parecidas pero no iguales, y
+  /// pegar una URL las separaba: esta versión borraba las barras y dejaba
+  /// "httpsnikaraappfundacionverde" como handle, mientras el sanitizador
+  /// reconoce el host y se queda con "fundacion.verde".
+  static String normalizeHandle(String raw) => sanitizeOrganizationHandle(raw);
 
   factory OrganizationModel.fromRow(Map<String, dynamic> row) {
     return OrganizationModel(
@@ -54,10 +91,15 @@ class OrganizationModel {
       name: row['name'] as String? ?? '',
       handle: row['handle'] as String? ?? '',
       description: row['description'] as String? ?? '',
+      municipalityCode: row['municipality_code'] as String?,
       logoUrl: row['logo_url'] as String?,
       bannerUrl: row['banner_url'] as String?,
       ownerId: row['owner_id'] as String? ?? '',
       isVerified: row['is_verified'] as bool? ?? false,
+      reviewStatus: ReviewStatus.fromWire(row['status']),
+      rejectionReason: row['rejection_reason'] as String?,
+      reviewedAt: DateTime.tryParse(row['reviewed_at'] as String? ?? ''),
+      reviewedBy: row['reviewed_by'] as String?,
       createdAt: DateTime.parse(row['created_at'] as String),
     );
   }

@@ -12,7 +12,9 @@
     <application
         android:label="Níkara"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
         <!-- Google Maps SDK for Android — reads the key from
              android/local.properties (gradle injects it via manifest
              placeholder below) so the real key never lands in source
@@ -24,8 +26,22 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+        <!-- Punto de entrada del launcher: muestra el degradado nativo y lanza MainActivity.
+             MainActivity conserva el filtro VIEW del deep link OAuth. -->
+        <activity
+            android:name=".SplashActivity"
+            android:screenOrientation="portrait"
+            android:exported="true"
+            android:taskAffinity=""
+            android:theme="@style/SplashTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
@@ -41,10 +57,6 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
             <!-- OAuth redirect callback — where Supabase sends the browser
                  back after a browser-based provider (currently only
                  Facebook; see AuthService.signInWithFacebook and

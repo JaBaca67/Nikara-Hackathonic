@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 String _timeOfDayGreeting() {
@@ -9,7 +10,7 @@ String _timeOfDayGreeting() {
   return 'Buenas noches';
 }
 
-/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0, ya que no hay feed real de notificaciones aún.
+/// Header superior de Home (Pantalla 2a). Tres estados de saludo (usuario con nombre, sin nombre, o [isGuest]); el badge de notificaciones solo aparece si [notificationCount] > 0. El conteo lo alimenta `NotificationService.unreadCount()` desde Inicio — este widget no consulta nada por su cuenta.
 class SearchHeaderWidget extends StatelessWidget {
   const SearchHeaderWidget({
     super.key,
@@ -20,6 +21,11 @@ class SearchHeaderWidget extends StatelessWidget {
     this.notificationCount = 0,
     this.onNotificationTap,
     this.onFilterTap,
+    this.categoryContent,
+    this.title,
+    this.searchHint = 'Buscar lagunas, tours, restaurantes...',
+    this.showNotifications = true,
+    this.headerContent,
   });
 
   final String? userName;
@@ -29,9 +35,15 @@ class SearchHeaderWidget extends StatelessWidget {
   final int notificationCount;
   final VoidCallback? onNotificationTap;
   final VoidCallback? onFilterTap;
+  final Widget? categoryContent;
+  final String? title;
+  final String searchHint;
+  final bool showNotifications;
+  final Widget? headerContent;
 
   @override
   Widget build(BuildContext context) {
+    final categories = categoryContent;
     final name = userName?.trim();
     final greeting = isGuest
         ? '¡Hola, Explorador!'
@@ -40,7 +52,15 @@ class SearchHeaderWidget extends StatelessWidget {
         : '${_timeOfDayGreeting()}, $name';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      // PROVISIONAL (2026-08-27): el header llega hasta y=0 (ver docstring de
+      // home_screen.dart) — este padding.top reemplaza al SafeArea que antes
+      // envolvía todo el body, así el saludo no queda debajo de la hora/batería.
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        MediaQuery.of(context).padding.top + AppSpacing.sm,
+        AppSpacing.xl,
+        AppSpacing.xs,
+      ),
       decoration: const BoxDecoration(
         color: AppColors.surface100,
         border: Border(bottom: BorderSide(color: AppColors.profileDivider)),
@@ -48,36 +68,45 @@ class SearchHeaderWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      greeting,
-                      style: AppTextStyles.homeGreeting,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      '¿A dónde vamos?',
-                      style: AppTextStyles.homeHeading,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+          if (headerContent != null)
+            headerContent!
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (title == null) ...[
+                        Text(
+                          greeting,
+                          style: AppTextStyles.homeGreeting,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                      ],
+                      Text(
+                        title ?? '¿A dónde vamos?',
+                        style: AppTextStyles.homeHeading,
+                        maxLines: title == null ? 1 : null,
+                        overflow: title == null
+                            ? TextOverflow.ellipsis
+                            : TextOverflow.clip,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              _NotificationButton(
-                count: notificationCount,
-                onTap: onNotificationTap,
-              ),
-            ],
-          ),
+                if (showNotifications) ...[
+                  const SizedBox(width: 12),
+                  _NotificationButton(
+                    count: notificationCount,
+                    onTap: onNotificationTap,
+                  ),
+                ],
+              ],
+            ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -85,12 +114,17 @@ class SearchHeaderWidget extends StatelessWidget {
                 child: _SearchField(
                   controller: controller,
                   onChanged: onSearchChanged,
+                  hintText: searchHint,
                 ),
               ),
               const SizedBox(width: 10),
               _FilterButton(onTap: onFilterTap),
             ],
           ),
+          if (categories != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            categories,
+          ],
         ],
       ),
     );
@@ -98,10 +132,11 @@ class SearchHeaderWidget extends StatelessWidget {
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField({this.controller, this.onChanged});
+  const _SearchField({this.controller, this.onChanged, required this.hintText});
 
   final TextEditingController? controller;
   final ValueChanged<String>? onChanged;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +144,7 @@ class _SearchField extends StatelessWidget {
       height: 46,
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
       ),
       child: TextField(
@@ -120,8 +155,8 @@ class _SearchField extends StatelessWidget {
         ),
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          hintText: 'Buscar lagunas, tours, restaurantes...',
+          contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+          hintText: hintText,
           hintStyle: AppTextStyles.homeSearchHint,
           prefixIcon: const Icon(
             Icons.search,
@@ -148,9 +183,9 @@ class _FilterButton extends StatelessWidget {
       label: 'Filtros y orden',
       child: Material(
         color: AppColors.primary500,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           onTap: onTap,
           child: const SizedBox(
             width: 46,

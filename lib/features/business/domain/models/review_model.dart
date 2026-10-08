@@ -1,3 +1,5 @@
+import 'package:nikara_app/core/models/user_origin.dart';
+
 class ReviewModel {
   const ReviewModel({
     required this.id,
@@ -7,10 +9,14 @@ class ReviewModel {
     required this.comment,
     required this.date,
     this.mediaPaths = const [],
+    this.authorAvatarUrl,
+    this.authorOrigin = const UserOrigin(),
   });
 
   final String id;
   final String authorName;
+  final String? authorAvatarUrl;
+  final UserOrigin authorOrigin;
 
   /// Email de cuenta al momento de escribir la reseña; permite a [UserStatsService] contar reseñas reales en vez de adivinar por [authorName]. Vacío en reseñas previas a este campo.
   final String authorId;
@@ -25,6 +31,8 @@ class ReviewModel {
     'id': id,
     'authorName': authorName,
     'authorId': authorId,
+    'authorAvatarUrl': authorAvatarUrl,
+    'authorOrigin': authorOrigin.toRow(),
     'rating': rating,
     'comment': comment,
     'date': date.toIso8601String(),
@@ -36,6 +44,10 @@ class ReviewModel {
       id: json['id'] as String,
       authorName: json['authorName'] as String,
       authorId: json['authorId'] as String? ?? '',
+      authorAvatarUrl: json['authorAvatarUrl'] as String?,
+      authorOrigin: UserOrigin.fromRow(
+        json['authorOrigin'] as Map<String, dynamic>? ?? const {},
+      ),
       rating: (json['rating'] as num).toDouble(),
       comment: json['comment'] as String,
       date: DateTime.parse(json['date'] as String),

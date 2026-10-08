@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Barra de progreso de 3 segmentos + caption "Paso X de 3" del wizard de registro.
@@ -26,12 +27,12 @@ class StepProgressIndicator extends StatelessWidget {
               if (i != 0) const SizedBox(width: 6),
               Expanded(
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
+                  duration: AppMotion.standardDuration,
                   height: 4,
                   decoration: BoxDecoration(
                     color: i <= step
-                        ? AppColors.coral500
-                        : AppColors.coral500.withValues(alpha: 0.22),
+                        ? AppColors.orangeFill
+                        : AppColors.orangeFill.withValues(alpha: 0.22),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),

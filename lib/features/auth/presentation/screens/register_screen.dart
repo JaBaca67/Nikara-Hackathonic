@@ -5,10 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/models/user_origin.dart';
+import 'package:nikara_app/shared/widgets/origin_form_fields.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/local_profile_extras_service.dart';
 import 'package:nikara_app/core/utils/input_formatters.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/auth/domain/models/country_dial_code.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_bottom_sheet_layout.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_header.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_primary_button.dart';
@@ -17,11 +21,14 @@ import 'package:nikara_app/shared/widgets/auth/auth_text_field.dart';
 import 'package:nikara_app/shared/widgets/auth/country_code_picker.dart';
 import 'package:nikara_app/shared/widgets/auth/password_strength_checker.dart';
 import 'package:nikara_app/shared/widgets/auth/social_login_row.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/auth/step_progress_indicator.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/shared/widgets/otp_input_row.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const _kStepLabels = ['Identidad', 'Perfil', 'Verificación'];
@@ -62,7 +69,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
   final _phoneController = TextEditingController();
-  String? _avatarPath;
+
+  /// Foto elegida en el paso "Perfil", antes de que la cuenta exista. Se sube
+  /// a Storage recién después del signUp, cuando ya hay sesión y un user id
+  /// bajo el que guardarla (ver [AuthService.updateAvatar]).
+  XFile? _avatarImage;
+  UserOrigin _origin = const UserOrigin();
   CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
 
@@ -70,10 +82,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _otpCode = '';
   Timer? _resendTimer;
   int _resendCooldown = 0;
-
-  static final RegExp _emailRegex = RegExp(r'^[\w.+-]+@[\w-]+\.[A-Za-z]{2,}$');
-
-  static final RegExp _usernameRegex = RegExp(r'^[a-zA-Z0-9_.]+$');
 
   @override
   void initState() {
@@ -93,34 +101,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _resendTimer?.cancel();
     super.dispose();
-  }
-
-  String? _required(String? value, String message) {
-    return (value == null || value.trim().isEmpty) ? message : null;
-  }
-
-  String? _validateEmail(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa un correo';
-    if (!_emailRegex.hasMatch(trimmed)) return 'Correo no válido';
-    return null;
-  }
-
-  String? _validatePassword(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Ingresa una contraseña';
-    if (trimmed.length < 6) return 'Mínimo 6 caracteres';
-    return null;
-  }
-
-  String? _validateUsername(String? value) {
-    final trimmed = value?.trim() ?? '';
-    if (trimmed.isEmpty) return 'Elige un nombre de usuario';
-    if (trimmed.length < 3) return 'Mínimo 3 caracteres';
-    if (!_usernameRegex.hasMatch(trimmed)) {
-      return 'Solo letras, números, "." y "_"';
-    }
-    return null;
   }
 
   void _goToProfileStep() {
@@ -181,7 +161,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       imageQuality: 85,
     );
     if (picked == null || !mounted) return;
-    setState(() => _avatarPath = picked.path);
+    setState(() => _avatarImage = picked);
   }
 
   Future<void> _showCountryPicker() async {
@@ -214,26 +194,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
       email: _emailController.text.trim(),
       password: _passwordController.text.trim(),
       phone: phone,
+      origin: _origin,
     );
     if (!mounted) return;
 
     if (!result.success) {
       setState(() => _status = AuthStatus.error);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message ?? 'No se pudo crear la cuenta')),
+      AppSnackbar.showError(
+        context,
+        result.message ?? 'No se pudo crear la cuenta',
       );
       return;
     }
 
     // Best-effort: la cuenta real ya existe, así que si estas escrituras
-    // locales fallan no bloquean el flujo.
+    // fallan no bloquean el flujo.
     final username = _usernameController.text.trim();
     if (username.isNotEmpty) {
       await _extrasService.updateUsername(username);
     }
-    final avatarPath = _avatarPath;
-    if (avatarPath != null) {
-      await _extrasService.updateAvatar(avatarPath);
+    if (!mounted) return;
+    final avatarImage = _avatarImage;
+    if (avatarImage != null) {
+      if (!_authService.isLoggedIn) {
+        // Con confirmación de correo activada, signUp crea el usuario pero no
+        // deja sesión — y sin sesión no hay a qué perfil subirle la foto ni
+        // carpeta de Storage donde ponerla. Se avisa en vez de mostrar un
+        // "necesitas iniciar sesión" justo después de registrarse.
+        AppSnackbar.showInfo(
+          context,
+          'Tu foto se podrá subir cuando confirmes tu correo e inicies '
+          'sesión, desde tu perfil.',
+        );
+      } else {
+        try {
+          await _authService.updateAvatar(avatarImage);
+        } on AuthServiceException catch (e) {
+          // La cuenta ya se creó: quedarse sin foto no justifica abortar el
+          // registro, pero sí decirlo en vez de tragarse el error.
+          if (!mounted) return;
+          AppSnackbar.showError(context, e.message);
+        }
+      }
     }
     if (!mounted) return;
 
@@ -265,24 +267,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _attemptVerifyOtp() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'La verificación por SMS todavía no está disponible. Usa '
-          '"Saltar por ahora" para continuar — no afecta tu cuenta.',
-        ),
-      ),
+    AppSnackbar.showInfo(
+      context,
+      'La verificación por SMS todavía no está disponible. Usa '
+      '"Saltar por ahora" para continuar — no afecta tu cuenta.',
     );
   }
 
   Future<void> _skipVerification() async {
     await _extrasService.updateIsPhoneVerified(false);
     if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const SplashTransitionScreen(nextPage: MainLayout()),
-      ),
-      (route) => false,
+    pushFadeThroughAndRemoveUntil(
+      context,
+      const SplashTransitionScreen(nextPage: MainLayout()),
     );
   }
 
@@ -318,7 +315,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       builder: (context) => Dialog(
         backgroundColor: AppColors.authCardBackground,
         insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.xl),
+        ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 26, 24, 20),
           child: Column(
@@ -395,7 +394,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return AuthBottomSheetLayout(
       onBack: _handleBackRequest,
       child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
+        duration: AppMotion.standardDuration,
         // El layoutBuilder por defecto centra verticalmente; acá se fija
         // arriba para que un paso más corto no quede flotando a mitad del sheet.
         layoutBuilder: (currentChild, previousChildren) => Stack(
@@ -446,7 +445,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.mail_outline,
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const [AutofillHints.email],
-                validator: _validateEmail,
+                validator: validateEmail,
               ),
               const SizedBox(height: 14),
               AuthTextField(
@@ -456,7 +455,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.lock_outline,
                 isPassword: true,
                 autofillHints: const [AutofillHints.newPassword],
-                validator: _validatePassword,
+                validator: validatePassword,
               ),
               if (_passwordController.text.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -497,7 +496,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16),
               Center(
-                child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar),
+                child: _AvatarPicker(
+                  path: _avatarImage?.path,
+                  onTap: _pickAvatar,
+                ),
               ),
               const SizedBox(height: 18),
               Row(
@@ -510,7 +512,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _firstNameController,
                       icon: Icons.badge_outlined,
                       autofillHints: const [AutofillHints.givenName],
-                      validator: (v) => _required(v, 'Ingresa tu nombre'),
+                      validator: (v) =>
+                          validateRequiredText(v, label: 'tu nombre'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -521,7 +524,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _lastNameController,
                       icon: Icons.badge_outlined,
                       autofillHints: const [AutofillHints.familyName],
-                      validator: (v) => _required(v, 'Ingresa tus apellidos'),
+                      validator: (v) =>
+                          validateRequiredText(v, label: 'tus apellidos'),
                     ),
                   ),
                 ],
@@ -533,7 +537,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 controller: _usernameController,
                 icon: Icons.alternate_email,
                 autofillHints: const [AutofillHints.newUsername],
-                validator: _validateUsername,
+                validator: validateUsername,
               ),
               const SizedBox(height: 14),
               AuthTextField(
@@ -552,7 +556,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         LengthLimitingTextInputFormatter(12),
                       ],
                 autofillHints: const [AutofillHints.telephoneNumber],
-                validator: (v) => _required(v, 'Ingresa tu celular'),
+                // El código de país vive en el selector de al lado, no en
+                // el campo: sin pasarlo, un número de otro país se leería
+                // como nicaragüense y el error hablaría de Nicaragua.
+                validator: (v) =>
+                    validatePhone(v, dialCode: _selectedCountry.dialCode),
+              ),
+              const SizedBox(height: 18),
+              OriginFormFields(
+                initialValue: _origin,
+                onChanged: (value) => _origin = value,
+                enabled: _status != AuthStatus.loading,
               ),
               const SizedBox(height: 18),
               AuthPrimaryButton(

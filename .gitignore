@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 .DS_Store
+desktop.ini
 .atom/
 .build/
 .buildlog/
@@ -11,6 +12,11 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+# Configuración y contexto local de Claude Code — no se versiona (ver
+# CLAUDE.md → Seguridad en Git). No afecta a los archivos que ya estaban
+# trackeados antes de esta regla (settings.json, skills del equipo).
+.claude/
 
 # IntelliJ related
 *.iml
@@ -39,8 +45,9 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
-# Local dart-define values (Google Directions API key) — see
-# lib/core/config/maps_config.dart and dart_defines.json.example.
+# Ya no lo lee ningún código (la Directions API key se movió a un secreto de
+# Supabase, ver CLAUDE.md "API keys de Google Maps") — se deja ignorado por si
+# alguien todavía tiene el archivo en disco, no por necesidad real.
 /dart_defines.json
 
 # Android Studio will place build artifacts here
@@ -48,6 +55,26 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Archivos de entorno y claves secretas
+# Archivos de entorno y claves secretas. Igual que dart_defines.json arriba,
+# .env ya no lo lee ningún código del cliente desde que la Directions API key
+# vive como secreto de Supabase — ver CLAUDE.md "API keys de Google Maps".
 .env
 *.env
+
+# Configuración de Firebase (Cloud Messaging) — client config generado por
+# consola, se mantiene solo en local igual que dart_defines.json.
+/android/app/google-services.json
+/firebase.json
+/lib/firebase_options.dart
+
+# Todo lo de Supabase se mantiene solo en local (decisión de José, 2026-10-01:
+# el repo es público por el hackathon). Antes la regla cubría únicamente
+# `/supabase/sql/`; se amplió a la carpeta entera al agregarse
+# `supabase/functions/`, que si no se habría subido sin querer.
+#
+# Ojo: nada de esto son secretos — el SQL es la definición del esquema (ver
+# docs/database_erd.md) y la Edge Function lee sus credenciales de variables
+# de entorno, nunca del código. Lo que sí implica: quien clone el repo no
+# podrá recrear la base de datos ni desplegar el push sin estos archivos, así
+# que conviene respaldarlos aparte (la bóveda de Obsidian es repo privado).
+/supabase/

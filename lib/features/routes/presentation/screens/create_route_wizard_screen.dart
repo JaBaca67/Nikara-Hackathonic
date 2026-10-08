@@ -1,19 +1,38 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'route_stop_location_screen.dart';
 
+import 'package:nikara_app/core/utils/validators.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/routes/data/route_catalog_service.dart';
 import 'package:nikara_app/features/routes/data/route_service.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
+import 'package:nikara_app/features/routes/domain/route_planner.dart';
+import 'package:nikara_app/features/routes/presentation/screens/route_overview_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/dotted_border_box.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 const int _kMaxDays = 30;
 const int _kMaxCoverPhotos = 3;
+const int _kMaxTitleLength = 60;
+
+/// Lado mínimo de cualquier zona tocable (Material/WCAG: 48dp).
+const double _kMinTouchTarget = 48;
 
 /// Wizard de 3 pasos para armar (o editar) una ruta: nombre y duración,
 /// lugares, y organización por día.
@@ -44,6 +63,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   final _searchController = TextEditingController();
 
   int _step = 0;
+  int _addingDay = 1;
   late int _days = widget.initialRoute?.days ?? 1;
   late bool _isPublic = widget.initialRoute?.isPublic ?? false;
 
@@ -54,21 +74,47 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   /// Las paradas que se están armando, siempre reindexadas por día.
   late List<RouteStopModel> _stops = [...?widget.initialRoute?.stops];
 
-  /// Fotos de portada — cada elemento es la ruta local que devuelve
-  /// `image_picker` (o, al editar, la URL que ya tenía la ruta). Opcionales:
-  /// sin ninguna, la tarjeta cae de vuelta a las fotos de las paradas.
-  late final List<String> _coverPhotos = [...?widget.initialRoute?.imageUrls];
+  /// Fotos de portada ya subidas — al editar, las URLs que ya tenía la ruta.
+  /// Se suben nuevas recién al guardar (ver [_newCoverPhotos]), no al
+  /// elegirlas, para no dejar archivos huérfanos si se abandona el
+  /// formulario. Opcionales: sin ninguna, la tarjeta cae de vuelta a las
+  /// fotos de las paradas.
+  late final List<String> _coverPhotoUrls = [
+    ...?widget.initialRoute?.imageUrls,
+  ];
+
+  /// Fotos recién elegidas en este formulario, todavía sin subir a Storage.
+  final List<XFile> _newCoverPhotos = [];
+
+  /// Lo que se muestra en la grilla: las ya subidas primero, luego las
+  /// recién elegidas (mostrando su ruta local hasta que se suban).
+  List<String> get _coverPreviewPaths => [
+    ..._coverPhotoUrls,
+    ..._newCoverPhotos.map((x) => x.path),
+  ];
 
   List<RouteStopModel> _catalog = const [];
   bool _loadingCatalog = true;
   String? _catalogWarning;
-  RouteStopCategory? _categoryFilter;
+  String? _categoryFilter;
+  GeographicDestination _destinationFilter = const GeographicDestination();
 
   bool _isSaving = false;
 
   bool get _isEditing => widget.initialRoute != null;
 
-  bool get _titleIsValid => _titleController.text.trim().isNotEmpty;
+  /// Mínimo 3 caracteres y al menos una letra (las reglas de `validateTitle`,
+  /// que el resto de la app comparte) y máximo [_kMaxTitleLength]: el campo ya
+  /// no deja escribir más, pero un texto pegado se recorta y se revalida aquí.
+  /// Se muestra un único mensaje concreto para esta pantalla.
+  bool get _titleIsValid {
+    final title = _titleController.text;
+    return validateTitle(title) == null &&
+        title.trim().length <= _kMaxTitleLength;
+  }
+
+  /// Evita abrir dos selectores de galería con toques seguidos.
+  bool _pickingPhoto = false;
 
   @override
   void initState() {
@@ -83,48 +129,88 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     super.dispose();
   }
 
+  /// También es el "Reintentar" del aviso del paso 2: vuelve a pedir las tres
+  /// fuentes, no solo la que falló.
   Future<void> _loadCatalog() async {
-    final catalog = await RouteCatalogService().loadCandidates();
-    if (!mounted) return;
-    setState(() {
-      _catalog = catalog.stops;
-      _catalogWarning = catalog.warning;
-      _loadingCatalog = false;
-    });
+    if (!_loadingCatalog) setState(() => _loadingCatalog = true);
+    try {
+      final catalog = await RouteCatalogService().loadCandidates();
+      if (!mounted) return;
+      setState(() {
+        _catalog = catalog.stops;
+        _catalogWarning = catalog.warning;
+        _loadingCatalog = false;
+      });
+    } on Exception {
+      // `loadCandidates` ya absorbe los fallos de cada fuente; esto cubre lo
+      // inesperado (p. ej. la ubicación) para que el paso 2 nunca quede
+      // girando para siempre.
+      if (!mounted) return;
+      setState(() {
+        _catalogWarning = 'No se pudieron cargar los lugares.';
+        _loadingCatalog = false;
+      });
+    }
   }
 
   /// El catálogo filtrado por el buscador y el chip de categoría del paso 2.
   List<RouteStopModel> get _visibleCandidates {
-    final query = _searchController.text.trim().toLowerCase();
+    final query = RoutePlanner.searchKey(_searchController.text);
     return _catalog
         .where((stop) {
-          if (_categoryFilter != null && stop.category != _categoryFilter) {
-            return false;
+          final category = _categoryFilter;
+          if (category == 'Jornadas ECO') {
+            if (stop.kind != RouteStopKind.ecoActivity) return false;
+          } else if (category != null) {
+            if (stop.kind != RouteStopKind.business ||
+                businessCategoryPresetFor(stop.businessCategory ?? '') !=
+                    category) {
+              return false;
+            }
           }
+          if (!_destinationFilter.matches(
+            municipalityByCode(stop.municipalityCode),
+          ))
+            return false;
           if (query.isEmpty) return true;
-          return stop.title.toLowerCase().contains(query) ||
-              stop.subtitle.toLowerCase().contains(query);
+          return RoutePlanner.searchKey(stop.title).contains(query) ||
+              RoutePlanner.searchKey(stop.subtitle).contains(query);
         })
         .toList(growable: false);
   }
 
-  bool _isAdded(RouteStopModel candidate) =>
-      _stops.any((s) => s.sourceKey == candidate.sourceKey);
+  Future<void> _pickCatalogDestination() async {
+    final selection = await showGeographicDestinationPicker(
+      context,
+      initial: _destinationFilter,
+    );
+    if (selection == null || !mounted) return;
+    setState(() => _destinationFilter = selection.destination);
+  }
+
+  bool _isAdded(RouteStopModel candidate) => _stops.any(
+    (s) => s.sourceKey == candidate.sourceKey && s.dayNumber == _addingDay,
+  );
 
   void _toggleCandidate(RouteStopModel candidate) {
     setState(() {
       if (_isAdded(candidate)) {
         _stops = RouteModel.reindex(
-          _stops.where((s) => s.sourceKey != candidate.sourceKey).toList(),
+          _stops
+              .where(
+                (s) =>
+                    s.sourceKey != candidate.sourceKey ||
+                    s.dayNumber != _addingDay,
+              )
+              .toList(),
         );
         return;
       }
-      // Toda parada nueva entra al día 1; el paso 3 es donde se reparte
-      // entre días.
-      final day1 = _stops.where((s) => s.dayNumber == 1).length;
+      // Each selection belongs to the chosen day; a place can be revisited.
+      final dayPosition = _stops.where((s) => s.dayNumber == _addingDay).length;
       _stops = RouteModel.reindex([
         ..._stops,
-        candidate.copyWith(dayNumber: 1, position: day1),
+        candidate.copyWith(dayNumber: _addingDay, position: dayPosition),
       ]);
     });
   }
@@ -132,9 +218,28 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   void _removeStop(RouteStopModel stop) {
     setState(() {
       _stops = RouteModel.reindex(
-        _stops.where((s) => s.sourceKey != stop.sourceKey).toList(),
+        _stops.where((s) => s.visitKey != stop.visitKey).toList(),
       );
     });
+  }
+
+  Future<void> _locateStop(RouteStopModel stop) async {
+    final point = await pushSharedAxis<LatLng>(
+      context,
+      RouteStopLocationScreen(title: stop.title),
+    );
+    if (point == null || !mounted) return;
+    setState(
+      () => _stops = [
+        for (final current in _stops)
+          current.visitKey == stop.visitKey
+              ? current.copyWith(
+                  latitude: point.latitude,
+                  longitude: point.longitude,
+                )
+              : current,
+      ],
+    );
   }
 
   /// Mueve una parada un lugar arriba o abajo dentro de su día; en los
@@ -179,9 +284,18 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     required int day,
     required num position,
   }) {
+    if (_stops.any(
+      (s) =>
+          s.sourceKey == stop.sourceKey &&
+          s.dayNumber == day &&
+          s.visitKey != stop.visitKey,
+    )) {
+      AppSnackbar.showInfo(context, 'Este lugar ya está en ese día.');
+      return;
+    }
     setState(() {
       final others = _stops
-          .where((s) => s.sourceKey != stop.sourceKey)
+          .where((s) => s.visitKey != stop.visitKey)
           .toList(growable: false);
       final rebuilt = <RouteStopModel>[];
       for (final other in others) {
@@ -204,17 +318,36 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
   }
 
   Future<void> _pickCoverPhotos() async {
-    final remaining = _kMaxCoverPhotos - _coverPhotos.length;
-    if (remaining <= 0) return;
-    final picked = await ImagePicker().pickMultiImage(limit: remaining);
-    if (picked.isEmpty || !mounted) return;
-    setState(
-      () => _coverPhotos.addAll(picked.take(remaining).map((x) => x.path)),
-    );
+    final remaining = _kMaxCoverPhotos - _coverPreviewPaths.length;
+    if (remaining <= 0 || _pickingPhoto) return;
+    _pickingPhoto = true;
+    try {
+      final picked = await ImagePicker().pickMultiImage(limit: remaining);
+      if (picked.isEmpty || !mounted) return;
+      setState(() => _newCoverPhotos.addAll(picked.take(remaining)));
+    } on Exception {
+      // Permiso de galería denegado o el selector del sistema falló.
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        'No se pudo abrir tu galería. Revisa los permisos de la app e '
+        'intenta de nuevo.',
+      );
+    } finally {
+      _pickingPhoto = false;
+    }
   }
 
+  /// [index] cae sobre la lista combinada de [_coverPreviewPaths]: primero
+  /// las ya subidas, luego las nuevas.
   void _removeCoverPhoto(int index) {
-    setState(() => _coverPhotos.removeAt(index));
+    setState(() {
+      if (index < _coverPhotoUrls.length) {
+        _coverPhotoUrls.removeAt(index);
+      } else {
+        _newCoverPhotos.removeAt(index - _coverPhotoUrls.length);
+      }
+    });
   }
 
   void _changeDays(int delta) {
@@ -222,6 +355,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     if (next == _days) return;
     setState(() {
       _days = next;
+      if (_addingDay > next) _addingDay = next;
       // Al acortar la ruta, las paradas de los días que dejaron de existir
       // se recuestan en el último día en vez de perderse.
       _stops = RouteModel.reindex([
@@ -231,29 +365,114 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     });
   }
 
-  void _continue() {
+  /// El botón principal nunca está deshabilitado: si falta algo, dice qué.
+  Future<void> _continue() async {
     if (_step == 0) {
       setState(() => _titleTouched = true);
       if (!_titleIsValid) return;
     }
-    if (_step < 2) {
-      setState(() => _step++);
+    if (_step == 1 && _stops.isEmpty) {
+      AppSnackbar.showError(
+        context,
+        'Agrega al menos un lugar a tu ruta para continuar.',
+      );
       return;
     }
-    unawaited(_save());
+    if (_step < 2) {
+      _goToStep(_step + 1);
+      return;
+    }
+    await _save();
   }
 
-  void _back() {
+  // Moving between steps keeps the draft, including assignments and order.
+  void _goToStep(int next) => setState(() => _step = next);
+  bool _dialogOpen = false;
+
+  /// Pregunta y devuelve `true` solo si se confirmó. Un cierre de cualquier
+  /// otra forma (atrás del sistema sobre la alerta) deja a la persona donde
+  /// está.
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String confirmLabel,
+    required String cancelLabel,
+    bool destructive = true,
+  }) async {
+    _dialogOpen = true;
+    try {
+      final confirmed = await AppConfirmDialog.show(
+        context,
+        title: title,
+        message: message,
+        confirmLabel: confirmLabel,
+        cancelLabel: cancelLabel,
+        destructive: destructive,
+      );
+      return confirmed && mounted;
+    } finally {
+      _dialogOpen = false;
+    }
+  }
+
+  /// Salida real a Rutas: `pop()` explícito (el `PopScope` no lo bloquea) y
+  /// solo después de una confirmación.
+  void _leave() => Navigator.of(context).pop();
+
+  /// Flecha de la cabecera y atrás del sistema. En el paso 1 no hay a dónde
+  /// retroceder, así que sale (con confirmación); en los pasos 2 y 3
+  /// retrocede un paso — directo si no se cambió nada, con confirmación si
+  /// se perdería algo.
+  Future<void> _onBack() async {
+    if (_isSaving || _dialogOpen) return;
     if (_step == 0) {
-      Navigator.of(context).maybePop();
+      final exit = await _confirm(
+        title: '¿Salir sin guardar?',
+        message: 'Perderás el progreso de tu ruta.',
+        confirmLabel: 'Salir',
+        cancelLabel: 'Continuar',
+      );
+      if (exit) _leave();
       return;
     }
-    setState(() => _step--);
+    _goBackOneStep();
   }
+
+  /// La X de los pasos 2 y 3: siempre pregunta, haya cambios o no.
+  Future<void> _onExit() async {
+    if (_isSaving || _dialogOpen) return;
+    final exit = await _confirm(
+      title: '¿Salir de crear ruta?',
+      message: 'Perderás todo el progreso de tu ruta y volverás a Rutas.',
+      confirmLabel: 'Salir',
+      cancelLabel: 'Continuar',
+    );
+    if (exit) _leave();
+  }
+
+  void _goBackOneStep() => setState(() => _step--);
 
   Future<void> _save() async {
+    if (_isSaving) return;
+    // En el paso 3 todavía se pueden quitar paradas: una ruta sin ninguna no
+    // se guarda (los días vacíos sueltos sí, ver `_EmptyDaysNotice`).
+    if (_stops.isEmpty) {
+      AppSnackbar.showError(
+        context,
+        'Tu ruta necesita al menos un lugar. Agrega uno para guardarla.',
+      );
+      return;
+    }
     setState(() => _isSaving = true);
     try {
+      // Las fotos nuevas suben antes del insert/update: si Storage falla, no
+      // queda una ruta guardada apuntando a una imagen que nunca se subió.
+      final uploadedUrls = [
+        for (final image in _newCoverPhotos)
+          await RouteService().uploadImage(image),
+      ];
+      final imageUrls = [..._coverPhotoUrls, ...uploadedUrls];
+
       final initial = widget.initialRoute;
       if (initial == null) {
         await RouteService().createRoute(
@@ -261,7 +480,7 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           days: _days,
           isPublic: _isPublic,
           stops: _stops,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
       } else {
         await RouteService().updateRoute(
@@ -269,22 +488,27 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
           title: _titleController.text.trim(),
           days: _days,
           isPublic: _isPublic,
-          imageUrls: _coverPhotos,
+          imageUrls: imageUrls,
         );
         await RouteService().replaceStops(initial.id, _stops);
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isEditing ? 'Ruta actualizada' : '¡Ruta guardada!'),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        _isEditing ? 'Ruta actualizada' : '¡Ruta guardada!',
       );
       Navigator.of(context).pop(true);
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      // El servicio traduce lo suyo; esto cubre lo que escape de él (p. ej.
+      // leer el archivo de una foto) para no dejar la pantalla sin respuesta.
+      if (!mounted) return;
+      AppSnackbar.showError(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+        'No se pudo guardar tu ruta. Verifica tu internet e intenta de nuevo.',
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -297,111 +521,156 @@ class _CreateRouteWizardScreenState extends State<CreateRouteWizardScreen> {
     _ => _isEditing ? 'Guardar cambios' : 'Guardar ruta',
   };
 
-  bool get _primaryEnabled => switch (_step) {
-    0 => _titleIsValid,
-    _ => true,
-  };
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _WizardHeader(
-              title: _isEditing ? 'Editar ruta' : 'Nueva ruta',
-              subtitle: 'Paso ${_step + 1} de 3 · ${_stepSubtitles[_step]}',
-              onBack: _back,
-              onExit: () => Navigator.of(context).maybePop(),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: _StepIndicator(current: _step, labels: _steps),
-            ),
-            Expanded(
-              child: switch (_step) {
-                0 => _StepName(
-                  controller: _titleController,
-                  showError: _titleTouched && !_titleIsValid,
-                  days: _days,
-                  isPublic: _isPublic,
-                  coverPhotos: _coverPhotos,
-                  onDaysChanged: _changeDays,
-                  onPublicChanged: (value) => setState(() => _isPublic = value),
-                  onTitleChanged: () => setState(() {}),
-                  onPickCoverPhoto: _pickCoverPhotos,
-                  onRemoveCoverPhoto: _removeCoverPhoto,
-                ),
-                1 => _StepPlaces(
-                  searchController: _searchController,
-                  candidates: _visibleCandidates,
-                  isLoading: _loadingCatalog,
-                  warning: _catalogWarning,
-                  selectedCategory: _categoryFilter,
-                  onCategorySelected: (category) =>
-                      setState(() => _categoryFilter = category),
-                  onSearchChanged: () => setState(() {}),
-                  isAdded: _isAdded,
-                  onToggle: _toggleCandidate,
-                ),
-                _ => _StepOrganize(
-                  days: _days,
-                  stops: _stops,
-                  onMove: _moveStop,
-                  onRemove: _removeStop,
-                  onAddMore: () => setState(() => _step = 1),
-                ),
-              },
-            ),
-            _WizardFooter(
-              label: _primaryLabel,
-              enabled: _primaryEnabled,
-              isBusy: _isSaving,
-              onPressed: _continue,
-            ),
-          ],
+    // `canPop: false`: el atrás del sistema hace lo mismo que la flecha de la
+    // cabecera (`_onBack`); la salida real a Rutas es el `Navigator.pop()`
+    // explícito de `_leave`, que PopScope no bloquea.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_onBack());
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _WizardHeader(
+                title: _isEditing ? 'Editar ruta' : 'Nueva ruta',
+                subtitle: 'Paso ${_step + 1} de 3 · ${_stepSubtitles[_step]}',
+                onBack: () => unawaited(_onBack()),
+                backLabel: _step == 0
+                    ? 'Salir de crear ruta'
+                    : 'Volver al paso anterior',
+                enabled: !_isSaving,
+                onExit: _step == 0 ? null : () => unawaited(_onExit()),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _StepIndicator(current: _step, labels: _steps),
+              ),
+              Expanded(
+                child: switch (_step) {
+                  0 => _StepName(
+                    controller: _titleController,
+                    showError: _titleTouched && !_titleIsValid,
+                    days: _days,
+                    isPublic: _isPublic,
+                    coverPhotos: _coverPreviewPaths,
+                    onDaysChanged: _changeDays,
+                    onPublicChanged: (value) =>
+                        setState(() => _isPublic = value),
+                    onTitleChanged: () => setState(() {}),
+                    onPickCoverPhoto: _pickCoverPhotos,
+                    onRemoveCoverPhoto: _removeCoverPhoto,
+                  ),
+                  1 => _StepPlaces(
+                    days: _days,
+                    addingDay: _addingDay,
+                    selectedCount: _stops.length,
+                    onAddingDayChanged: (day) =>
+                        setState(() => _addingDay = day),
+                    searchController: _searchController,
+                    candidates: _visibleCandidates,
+                    isLoading: _loadingCatalog,
+                    warning: _catalogWarning,
+                    selectedCategory: _categoryFilter,
+                    onCategorySelected: (category) =>
+                        setState(() => _categoryFilter = category),
+                    destination: _destinationFilter,
+                    onDestinationFilterChanged: (destination) =>
+                        setState(() => _destinationFilter = destination),
+                    onPickDestination: _pickCatalogDestination,
+                    onSearchChanged: () => setState(() {}),
+                    isAdded: _isAdded,
+                    onToggle: _toggleCandidate,
+                    onRetry: () => unawaited(_loadCatalog()),
+                  ),
+                  _ => _StepOrganize(
+                    days: _days,
+                    stops: _stops,
+                    onMove: _moveStop,
+                    onRemove: _removeStop,
+                    onLocate: _locateStop,
+                    onAddMore: (day) {
+                      _addingDay = day;
+                      _goToStep(1);
+                    },
+                    onAssignDay: (stop, day) => _reassign(
+                      stop,
+                      day: day,
+                      position: _stops.where((s) => s.dayNumber == day).length,
+                    ),
+                    onSuggestOrder: (day) => setState(
+                      () => _stops = RoutePlanner.suggestOrder(_stops, day),
+                    ),
+                    onPreview: () => pushSharedAxis(
+                      context,
+                      RouteOverviewScreen(
+                        title: _titleController.text.trim(),
+                        stops: _stops,
+                      ),
+                    ),
+                  ),
+                },
+              ),
+              _WizardFooter(
+                label: _primaryLabel,
+                isBusy: _isSaving,
+                onPressed: _continue,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
+/// Cabecera del wizard: flecha de la izquierda y, desde el paso 2, una X para
+/// salir. Son dos acciones distintas (retroceder un paso / abandonar), cada
+/// la salida pide confirmar antes de descartar el borrador.
 class _WizardHeader extends StatelessWidget {
   const _WizardHeader({
     required this.title,
     required this.subtitle,
     required this.onBack,
-    required this.onExit,
+    required this.backLabel,
+    required this.enabled,
+    this.onExit,
   });
 
   final String title;
   final String subtitle;
   final VoidCallback onBack;
-  final VoidCallback onExit;
+
+  /// Qué hace la flecha en este paso: en el primero sale del wizard, en los
+  /// demás vuelve al paso anterior.
+  final String backLabel;
+
+  /// Falso mientras se guarda: los botones se ven atenuados y no responden.
+  final bool enabled;
+
+  /// `null` en el paso 1, donde la flecha ya es la salida.
+  final VoidCallback? onExit;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.md,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       child: Row(
         children: [
-          GestureDetector(
+          _HeaderIconButton(
+            icon: Icons.arrow_back,
+            label: backLabel,
+            enabled: enabled,
             onTap: onBack,
-            child: Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: AppColors.profileDivider,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.arrow_back,
-                size: 20,
-                color: AppColors.settingsTextDark,
-              ),
-            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -425,22 +694,72 @@ class _WizardHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: onExit,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              decoration: BoxDecoration(
-                color: AppColors.surface100,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                'Salir',
-                style: AppTextStyles.mapRowTitle.copyWith(fontSize: 13),
+          if (onExit != null) ...[
+            const SizedBox(width: 10),
+            _HeaderIconButton(
+              icon: Icons.close_rounded,
+              label: 'Salir de crear ruta',
+              enabled: enabled,
+              onTap: onExit!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Botón circular de la cabecera: círculo de 44 dentro de una zona tocable de
+/// 48, con tooltip (long-press / hover) y etiqueta para lectores de pantalla.
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: label,
+        excludeFromSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: enabled ? onTap : null,
+          child: SizedBox.square(
+            dimension: _kMinTouchTarget,
+            child: Center(
+              child: Opacity(
+                opacity: enabled ? 1 : 0.4,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.profileDivider,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: AppColors.settingsTextDark,
+                  ),
+                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -460,7 +779,7 @@ class _StepIndicator extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         children: [
@@ -525,7 +844,7 @@ class _StepBubble extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: isDone
-            ? AppColors.ecoActive
+            ? AppColors.oliveText
             : (isCurrent ? AppColors.primary500 : AppColors.surface100),
         shape: BoxShape.circle,
         border: isDone || isCurrent
@@ -584,11 +903,14 @@ class _StepName extends StatelessWidget {
       children: [
         Text(
           '¿Cómo se llama tu ruta?',
-          style: AppTextStyles.wizardStepHeading.copyWith(fontSize: 22),
+          style: AppTextStyles.wizardStepHeading.copyWith(
+            fontSize: 22,
+            color: AppColors.textPrimary,
+          ),
         ),
         const SizedBox(height: 6),
         Text(
-          'Elegí un nombre y cuántos días va a durar.',
+          'Diseña tu viaje por días, elige tus paradas y recórrelas a tu ritmo.',
           style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 14),
         ),
         const SizedBox(height: 18),
@@ -596,10 +918,8 @@ class _StepName extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: AppColors.surface100,
-            borderRadius: BorderRadius.circular(20),
-            border: showError
-                ? Border.all(color: AppColors.wizardDangerLink)
-                : null,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            border: showError ? Border.all(color: AppColors.error) : null,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -612,35 +932,39 @@ class _StepName extends StatelessWidget {
               TextField(
                 controller: controller,
                 onChanged: (_) => onTitleChanged(),
+                textInputAction: TextInputAction.done,
+                inputFormatters: [
+                  LengthLimitingTextInputFormatter(_kMaxTitleLength),
+                ],
                 style: AppTextStyles.settingsSubtitle.copyWith(
                   fontSize: 15,
                   color: AppColors.settingsTextDark,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Ej. Fin de semana en Granada',
+                  helperText: 'Un nombre para encontrar tu viaje fácilmente',
                   hintStyle: AppTextStyles.settingsSubtitle.copyWith(
                     fontSize: 15,
+                    color: AppColors.settingsTextMuted,
                   ),
                   filled: true,
                   fillColor: AppColors.settingsBackground,
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.lg,
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     borderSide: BorderSide(
                       color: showError
-                          ? AppColors.wizardDangerLink
+                          ? AppColors.error
                           : AppColors.mapControlBorder,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     borderSide: BorderSide(
-                      color: showError
-                          ? AppColors.wizardDangerLink
-                          : AppColors.primary500,
+                      color: showError ? AppColors.error : AppColors.primary500,
                       width: 1.5,
                     ),
                   ),
@@ -655,7 +979,7 @@ class _StepName extends StatelessWidget {
                       height: 18,
                       alignment: Alignment.center,
                       decoration: const BoxDecoration(
-                        color: AppColors.wizardDangerLink,
+                        color: AppColors.error,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -667,10 +991,10 @@ class _StepName extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Ponele un nombre a tu ruta para continuar',
+                        'Ponle un nombre a tu ruta (mínimo 3 letras).',
                         style: AppTextStyles.mapRowTitle.copyWith(
                           fontSize: 13,
-                          color: AppColors.wizardDangerLink,
+                          color: AppColors.error,
                         ),
                       ),
                     ),
@@ -718,7 +1042,7 @@ class _CoverPhotosCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,21 +1100,38 @@ class _CoverPhotoTile extends StatelessWidget {
               ),
             ),
           ),
+          // Zona tocable de 48dp aunque el círculo visible siga siendo de
+          // ~20: cabe dentro de la foto (las miniaturas miden ~90).
           Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: onRemove,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: const BoxDecoration(
-                  color: AppColors.removeButtonBackground,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.close_rounded,
-                  size: 14,
-                  color: AppColors.surface100,
+            top: 0,
+            right: 0,
+            child: Semantics(
+              button: true,
+              label: 'Quitar foto',
+              excludeSemantics: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onRemove,
+                child: SizedBox.square(
+                  dimension: _kMinTouchTarget,
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xs),
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: AppColors.removeButtonBackground,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: AppColors.surface100,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -810,19 +1151,25 @@ class _AddCoverPhotoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return AspectRatio(
       aspectRatio: 1,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.settingsBackground,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.mapControlBorder),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.add_photo_alternate_outlined,
-            size: 24,
-            color: AppColors.settingsTextMuted,
+      child: Semantics(
+        button: true,
+        label: 'Agregar foto de portada',
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.settingsBackground,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.mapControlBorder),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.add_photo_alternate_outlined,
+              size: 24,
+              color: AppColors.settingsTextMuted,
+            ),
           ),
         ),
       ),
@@ -842,7 +1189,7 @@ class _DayStepper extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -917,7 +1264,7 @@ class _PublishToggle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 14, 12, 14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
@@ -954,23 +1301,39 @@ class _PublishToggle extends StatelessWidget {
 /// botón "Agregar a ruta" / "✔ Agregado".
 class _StepPlaces extends StatelessWidget {
   const _StepPlaces({
+    required this.days,
+    required this.addingDay,
+    required this.selectedCount,
+    required this.onAddingDayChanged,
     required this.searchController,
     required this.candidates,
     required this.isLoading,
     required this.warning,
     required this.selectedCategory,
     required this.onCategorySelected,
+    required this.destination,
+    required this.onDestinationFilterChanged,
+    required this.onPickDestination,
     required this.onSearchChanged,
     required this.isAdded,
     required this.onToggle,
+    required this.onRetry,
   });
 
+  final VoidCallback onRetry;
+  final int days;
+  final int addingDay;
+  final int selectedCount;
+  final ValueChanged<int> onAddingDayChanged;
   final TextEditingController searchController;
   final List<RouteStopModel> candidates;
   final bool isLoading;
   final String? warning;
-  final RouteStopCategory? selectedCategory;
-  final ValueChanged<RouteStopCategory?> onCategorySelected;
+  final String? selectedCategory;
+  final ValueChanged<String?> onCategorySelected;
+  final GeographicDestination destination;
+  final ValueChanged<GeographicDestination> onDestinationFilterChanged;
+  final VoidCallback onPickDestination;
   final VoidCallback onSearchChanged;
   final bool Function(RouteStopModel) isAdded;
   final ValueChanged<RouteStopModel> onToggle;
@@ -981,11 +1344,40 @@ class _StepPlaces extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
       children: [
+        Text(
+          'Elige tus paradas',
+          style: AppTextStyles.sectionTitle.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '$selectedCount lugares seleccionados. Agrega cada lugar al día en que quieres visitarlo.',
+          style: AppTextStyles.settingsSubtitle,
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var day = 1; day <= days; day++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text('Día $day'),
+                    selected: addingDay == day,
+                    onSelected: (_) => onAddingDayChanged(day),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
           decoration: BoxDecoration(
             color: AppColors.surface100,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
           child: Row(
             children: [
@@ -1009,16 +1401,40 @@ class _StepPlaces extends StatelessWidget {
                       fontSize: 15,
                     ),
                     border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.lg,
+                    ),
                   ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Filtrar por departamento o municipio',
+                onPressed: onPickDestination,
+                icon: Icon(
+                  Icons.tune_rounded,
+                  color: destination.isActive
+                      ? AppColors.oliveText
+                      : AppColors.settingsTextDark,
                 ),
               ),
             ],
           ),
         ),
+        if (destination.isActive) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: InputChip(
+              avatar: const Icon(Icons.place_rounded, size: 16),
+              label: Text(destination.label),
+              onDeleted: () =>
+                  onDestinationFilterChanged(const GeographicDestination()),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         SizedBox(
-          height: 40,
+          height: _kMinTouchTarget,
           child: ListView(
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
@@ -1028,9 +1444,14 @@ class _StepPlaces extends StatelessWidget {
                 selected: selectedCategory == null,
                 onTap: () => onCategorySelected(null),
               ),
-              for (final category in RouteStopCategory.values)
+              _CategoryFilterChip(
+                label: 'Jornadas ECO',
+                selected: selectedCategory == 'Jornadas ECO',
+                onTap: () => onCategorySelected('Jornadas ECO'),
+              ),
+              for (final category in kBusinessCategoryPresets)
                 _CategoryFilterChip(
-                  label: category.label,
+                  label: category,
                   selected: selectedCategory == category,
                   onTap: () => onCategorySelected(category),
                 ),
@@ -1040,25 +1461,45 @@ class _StepPlaces extends StatelessWidget {
         const SizedBox(height: 16),
         if (warning != null) ...[
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.complementario1,
-              borderRadius: BorderRadius.circular(16),
+              color: AppColors.coralPaleFill,
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: AppColors.settingsDanger,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    warning,
-                    style: AppTextStyles.settingsSubtitle.copyWith(
-                      fontSize: 12,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 18,
+                      color: AppColors.destructive,
                     ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        warning,
+                        style: AppTextStyles.settingsSubtitle.copyWith(
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: isLoading ? null : onRetry,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(
+                        _kMinTouchTarget,
+                        _kMinTouchTarget,
+                      ),
+                      foregroundColor: AppColors.oliveText,
+                    ),
+                    child: Text('Reintentar', style: AppTextStyles.buttonMd),
                   ),
                 ),
               ],
@@ -1067,12 +1508,7 @@ class _StepPlaces extends StatelessWidget {
           const SizedBox(height: 16),
         ],
         if (isLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 48),
-            child: Center(
-              child: CircularProgressIndicator(color: AppColors.primary500),
-            ),
-          )
+          const AppSectionLoader(message: 'Cargando lugares…')
         else if (candidates.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 48),
@@ -1085,7 +1521,7 @@ class _StepPlaces extends StatelessWidget {
         else
           for (final candidate in candidates)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
               child: _CandidateRow(
                 stop: candidate,
                 added: isAdded(candidate),
@@ -1112,23 +1548,29 @@ class _CategoryFilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 10),
+      // Zona tocable de 48dp con el píldora visible de 40.
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Align(
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? AppColors.primary500 : AppColors.surface100,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            label,
-            style: AppTextStyles.mapRowTitle.copyWith(
-              fontSize: 13,
-              color: selected
-                  ? AppColors.settingsTextDark
-                  : AppColors.settingsTextMuted,
+          child: AnimatedContainer(
+            duration: AppMotion.respect(context, AppMotion.microDuration),
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppColors.primary500 : AppColors.surface100,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Text(
+              label,
+              style: AppTextStyles.mapRowTitle.copyWith(
+                fontSize: 13,
+                color: selected
+                    ? AppColors.settingsTextDark
+                    : AppColors.settingsTextMuted,
+              ),
             ),
           ),
         ),
@@ -1151,15 +1593,15 @@ class _CandidateRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppRadius.md),
             child: SizedBox(
               width: 68,
               height: 68,
@@ -1177,6 +1619,16 @@ class _CandidateRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 RouteCategoryChip(category: stop.category, compact: true),
+                if (!stop.hasCoordinates)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Sin ubicación para navegar',
+                      style: AppTextStyles.settingsSubtitle.copyWith(
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 6),
                 Text(
                   stop.title,
@@ -1218,36 +1670,39 @@ class _AddToRouteButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 148),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: added ? AppColors.detailActivityIconBg : AppColors.primary500,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (added) ...[
-              const Icon(
-                Icons.check_rounded,
-                size: 16,
-                color: AppColors.ecoActive,
-              ),
-              const SizedBox(width: 6),
-            ],
-            Flexible(
-              child: Text(
-                added ? 'Agregado' : 'Agregar a ruta',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.mapRowTitle.copyWith(
-                  fontSize: 13,
-                  color: added
-                      ? AppColors.ecoActive
-                      : AppColors.settingsTextDark,
+        child: SizedBox(
+          height: _kMinTouchTarget,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (added) ...[
+                const Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: AppColors.oliveText,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Flexible(
+                child: Text(
+                  added ? 'Agregado' : 'Agregar a ruta',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.mapRowTitle.copyWith(
+                    fontSize: 13,
+                    color: added
+                        ? AppColors.oliveText
+                        : AppColors.settingsTextDark,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1263,28 +1718,90 @@ class _StepOrganize extends StatelessWidget {
     required this.onMove,
     required this.onRemove,
     required this.onAddMore,
+    required this.onAssignDay,
+    required this.onSuggestOrder,
+    required this.onPreview,
+    required this.onLocate,
   });
 
   final int days;
   final List<RouteStopModel> stops;
   final void Function(RouteStopModel stop, {required bool up}) onMove;
   final ValueChanged<RouteStopModel> onRemove;
-  final VoidCallback onAddMore;
+  final ValueChanged<int> onAddMore;
+  final void Function(RouteStopModel, int) onAssignDay;
+  final ValueChanged<int> onSuggestOrder;
+  final VoidCallback onPreview;
+  final ValueChanged<RouteStopModel> onLocate;
 
   @override
   Widget build(BuildContext context) {
+    final emptyDays = [
+      for (var day = 1; day <= days; day++)
+        if (!stops.any((s) => s.dayNumber == day)) day,
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
       children: [
+        Text(
+          'Revisa tu recorrido',
+          style: AppTextStyles.sectionTitle.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${stops.length} paradas · ${stops.where((s) => s.hasCoordinates).length} con ubicación. '
+          'Ordena cada día y deja espacio para visitas y descansos.',
+          style: AppTextStyles.settingsSubtitle,
+        ),
+        TextButton.icon(
+          onPressed: onPreview,
+          icon: const Icon(Icons.map_outlined),
+          label: const Text('Revisar mapa por día'),
+        ),
+        const SizedBox(height: 12),
+        // Solo advierte: una ruta con días vacíos se puede guardar igual.
+        if (emptyDays.isNotEmpty) ...[
+          _EmptyDaysNotice(emptyDays: emptyDays),
+          const SizedBox(height: 18),
+        ],
         for (var day = 1; day <= days; day++) ...[
           _DayHeader(day: day),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () => onAddMore(day),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Agregar lugares'),
+              ),
+              if (stops
+                      .where((s) => s.dayNumber == day && s.hasCoordinates)
+                      .length >
+                  2)
+                TextButton.icon(
+                  onPressed: () => onSuggestOrder(day),
+                  icon: const Icon(Icons.alt_route_rounded, size: 18),
+                  label: const Text('Ordenar por cercanía'),
+                ),
+            ],
+          ),
+          if (stops
+                  .where((s) => s.dayNumber == day && s.hasCoordinates)
+                  .length >
+              2)
+            Text(
+              'Mantiene la primera parada. Es una sugerencia geográfica; revisa horarios y accesos.',
+              style: AppTextStyles.settingsSubtitle.copyWith(fontSize: 12),
+            ),
           const SizedBox(height: 12),
           ...() {
             final dayStops = stops
                 .where((s) => s.dayNumber == day)
                 .toList(growable: false);
             if (dayStops.isEmpty) {
-              return [_EmptyDaySlot(onAddMore: onAddMore)];
+              return [_EmptyDaySlot(onAddMore: () => onAddMore(day))];
             }
             return [
               for (final stop in dayStops)
@@ -1292,10 +1809,13 @@ class _StepOrganize extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _OrganizeRow(
                     stop: stop,
+                    days: days,
+                    onAssignDay: (day) => onAssignDay(stop, day),
                     canMoveUp: !(day == 1 && stop == dayStops.first),
                     canMoveDown: !(day == days && stop == dayStops.last),
                     onMove: onMove,
                     onRemove: () => onRemove(stop),
+                    onLocate: () => onLocate(stop),
                   ),
                 ),
             ];
@@ -1303,6 +1823,55 @@ class _StepOrganize extends StatelessWidget {
           const SizedBox(height: 18),
         ],
       ],
+    );
+  }
+}
+
+/// Aviso informativo (no bloquea) de los días que quedaron sin paradas.
+class _EmptyDaysNotice extends StatelessWidget {
+  const _EmptyDaysNotice({required this.emptyDays});
+
+  final List<int> emptyDays;
+
+  String get _message {
+    if (emptyDays.length == 1) {
+      return 'El día ${emptyDays.first} no tiene paradas. '
+          'Puedes guardar la ruta así o agregar lugares.';
+    }
+    final head = emptyDays.sublist(0, emptyDays.length - 1).join(', ');
+    return 'Los días $head y ${emptyDays.last} no tienen paradas. '
+        'Puedes guardar la ruta así o agregar lugares.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_rounded,
+            size: 24,
+            color: AppColors.oliveText,
+            semanticLabel: 'Aviso',
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              _message,
+              style: AppTextStyles.bodyText2.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1363,7 +1932,7 @@ class _EmptyDaySlot extends StatelessWidget {
               '+ Agregar parada',
               style: AppTextStyles.mapRowTitle.copyWith(
                 fontSize: 13,
-                color: AppColors.ecoActive,
+                color: AppColors.oliveText,
               ),
             ),
           ],
@@ -1376,6 +1945,9 @@ class _EmptyDaySlot extends StatelessWidget {
 class _OrganizeRow extends StatelessWidget {
   const _OrganizeRow({
     required this.stop,
+    required this.days,
+    required this.onAssignDay,
+    required this.onLocate,
     required this.canMoveUp,
     required this.canMoveDown,
     required this.onMove,
@@ -1383,6 +1955,9 @@ class _OrganizeRow extends StatelessWidget {
   });
 
   final RouteStopModel stop;
+  final int days;
+  final ValueChanged<int> onAssignDay;
+  final VoidCallback onLocate;
   final bool canMoveUp;
   final bool canMoveDown;
   final void Function(RouteStopModel stop, {required bool up}) onMove;
@@ -1394,16 +1969,10 @@ class _OrganizeRow extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.drag_indicator_rounded,
-            size: 20,
-            color: AppColors.neutral400,
-          ),
-          const SizedBox(width: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
             child: SizedBox(
@@ -1430,6 +1999,27 @@ class _OrganizeRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 RouteCategoryChip(category: stop.category, compact: true),
+                if (!stop.hasCoordinates)
+                  TextButton.icon(
+                    onPressed: onLocate,
+                    icon: const Icon(Icons.add_location_alt_outlined, size: 18),
+                    label: const Text('Ubicar en mapa'),
+                  ),
+                if (days > 1)
+                  DropdownButton<int>(
+                    value: stop.dayNumber,
+                    isExpanded: true,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (var day = 1; day <= days; day++)
+                        DropdownMenuItem(value: day, child: Text('Día $day')),
+                    ],
+                    onChanged: (day) {
+                      if (day != null && day != stop.dayNumber) {
+                        onAssignDay(day);
+                      }
+                    },
+                  ),
               ],
             ),
           ),
@@ -1450,11 +2040,14 @@ class _OrganizeRow extends StatelessWidget {
           ),
           IconButton(
             onPressed: onRemove,
-            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints.tightFor(
+              width: _kMinTouchTarget,
+              height: _kMinTouchTarget,
+            ),
             icon: const Icon(
               Icons.close_rounded,
-              size: 18,
-              color: AppColors.neutral400,
+              size: 20,
+              color: AppColors.settingsTextMuted,
             ),
             tooltip: 'Quitar de la ruta',
           ),
@@ -1477,11 +2070,23 @@ class _MoveButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Opacity(
-        opacity: enabled ? 1 : 0.3,
-        child: Icon(icon, size: 22, color: AppColors.settingsTextMuted),
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: icon == Icons.keyboard_arrow_up_rounded
+          ? 'Subir parada'
+          : 'Bajar parada',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: SizedBox.square(
+          dimension: _kMinTouchTarget,
+          child: Opacity(
+            opacity: enabled ? 1 : 0.3,
+            child: Icon(icon, size: 24, color: AppColors.settingsTextMuted),
+          ),
+        ),
       ),
     );
   }
@@ -1490,45 +2095,33 @@ class _MoveButton extends StatelessWidget {
 class _WizardFooter extends StatelessWidget {
   const _WizardFooter({
     required this.label,
-    required this.enabled,
     required this.isBusy,
     required this.onPressed,
   });
 
   final String label;
-  final bool enabled;
   final bool isBusy;
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.sm,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       child: SizedBox(
         height: 58,
         width: double.infinity,
-        child: FilledButton(
-          onPressed: enabled && !isBusy ? onPressed : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary500,
-            foregroundColor: AppColors.settingsTextDark,
-            disabledBackgroundColor: AppColors.segmentedTrackBg,
-            disabledForegroundColor: AppColors.settingsTextMuted,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 16),
-          ),
-          child: isBusy
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.settingsTextDark,
-                  ),
-                )
-              : Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        // `AppLoadingButton` ya se protege solo del doble toque mientras el
+        // `Future` de `onPressed` no termina (y `isBusy` cubre el guardado
+        // disparado desde otro lado).
+        child: AppLoadingButton(
+          label: label,
+          isLoading: isBusy,
+          onPressed: onPressed,
         ),
       ),
     );

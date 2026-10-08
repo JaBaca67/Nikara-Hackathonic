@@ -1,29 +1,57 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/shared/widgets/auth/auth_logo_geometry.dart';
+import 'package:nikara_app/shared/widgets/auth/auth_scene_backdrop.dart';
 import 'package:nikara_app/shared/widgets/auth/nikara_logo_svg.dart';
+import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_theme.dart';
-import 'package:nikara_app/widgets/aurora_background_widget.dart';
 
 /// Estados de reposo del sheet: 0.10 es seguro porque el handle vive dentro del Scrollable; si vuelve a chocar con el gesto "swipe up" de Android, subir este valor (no reubicar el handle).
 const double _kSheetHiddenSize = 0.10;
-const double _kSheetOpenSize = 0.72;
+const double _kSheetOpenSize = kAuthSheetOpenSize;
 
 /// Rango de arrastre tras [_kSheetHiddenSize] en el que el contenido se desvanece, para que quede invisible en reposo sin depender de los píxeles exactos que deja esa fracción.
 const double _kContentFadeSpan = 0.08;
 
-/// Gap fijo entre el logo y el borde superior del sheet cuando este lo alcanza.
-const double _kLogoToSheetGap = 14.0;
+/// Ancho/alto del asset del eslogan ya recortado a su contenido visible (sin
+/// el padding transparente que traía el export original). Igual que
+/// [AuthLogoGeometry.aspectRatio], fijarlo evita depender del tamaño del PNG en disco.
+const double _kSloganAspectRatio = 2110 / 448;
 
-/// Aumentado de 150 para que "NÍKARA" se lea prominente y nítido; [FittedBox] en el call site evita cortes en pantallas angostas.
-const double _kLogoHeight = 210.0;
+/// Separación entre el logo y el eslogan "Descubre. Conecta. Vive." cuando
+/// el sheet está minimizado y ambos quedan centrados en pantalla. Negativo a
+/// propósito: el SVG del logo trae bastante espacio vacío bajo la palabra
+/// "NÍKARA" dentro de su propio viewBox, así que un gap positivo (o incluso 0)
+/// deja el eslogan flotando lejos del logo — hay que "morder" ese hueco para
+/// que se lea pegado. Pedido explícito de José: subir el eslogan, no el logo
+/// (que ya está centrado correctamente).
+const double _kLogoToSloganGap = -8.0;
+
+/// Espera antes de arrancar la entrada, contada desde que la pantalla se
+/// monta — para que no compita con el fundido de la ruta que trae a esta
+/// pantalla (ej. los 500ms de `SplashTransitionScreen`): primero se asienta
+/// esa transición, después se arma la escena.
+const Duration _kEntranceStartDelay = Duration(milliseconds: 150);
+
+/// Duración de la entrada de toda la pantalla: tarjeta e ilustraciones comparten este mismo valor para moverse en sintonía.
+const Duration _kCardEntranceDuration = Duration(milliseconds: 650);
 
 /// Shell compartido por las pantallas de Auth (Login + los 3 pasos de Register): fondo "Sunset" animado, logo, y un bottom sheet arrastrable con [child]. La altura de [child] decide el tamaño del sheet — un `AnimatedSwitcher` de contenido variable debe top-align el suyo propio.
 class AuthBottomSheetLayout extends StatefulWidget {
-  const AuthBottomSheetLayout({super.key, required this.child, this.onBack});
+  const AuthBottomSheetLayout({
+    super.key,
+    required this.child,
+    this.onBack,
+    this.showIllustrations = true,
+  });
 
   final Widget child;
+
+  /// Ver [AuthSceneBackdrop.showIllustrations].
+  final bool showIllustrations;
 
   /// Sin botón de back propio: un círculo flotante sobre el gradiente animado no se leía como tappable. Pantallas que necesitan uno lo agregan dentro de [child].
   final VoidCallback? onBack;
@@ -32,12 +60,61 @@ class AuthBottomSheetLayout extends StatefulWidget {
   State<AuthBottomSheetLayout> createState() => _AuthBottomSheetLayoutState();
 }
 
-class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
+class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout>
+    with SingleTickerProviderStateMixin {
   final _sheetController = DraggableScrollableController();
+
+  /// Un solo reloj para toda la entrada de la pantalla: la tarjeta se
+  /// desliza desde abajo y, al mismo tiempo (mismo controlador, misma
+  /// curva), las ilustraciones de [AuthSceneBackdrop] se desvanecen hacia
+  /// adentro — así se leen como una sola escena que se arma, no como dos
+  /// elementos apareciendo por separado.
+  late final AnimationController _entranceController = AnimationController(
+    vsync: this,
+    duration: _kCardEntranceDuration,
+  );
+
+  /// 1.15 (no 1.0): el 100% de la altura de la tarjeta la deja justo en el
+  /// borde inferior de la pantalla, todavía asomando. El extra la saca del
+  /// todo para que el recorrido se lea como "entra desde abajo", no como un
+  /// rebote de pocos píxeles.
+  late final Animation<Offset> _cardSlide =
+      Tween<Offset>(begin: const Offset(0, 1.15), end: Offset.zero).animate(
+        CurvedAnimation(
+          parent: _entranceController,
+          curve: AppMotion.decelerate,
+        ),
+      );
+
+  /// Misma curva que la tarjeta (sin rebote: un overshoot en opacidad se
+  /// saldría del rango 0-1 y parpadearía) para que las dos se sientan como
+  /// un solo movimiento, no dos velocidades distintas.
+  late final Animation<double> _illustrationsOpacity = CurvedAnimation(
+    parent: _entranceController,
+    curve: AppMotion.decelerate,
+  );
+  bool _entranceStarted = false;
+  Timer? _entranceStartTimer;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entranceStarted) return;
+    _entranceStarted = true;
+    if (AppMotion.reduced(context)) {
+      _entranceController.value = 1;
+      return;
+    }
+    _entranceStartTimer = Timer(_kEntranceStartDelay, () {
+      if (mounted) _entranceController.forward();
+    });
+  }
 
   @override
   void dispose() {
+    _entranceStartTimer?.cancel();
     _sheetController.dispose();
+    _entranceController.dispose();
     super.dispose();
   }
 
@@ -59,38 +136,74 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
           builder: (context, constraints) {
             final availableHeight = constraints.maxHeight;
             final safeTop = MediaQuery.paddingOf(context).top;
-            final baseCenterTop = (availableHeight - _kLogoHeight) / 2;
+            final logoWidth = AuthLogoGeometry.widthFor(constraints.maxWidth);
+            final logoHeight = AuthLogoGeometry.heightFor(logoWidth);
 
             return Stack(
               children: [
-                const Positioned.fill(child: AuroraBackgroundWidget()),
+                Positioned.fill(
+                  child: AuthSceneBackdrop(
+                    showIllustrations: widget.showIllustrations,
+                    illustrationsReveal: _illustrationsOpacity,
+                  ),
+                ),
                 AnimatedBuilder(
                   animation: _sheetController,
                   builder: (context, _) {
                     final extent = _extent;
-                    final sheetTopY = availableHeight * (1 - extent);
-                    final sheetPushedTop =
-                        sheetTopY - _kLogoToSheetGap - _kLogoHeight;
-                    // Reposa al centro salvo que el sheet lo empuje hacia arriba, con clamp para no pasar el status bar.
-                    final logoTop = math
-                        .min(baseCenterTop, sheetPushedTop)
-                        .clamp(safeTop + 8, availableHeight);
+                    final logoTop = AuthLogoGeometry.topFor(
+                      availableHeight: availableHeight,
+                      safeTop: safeTop,
+                      logoHeight: logoHeight,
+                      sheetExtent: extent,
+                    );
+                    final sloganOpacity = ((0.58 - extent) / 0.18).clamp(
+                      0.0,
+                      1.0,
+                    );
+                    final sloganWidth = math.min(
+                      constraints.maxWidth - 44,
+                      logoWidth,
+                    );
+                    final sloganHeight = sloganWidth / _kSloganAspectRatio;
                     // AnimatedPositioned (no Positioned) da un pequeño rebote elástico en vez de seguir el extent del sheet 1:1.
-                    return AnimatedPositioned(
-                      duration: const Duration(milliseconds: 320),
-                      curve: Curves.easeOutBack,
-                      top: logoTop,
-                      left: 0,
-                      right: 0,
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 28),
-                          child: FittedBox(
-                            fit: BoxFit.contain,
-                            child: const NikaraLogoSvg(height: _kLogoHeight),
+                    return Stack(
+                      children: [
+                        AnimatedPositioned(
+                          duration: AppMotion.largeDuration,
+                          curve: AppMotion.overshoot,
+                          top: logoTop + logoHeight + _kLogoToSloganGap,
+                          left: 0,
+                          right: 0,
+                          child: AnimatedOpacity(
+                            duration: AppMotion.quickDuration,
+                            curve: AppMotion.enter,
+                            opacity: sloganOpacity,
+                            child: Center(
+                              child: Image.asset(
+                                'assets/images/descubre_conecta_vive.png',
+                                width: sloganWidth,
+                                height: sloganHeight,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.medium,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        AnimatedPositioned(
+                          duration: AppMotion.largeDuration,
+                          curve: AppMotion.overshoot,
+                          top: logoTop,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: NikaraLogoSvg(
+                              width: logoWidth,
+                              height: logoHeight,
+                            ),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
@@ -119,72 +232,79 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout> {
                         resetScrollAtRest(notification.extent);
                         return false;
                       },
-                      child: DecoratedBox(
-                        decoration: const BoxDecoration(
-                          color: AppColors.authCardBackground,
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(32),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.mapControlShadowStrong,
-                              offset: Offset(0, -8),
-                              blurRadius: 30,
+                      child: SlideTransition(
+                        position: _cardSlide,
+                        child: DecoratedBox(
+                          decoration: const BoxDecoration(
+                            color: AppColors.authCardBackground,
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(32),
                             ),
-                          ],
-                        ),
-                        child: SafeArea(
-                          top: false,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => FocusScope.of(context).unfocus(),
-                            // El handle vive dentro de este mismo Scrollable a propósito: fuera de él se vería arrastrable pero no respondería al drag.
-                            child: SingleChildScrollView(
-                              controller: scrollController,
-                              physics: const ClampingScrollPhysics(),
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    height: 44,
-                                    child: Center(
-                                      child: Container(
-                                        width: 52,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.authMuted.withValues(
-                                            alpha: 0.4,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            3,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.mapControlShadowStrong,
+                                offset: Offset(0, -8),
+                                blurRadius: 30,
+                              ),
+                            ],
+                          ),
+                          // Sin `bottom`: con barra de sistema transparente, un SafeArea inferior recorta el scroll en el borde del inset y deja una franja opaca de color tarjeta; el inset se aplica como relleno del contenido (más abajo).
+                          child: SafeArea(
+                            top: false,
+                            bottom: false,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => FocusScope.of(context).unfocus(),
+                              // El handle vive dentro de este mismo Scrollable a propósito: fuera de él se vería arrastrable pero no respondería al drag.
+                              child: SingleChildScrollView(
+                                controller: scrollController,
+                                physics: const ClampingScrollPhysics(),
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      height: 44,
+                                      child: Center(
+                                        child: Container(
+                                          width: 52,
+                                          height: 6,
+                                          decoration: BoxDecoration(
+                                            color: AppColors.authMuted
+                                                .withValues(alpha: 0.4),
+                                            borderRadius: BorderRadius.circular(
+                                              3,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  AnimatedBuilder(
-                                    animation: _sheetController,
-                                    builder: (context, child) {
-                                      // El handle queda fuera de este fade a propósito: siempre debe leerse como agarrable.
-                                      final opacity =
-                                          ((_extent - _kSheetHiddenSize) /
-                                                  _kContentFadeSpan)
-                                              .clamp(0.0, 1.0);
-                                      return Opacity(
-                                        opacity: opacity,
-                                        child: child,
-                                      );
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        22,
-                                        6,
-                                        22,
-                                        18,
+                                    AnimatedBuilder(
+                                      animation: _sheetController,
+                                      builder: (context, child) {
+                                        // El handle queda fuera de este fade a propósito: siempre debe leerse como agarrable.
+                                        final opacity =
+                                            ((_extent - _kSheetHiddenSize) /
+                                                    _kContentFadeSpan)
+                                                .clamp(0.0, 1.0);
+                                        return Opacity(
+                                          opacity: opacity,
+                                          child: child,
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          22,
+                                          6,
+                                          22,
+                                          18 +
+                                              MediaQuery.paddingOf(
+                                                context,
+                                              ).bottom,
+                                        ),
+                                        child: widget.child,
                                       ),
-                                      child: widget.child,
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),

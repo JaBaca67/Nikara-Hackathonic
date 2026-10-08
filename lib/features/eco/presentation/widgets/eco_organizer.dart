@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/screens/organization_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -13,29 +15,25 @@ Future<void> openEcoOrganizerProfile(
 ) async {
   final organizationId = activity.organizationId;
   if (activity.isFromOrganization && organizationId != null) {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            OrganizationProfileScreen(organizationId: organizationId),
-      ),
+    await pushSharedAxis(
+      context,
+      OrganizationProfileScreen(organizationId: organizationId),
     );
     return;
   }
   final organizerId = activity.organizerId;
   if (organizerId == null || organizerId.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Esta actividad no tiene un perfil de organizador.'),
-      ),
+    AppSnackbar.showInfo(
+      context,
+      'Esta actividad no tiene un perfil de organizador.',
     );
     return;
   }
-  await Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => PublicUserProfileScreen(
-        userId: organizerId,
-        fallbackName: activity.organizerDisplayName,
-      ),
+  await pushSharedAxis(
+    context,
+    PublicUserProfileScreen(
+      userId: organizerId,
+      fallbackName: activity.organizerDisplayName,
     ),
   );
 }
@@ -74,7 +72,7 @@ class EcoOrganizerAvatar extends StatelessWidget {
                   activity.organizerInitials,
                   style: AppTextStyles.mapRowTitle.copyWith(
                     fontSize: size * 0.34,
-                    color: AppColors.ecoActive,
+                    color: AppColors.oliveText,
                   ),
                 ),
               ),
@@ -114,7 +112,7 @@ class EcoOrganizerRow extends StatelessWidget {
             const Icon(
               Icons.verified_rounded,
               size: 13,
-              color: AppColors.ecoActive,
+              color: AppColors.oliveText,
             ),
           ],
         ],

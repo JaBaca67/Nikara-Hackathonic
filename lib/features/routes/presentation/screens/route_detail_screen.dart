@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'route_overview_screen.dart';
+import 'route_travel_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -10,7 +12,12 @@ import 'package:nikara_app/features/routes/presentation/screens/create_route_wiz
 import 'package:nikara_app/features/routes/presentation/screens/full_screen_map_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_card.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/route_mini_map.dart';
-import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/features/routes/presentation/widgets/route_stop_avatar.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
+import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Detalle de una ruta armada: mini-mapa con las paradas numeradas y el
@@ -31,6 +38,7 @@ class RouteDetailScreen extends StatefulWidget {
 class _RouteDetailScreenState extends State<RouteDetailScreen> {
   late RouteModel _route = widget.route;
   bool _isBusy = false;
+  int _mapDay = 1;
 
   String? get _currentUserId => AuthService().currentAuthUser?.id;
 
@@ -45,7 +53,12 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   Future<void> _refresh() async {
     try {
       final fresh = await RouteService().getRouteById(_route.id);
-      if (fresh != null && mounted) setState(() => _route = fresh);
+      if (fresh != null && mounted) {
+        setState(() {
+          _route = fresh;
+          if (_mapDay > fresh.days) _mapDay = fresh.days;
+        });
+      }
     } on RouteServiceException {
       // Refresco en segundo plano: se sigue mostrando lo que ya traía la
       // tarjeta en vez de un error por algo que nadie pidió.
@@ -53,32 +66,26 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   }
 
   Future<void> _edit() async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => CreateRouteWizardScreen(initialRoute: _route),
-      ),
+    final saved = await pushSharedAxis<bool>(
+      context,
+      CreateRouteWizardScreen(initialRoute: _route),
     );
     if (saved == true) await _refresh();
   }
 
   Future<void> _clone() async {
+    if (_isBusy) return;
     setState(() => _isBusy = true);
     try {
       final copy = await RouteService().cloneRoute(_route);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('"${copy.title}" ya está en tus rutas')),
-      );
+      AppSnackbar.showSuccess(context, '"${copy.title}" ya está en tus rutas');
       // Se abre la copia: a partir de acá la persona edita lo suyo, no el
       // itinerario de quien lo publicó.
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RouteDetailScreen(route: copy)),
-      );
+      await pushSharedAxisReplacement(context, RouteDetailScreen(route: copy));
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     } finally {
       if (mounted) setState(() => _isBusy = false);
     }
@@ -92,20 +99,15 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       await RouteService().updateRoute(_route.id, status: next);
       if (!mounted) return;
       setState(() => _route = _route.copyWith(status: next));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            next == RouteStatus.completed
-                ? 'Ruta marcada como completada'
-                : 'Ruta reactivada',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        next == RouteStatus.completed
+            ? 'Ruta marcada como completada'
+            : 'Ruta reactivada',
       );
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
@@ -115,67 +117,58 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
       await RouteService().updateRoute(_route.id, isPublic: next);
       if (!mounted) return;
       setState(() => _route = _route.copyWith(isPublic: next));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            next
-                ? 'Tu ruta ya es visible en la comunidad'
-                : 'Tu ruta volvió a ser privada',
-          ),
-        ),
+      AppSnackbar.showSuccess(
+        context,
+        next
+            ? 'Tu ruta ya es visible en la comunidad'
+            : 'Tu ruta volvió a ser privada',
       );
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
     }
   }
 
+  /// Mientras se elimina: `_isBusy` bloquea Editar/Eliminar/Duplicar y
+  /// `_isDeleting` pone el spinner en el botón de eliminar.
+  bool _isDeleting = false;
+
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface100,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Eliminar ruta', style: AppTextStyles.detailSectionTitle),
-        content: Text(
-          '¿Seguro que querés eliminar "${_route.title}"? Esta acción no se '
+    if (_isBusy) return;
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: 'Eliminar ruta',
+      message:
+          '¿Seguro que quieres eliminar "${_route.title}"? Esta acción no se '
           'puede deshacer.',
-          style: AppTextStyles.settingsSubtitle,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancelar',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                color: AppColors.settingsTextMuted,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              'Eliminar',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                color: AppColors.wizardDangerLink,
-              ),
-            ),
-          ),
-        ],
-      ),
+      confirmLabel: 'Eliminar',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
+    setState(() {
+      _isBusy = true;
+      _isDeleting = true;
+    });
     try {
       await RouteService().deleteRoute(_route.id);
       if (!mounted) return;
       Navigator.of(context).pop();
     } on RouteServiceException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      AppSnackbar.showError(context, e.message);
+    } on Exception {
+      if (!mounted) return;
+      AppSnackbar.showError(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+        'No se pudo eliminar la ruta. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+          _isDeleting = false;
+        });
+      }
     }
   }
 
@@ -184,23 +177,21 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   /// previsualización de ruta.
   void _openStopOnMap(RouteStopModel stop) {
     if (!stop.hasCoordinates) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Esta parada todavía no tiene ubicación en el mapa.'),
-        ),
+      AppSnackbar.showError(
+        context,
+        'Esta parada todavía no tiene ubicación en el mapa.',
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FullScreenMapScreen(
-          title: stop.title,
-          subtitle: stop.subtitle,
-          latitude: stop.latitude!,
-          longitude: stop.longitude!,
-          locationId: 'route-stop-${stop.id ?? stop.sourceKey}',
-          badge: RouteCategoryChip(category: stop.category, compact: true),
-        ),
+    pushSharedAxis(
+      context,
+      FullScreenMapScreen(
+        title: stop.title,
+        subtitle: stop.subtitle,
+        latitude: stop.latitude!,
+        longitude: stop.longitude!,
+        locationId: 'route-stop-${stop.id ?? stop.sourceKey}',
+        badge: RouteCategoryChip(category: stop.category, compact: true),
       ),
     );
   }
@@ -263,21 +254,82 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
     final route = _route;
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
             _DetailHeader(
               route: route,
               onBack: () => Navigator.of(context).maybePop(),
-              onShare: _showMoreMenu,
               onMore: _showMoreMenu,
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.xs,
+                  AppSpacing.xl,
+                  AppSpacing.xxl,
+                ),
                 children: [
-                  RouteMiniMap(stops: route.stops),
+                  Text(
+                    'Tu recorrido',
+                    style: AppTextStyles.sectionTitle.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (var day = 1; day <= route.days; day++)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text('Día $day'),
+                              selected: day == _mapDay,
+                              onSelected: (_) => setState(() => _mapDay = day),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: _isBusy || route.stops.isEmpty
+                        ? null
+                        : () => pushSharedAxis(
+                            context,
+                            RouteTravelScreen(route: route),
+                          ),
+                    icon: const Icon(Icons.navigation_rounded),
+                    label: const Text('Empezar recorrido'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary500,
+                      foregroundColor: AppColors.textPrimary,
+                      minimumSize: const Size.fromHeight(54),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Tu progreso se guardará y podrás continuar cuando quieras.',
+                    style: AppTextStyles.settingsSubtitle.copyWith(
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  RouteMiniMap(
+                    stops: route.stopsForDay(_mapDay),
+                    interactive: true,
+                    onExpand: () => pushSharedAxis(
+                      context,
+                      RouteOverviewScreen(
+                        title: route.title,
+                        stops: route.stops,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 22),
                   for (var day = 1; day <= route.days; day++)
                     _DaySection(
@@ -291,6 +343,7 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
             _DetailActions(
               isOwner: _isOwner,
               isBusy: _isBusy,
+              isDeleting: _isDeleting,
               onEdit: _edit,
               onDelete: _delete,
               onClone: _clone,
@@ -306,13 +359,11 @@ class _DetailHeader extends StatelessWidget {
   const _DetailHeader({
     required this.route,
     required this.onBack,
-    required this.onShare,
     required this.onMore,
   });
 
   final RouteModel route;
   final VoidCallback onBack;
-  final VoidCallback onShare;
   final VoidCallback onMore;
 
   @override
@@ -333,7 +384,10 @@ class _DetailHeader extends StatelessWidget {
                 children: [
                   Text(
                     route.title,
-                    style: AppTextStyles.detailTitle.copyWith(fontSize: 21),
+                    style: AppTextStyles.detailTitle.copyWith(
+                      fontSize: 23,
+                      color: AppColors.textPrimary,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -351,8 +405,6 @@ class _DetailHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          _RoundButton(icon: Icons.ios_share, onTap: onShare),
-          const SizedBox(width: 8),
           _RoundButton(icon: Icons.more_vert, onTap: onMore),
         ],
       ),
@@ -456,7 +508,7 @@ class _DaySection extends StatelessWidget {
                     else
                       for (final stop in stops)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.md),
                           child: _StopTile(
                             stop: stop,
                             onOpenOnMap: () => onOpenOnMap(stop),
@@ -512,25 +564,14 @@ class _StopTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              width: 62,
-              height: 62,
-              child: LocalImage(
-                path: stop.imagePath,
-                fallbackIcon: Icons.photo_outlined,
-                fallbackIconSize: 0,
-              ),
-            ),
-          ),
+          RouteStopAvatar(stop: stop, size: 62),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -578,6 +619,7 @@ class _DetailActions extends StatelessWidget {
   const _DetailActions({
     required this.isOwner,
     required this.isBusy,
+    required this.isDeleting,
     required this.onEdit,
     required this.onDelete,
     required this.onClone,
@@ -585,6 +627,7 @@ class _DetailActions extends StatelessWidget {
 
   final bool isOwner;
   final bool isBusy;
+  final bool isDeleting;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onClone;
@@ -593,10 +636,15 @@ class _DetailActions extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isOwner) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xs,
+          AppSpacing.xl,
+          AppSpacing.lg,
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(AppRadius.lg),
             boxShadow: const [
               BoxShadow(
                 color: AppColors.detailPrimaryButtonGlow,
@@ -616,7 +664,7 @@ class _DetailActions extends StatelessWidget {
                 backgroundColor: AppColors.primary500,
                 foregroundColor: AppColors.settingsTextDark,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 16),
               ),
@@ -627,20 +675,25 @@ class _DetailActions extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.xs,
+        AppSpacing.xl,
+        AppSpacing.lg,
+      ),
       child: Row(
         children: [
           Expanded(
             child: SizedBox(
               height: 56,
               child: OutlinedButton(
-                onPressed: onEdit,
+                onPressed: isBusy ? null : onEdit,
                 style: OutlinedButton.styleFrom(
                   backgroundColor: AppColors.surface100,
                   foregroundColor: AppColors.settingsTextDark,
                   side: const BorderSide(color: AppColors.mapControlBorder),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                   ),
                   textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
                 ),
@@ -653,17 +706,19 @@ class _DetailActions extends StatelessWidget {
             child: SizedBox(
               height: 56,
               child: OutlinedButton(
-                onPressed: onDelete,
+                onPressed: isBusy ? null : onDelete,
                 style: OutlinedButton.styleFrom(
                   backgroundColor: AppColors.surface100,
                   foregroundColor: AppColors.wizardDangerLink,
                   side: const BorderSide(color: AppColors.wizardDangerLink),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
                   ),
                   textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 15),
                 ),
-                child: const Text('Eliminar ruta'),
+                child: isDeleting
+                    ? const AppSpinner(color: AppColors.wizardDangerLink)
+                    : const Text('Eliminar ruta'),
               ),
             ),
           ),

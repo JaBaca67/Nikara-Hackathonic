@@ -1,24 +1,50 @@
 import 'dart:async';
+import 'package:nikara_app/features/routes/data/route_travel_service.dart';
+import 'package:nikara_app/features/routes/presentation/screens/route_travel_screen.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:uuid/uuid.dart';
 
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
 import 'package:nikara_app/core/services/directions_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/core/services/tts_service.dart';
+import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/business/presentation/screens/business_detail_screen.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
+import 'package:nikara_app/features/eco/presentation/screens/eco_detail_screen.dart';
 import 'package:nikara_app/features/map/domain/marker_clustering.dart';
 import 'package:nikara_app/features/map/domain/route_progress.dart';
+import 'package:nikara_app/features/map/domain/trip_arrival_tracker.dart';
+import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
+import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
+import 'package:nikara_app/features/map/presentation/widgets/map_bottom_dock.dart';
+import 'package:nikara_app/features/map/presentation/widgets/map_business_rating.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
+import 'package:nikara_app/shared/widgets/app_page_transition.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/guest_guard_bottom_sheet.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
+import 'package:nikara_app/shared/widgets/face_guard_bottom_sheet.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
+import 'package:nikara_app/shared/widgets/eco_badge.dart';
+import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
+import 'package:nikara_app/theme/app_motion.dart';
+import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Centro por defecto si falla la geolocalización (permiso denegado,
@@ -34,6 +60,17 @@ final LatLngBounds _kMapBounds = LatLngBounds(
 );
 
 const String _kAllCategories = 'Todos';
+
+/// Chip propio para las jornadas ECO: no sale de `businesses.category` como
+/// los demás, porque no son negocios sino filas de `eco_activities`.
+const String _kEcoCategory = 'Jornadas ECO';
+
+bool _hasEcoBadge(BusinessModel business) =>
+    business.ecoSealRequested ||
+    business.category.toLowerCase().contains('eco') ||
+    business.activities.any(
+      (activity) => activityLabel(activity).toLowerCase().contains('eco'),
+    );
 
 /// Margen extra sobre el viewport visible al consultar negocios (ver
 /// [_MapScreenState._loadBusinessesInViewport]/[_MapScreenState._paddedBounds]).
@@ -66,7 +103,8 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _businessStorageService = BusinessStorageService();
   GoogleMapController? _mapController;
 
@@ -80,12 +118,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final Map<MapPinCategory, BitmapDescriptor> _pinIconsSelected = {};
   BitmapDescriptor? _vehicleIcon;
 
-  /// Bitmaps de badge de cluster por conteo (2..9, 10 = "9+", ver
-  /// [_clusterIconKey]). Se generan una sola vez junto a los pines en
-  /// [_loadMarkerIcons] porque `icon` de un marker necesita un
-  /// [BitmapDescriptor] ya listo, no algo construido al vuelo dentro del
-  /// build síncrono.
-  final Map<int, BitmapDescriptor> _clusterIcons = {};
+  /// Iconos de agrupaciones, generados según las categorías visibles. Evita
+  /// mostrar cifras que parecen pines de ruta y ayuda a reconocer qué lugares
+  /// hay dentro del grupo.
+  final Map<String, BitmapDescriptor> _clusterIcons = {};
+  final Map<String, List<MapPinCategory>> _pendingClusterIcons = {};
+  bool _clusterIconBatchScheduled = false;
+
+  /// Pines con el nombre del negocio dibujado debajo, cacheados por
+  /// contenido (ver [_labeledPinFor]): a diferencia de [_pinIcons], que
+  /// alcanza con uno por categoría, acá cada negocio necesita su propio
+  /// bitmap porque el texto es parte de la imagen.
+  final Map<String, _LabeledPin> _labeledPins = {};
+
+  /// Etiquetas pedidas durante un build y todavía sin generar. Se juntan y
+  /// se resuelven en lote después del frame: generar un PNG no puede pasar
+  /// dentro de `build`, y hacerlo de a uno dispararía un `setState` por pin.
+  final Map<String, _PinLabelRequest> _pendingPinLabels = {};
+  bool _pinLabelBatchScheduled = false;
+
+  /// Tope del caché de etiquetas. Al pasarlo se vacía entero en vez de
+  /// expulsar de a una: el set visible se regenera en el frame siguiente y
+  /// una política LRU acá sería más código del que el problema justifica.
+  static const int _kMaxLabeledPins = 240;
 
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
@@ -96,10 +151,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _myLocationEnabled = false;
   String _searchQuery = '';
   String _selectedCategory = _kAllCategories;
+  GeographicDestination _destination = const GeographicDestination();
   String? _loadError;
   String? _selectedBusinessId;
   Position? _userPosition;
   List<BusinessModel> _businesses = const [];
+
+  /// Jornadas con coordenadas, para pintarlas junto a los negocios.
+  List<EcoActivityModel> _ecoActivities = const [];
+  BitmapDescriptor? _ecoPinIcon;
 
   /// Solicitud pendiente de centrar el mapa en un negocio — de
   /// [MapScreen.initialFocus] o [MapFocusController], aplicada por
@@ -110,6 +170,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// dispositivo registra/edita un negocio) — ver
   /// [BusinessStorageService.subscribeToBusinessChanges].
   Future<void> Function()? _unsubscribeBusinessChanges;
+  Future<void> Function()? _unsubscribeReviews;
+  Timer? _reviewsPoll;
+  Timer? _reviewsDebounce;
+  bool _refreshingReviews = false;
+  bool _reviewsRefreshPending = false;
 
   /// Junta una ráfaga de eventos realtime (una edición multi-fila dispara
   /// uno por fila) en un solo reload.
@@ -124,9 +189,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// `setState` ahí) para que esté al día cuando [GoogleMap.onCameraIdle]
   /// re-agrupa al terminar el gesto.
   double _currentZoom = 13;
+  int _viewportLoadGeneration = 0;
 
   // --- Modo de preview de viaje, Fase 1 (ver _startTripPreview) ---
   bool _isPreviewingTrip = false;
+  bool _isStartingTripPreview = false;
+  bool _isConfirmingTrip = false;
+  MapRouteRequest? _itineraryRequest;
   TravelMode _tripMode = TravelMode.driving;
 
   /// Fijado al tocar "Cómo llegar" y reusado en cada cambio de modo durante
@@ -143,6 +212,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _isNavigating = false;
   BusinessModel? _navigationTarget;
   DirectionsRoute? _navigationRoute;
+  bool _tripHasBusiness = false;
+  TripArrivalTracker? _arrivalTracker;
+  String? _tripOwnerId;
+  String? _tripId;
+  DateTime? _tripStartedAt;
+  DateTime? _pendingArrivalAt;
+  bool _isCompletingTrip = false;
 
   /// Polyline de la ruta recortada a lo que falta por recorrer —
   /// recalculada en cada fix de GPS (ver [_onPositionUpdate] y
@@ -229,6 +305,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _destination = DiscoveryDestinationService().destination.value;
+    DiscoveryDestinationService().destination.addListener(
+      _onDestinationChanged,
+    );
+    WidgetsBinding.instance.addObserver(this);
+    ReviewService.revision.addListener(_onReviewsChanged);
     // Se lee antes de suscribirse para no re-disparar _onFocusRequested con
     // lo que ya se acaba de tomar.
     _pendingFocus =
@@ -240,6 +322,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // incrementa esto al guardar) para que volver de "Registra tu negocio"
     // muestre el pin nuevo sin reabrir el mapa.
     BusinessStorageService.revision.addListener(_onBusinessesChanged);
+    // Mismo motivo para las jornadas: publicar o editar una desde este
+    // dispositivo debe reflejarse en sus pines sin reabrir el mapa.
+    EcoService.revision.addListener(_onEcoActivitiesChanged);
     // La suscripción realtime para cambios hechos en otro lugar se abre
     // tras la primera carga exitosa — ver _loadAllBusinessesAndFitCamera.
     _searchController.addListener(() {
@@ -258,10 +343,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    DiscoveryDestinationService().destination.removeListener(
+      _onDestinationChanged,
+    );
+    _arrivalTracker?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    ReviewService.revision.removeListener(_onReviewsChanged);
+    _reviewsPoll?.cancel();
+    _reviewsDebounce?.cancel();
+    unawaited(_unsubscribeReviews?.call() ?? Future<void>.value());
     MapFocusController().pendingFocus.removeListener(_onFocusRequested);
     MapFocusController().pendingRoute.removeListener(_onRouteRequested);
     MapFocusController().navigationActive.value = false;
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
+    EcoService.revision.removeListener(_onEcoActivitiesChanged);
     _realtimeReloadDebounce?.cancel();
     unawaited(_unsubscribeBusinessChanges?.call() ?? Future<void>.value());
     _searchController.dispose();
@@ -272,6 +367,51 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _mapController?.dispose();
     unawaited(TtsService().stop());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onReviewsChanged();
+  }
+
+  void _onReviewsChanged() {
+    _reviewsDebounce?.cancel();
+    _reviewsDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) unawaited(_refreshReviews());
+    });
+  }
+
+  Future<void> _refreshReviews() async {
+    if (!mounted || _businesses.isEmpty) return;
+    if (_refreshingReviews) {
+      _reviewsRefreshPending = true;
+      return;
+    }
+    _refreshingReviews = true;
+    try {
+      do {
+        _reviewsRefreshPending = false;
+        final ids = _businesses.map((b) => b.id).toList();
+        final reviews = await ReviewService().getForBusinesses(ids);
+        if (!mounted) return;
+        // Solo cambia reseñas: conserva selección, cámara, ruta y datos que
+        // pudieron llegar durante la consulta desde otro refresh de negocios.
+        setState(() {
+          _businesses = [
+            for (final business in _businesses)
+              if (ids.contains(business.id))
+                business.copyWith(reviews: reviews[business.id] ?? const [])
+              else
+                business,
+          ];
+        });
+      } while (_reviewsRefreshPending);
+    } on ReviewServiceException catch (e) {
+      // Un fallo de red conserva la última valoración conocida.
+      debugPrint('[MapScreen] No se actualizaron las reseñas: ${e.message}');
+    } finally {
+      _refreshingReviews = false;
+    }
   }
 
   /// Se agregó/editó/eliminó un negocio desde este dispositivo — recarga y
@@ -310,7 +450,44 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final request = MapFocusController().pendingRoute.value;
     if (request == null) return;
     MapFocusController().pendingRoute.value = null;
-    unawaited(_startTripPreview(_syntheticDestination(request)));
+    unawaited(_openRequestedTrip(request));
+  }
+
+  Future<void> _openRequestedTrip(MapRouteRequest request) async {
+    if (_isNavigating || _isStartingTripPreview) {
+      AppSnackbar.showInfo(
+        context,
+        'Finaliza el viaje actual antes de iniciar otra parada.',
+      );
+      return;
+    }
+    // Cached real business when available; a catalog outage must not block a
+    // point whose name and coordinates are already known.
+    var business = _businessById(request.destinationId);
+    if (business == null) {
+      try {
+        final businesses = await _businessStorageService.getBusinesses();
+        business = businesses
+            .where((b) => b.id == request.destinationId)
+            .firstOrNull;
+      } on BusinessServiceException {
+        /* use the known point */
+      }
+    }
+    if (!mounted) return;
+    if (business?.latitude == null || business?.longitude == null) {
+      business = null;
+    }
+    final opened = await _startTripPreview(
+      business ?? _syntheticDestination(request),
+      isBusiness: business != null,
+      mode: request.mode,
+    );
+    if (opened && mounted) {
+      setState(
+        () => _itineraryRequest = request.routeId == null ? null : request,
+      );
+    }
   }
 
   /// [_startTripPreview] recibe un [BusinessModel] porque todo otro disparador
@@ -323,14 +500,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return BusinessModel(
       id: request.destinationId,
       name: request.destinationName,
-      category: 'Eco',
+      category: request.category,
       description: '',
       city: '',
       locationText: '',
       latitude: request.latitude,
       longitude: request.longitude,
       contactPhone: '',
-      allowsReservations: false,
       hostName: '',
     );
   }
@@ -341,10 +517,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _consumePendingFocus() async {
     final request = _pendingFocus;
     if (request == null || _mapController == null) return;
+    // Un filtro residual no debe ocultar el destino solicitado desde otra pantalla.
+    if (_destination.isActive) {
+      DiscoveryDestinationService().destination.value =
+          const GeographicDestination();
+    }
     _pendingFocus = null;
-
-    // Un filtro de categoría/búsqueda residual podría ocultar el negocio
-    // pedido, así que el foco resetea ambos.
     if (_searchQuery.isNotEmpty) _searchController.clear();
     if (_selectedCategory != _kAllCategories) {
       setState(() => _selectedCategory = _kAllCategories);
@@ -366,24 +544,54 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Altura objetivo del carrusel — expandida (Estado 19b) con card
-  /// seleccionada, compacta (Estado 19a) si no. Alimenta tanto el
-  /// [AnimatedContainer] del carrusel como el offset del botón de
-  /// recentrar, para que ninguno salte al cambiar la selección.
+  /// seleccionada, compacta (Estado 19a) si no. El dock coloca los controles
+  /// encima de esa altura sin calcular offsets por separado.
   double get _carouselHeight => _selectedBusinessId == null
-      ? _kCarouselCompactHeight
+      ? _kCarouselCompactHeight +
+            (_filteredBusinesses.any(_hasEcoBadge) ? 32 : 0)
       : _kCarouselExpandedHeight;
 
+  /// Con el chip de jornadas activo el mapa muestra solo esas: los negocios
+  /// se ocultan para que el filtro signifique lo mismo que los demás chips.
   List<BusinessModel> get _filteredBusinesses {
+    if (_selectedCategory == _kEcoCategory) return const [];
     return _businesses
         .where((b) {
+          // Normalizado, no `b.category` crudo: los chips vienen del
+          // catálogo y la columna es texto libre, así que un negocio
+          // semilla ("Turismo y Miradores") no calzaría con ningún chip.
           final matchesCategory =
               _selectedCategory == _kAllCategories ||
-              b.category == _selectedCategory;
+              (businessCategoryPresetFor(b.category) ?? b.category) ==
+                  _selectedCategory;
           final matchesSearch =
               _searchQuery.isEmpty ||
               b.name.toLowerCase().contains(_searchQuery.toLowerCase());
-          return matchesCategory && matchesSearch;
+          return matchesCategory &&
+              matchesSearch &&
+              _destination.matches(
+                municipalityByCode(b.municipalityCode) ??
+                    resolveMunicipality(b.city),
+              );
         })
+        .toList(growable: false);
+  }
+
+  List<EcoActivityModel> get _filteredEcoActivities {
+    if (_selectedCategory != _kAllCategories &&
+        _selectedCategory != _kEcoCategory) {
+      return const [];
+    }
+    final query = _searchQuery.toLowerCase();
+    return _ecoActivities
+        .where(
+          (a) =>
+              (_searchQuery.isEmpty || a.title.toLowerCase().contains(query)) &&
+              _destination.matches(
+                municipalityByCode(a.municipalityCode) ??
+                    resolveLegacyEcoMunicipality(a.location),
+              ),
+        )
         .toList(growable: false);
   }
 
@@ -391,15 +599,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// bitmaps porque `google_maps_flutter` no permite un widget Flutter vivo
   /// como marker (a diferencia de `flutter_map`'s `Marker.child`), así que
   /// cada badge de Pantalla 2b se dibuja en un canvas.
+  static double get _devicePixelRatio =>
+      WidgetsBinding
+          .instance
+          .platformDispatcher
+          .implicitView
+          ?.devicePixelRatio ??
+      2.0;
+
   Future<void> _loadMarkerIcons() async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio ??
-        2.0;
-    final clusterKeys = [2, 3, 4, 5, 6, 7, 8, 9, _clusterOverflowKey];
+    final dpr = _devicePixelRatio;
     final pinCategories = MapPinCategory.values;
     final results = await Future.wait([
       for (final category in pinCategories)
@@ -415,8 +624,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           devicePixelRatio: dpr,
         ),
       _buildVehicleBitmap(devicePixelRatio: dpr),
-      for (final key in clusterKeys)
-        _buildClusterBitmap(count: key, devicePixelRatio: dpr),
+      _buildPinBitmap(
+        selected: false,
+        category: MapPinCategory.eco,
+        devicePixelRatio: dpr,
+        ecoActivity: true,
+      ),
     ]);
     if (!mounted) return;
     setState(() {
@@ -427,10 +640,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _pinIconsSelected[pinCategories[i]] = results[pinCategories.length + i];
       }
       _vehicleIcon = results[pinCategories.length * 2];
-      final clusterStart = pinCategories.length * 2 + 1;
-      for (var i = 0; i < clusterKeys.length; i++) {
-        _clusterIcons[clusterKeys[i]] = results[clusterStart + i];
-      }
+      _ecoPinIcon = results[pinCategories.length * 2 + 1];
     });
   }
 
@@ -444,67 +654,181 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return byCategory[category] ?? byCategory[MapPinCategory.general];
   }
 
-  /// 9+ se agrupa en un solo bitmap compartido en vez de generar uno por
-  /// conteo exacto — la densidad de negocios de Nikara no justifica un
-  /// badge exacto tipo "47".
-  static const _clusterOverflowKey = 10;
+  /// Pin etiquetado ya listo, o `null` la primera vez que se pide (y de
+  /// paso encola su generación). Quien llama cae al pin sin nombre ese
+  /// frame, así el mapa nunca aparece vacío esperando bitmaps.
+  ///
+  /// La clave es el *contenido* y no el id del negocio: dos locales con el
+  /// mismo nombre, categoría y calificación comparten bitmap, y editar el
+  /// nombre invalida el viejo solo.
+  _LabeledPin? _labeledPinFor({
+    required String name,
+    required MapPinCategory category,
+    required bool selected,
+    String? detail,
+    bool ecoActivity = false,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    final key =
+        '${ecoActivity ? 'eco' : 'biz'}|$selected|${category.name}'
+        '|$trimmed|${detail ?? ''}';
+    final cached = _labeledPins[key];
+    if (cached != null) return cached;
+    if (!_pendingPinLabels.containsKey(key)) {
+      _pendingPinLabels[key] = _PinLabelRequest(
+        name: trimmed,
+        detail: detail,
+        category: category,
+        selected: selected,
+        ecoActivity: ecoActivity,
+      );
+      _schedulePinLabelFlush();
+    }
+    return null;
+  }
 
-  static int _clusterIconKey(int count) =>
-      count >= _clusterOverflowKey ? _clusterOverflowKey : count;
+  void _schedulePinLabelFlush() {
+    if (_pinLabelBatchScheduled) return;
+    _pinLabelBatchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_flushPinLabels());
+    });
+  }
+
+  Future<void> _flushPinLabels() async {
+    _pinLabelBatchScheduled = false;
+    if (_pendingPinLabels.isEmpty) return;
+    final batch = Map.of(_pendingPinLabels);
+    _pendingPinLabels.clear();
+    final dpr = _devicePixelRatio;
+    final built = await Future.wait([
+      for (final request in batch.values)
+        _buildLabeledPinBitmap(request: request, devicePixelRatio: dpr),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      if (_labeledPins.length + built.length > _kMaxLabeledPins) {
+        _labeledPins.clear();
+      }
+      var i = 0;
+      for (final key in batch.keys) {
+        _labeledPins[key] = built[i++];
+      }
+    });
+  }
+
+  BitmapDescriptor? _clusterIconFor(MapCluster cluster) {
+    final categories = cluster.businesses
+        .map((business) => mapPinCategoryFor(business.category))
+        .toSet()
+        .take(3)
+        .toList(growable: false);
+    final visibleCategories = categories.isEmpty
+        ? const [MapPinCategory.general]
+        : categories;
+    final key = visibleCategories.map((category) => category.name).join('|');
+    final cached = _clusterIcons[key];
+    if (cached != null) return cached;
+    _pendingClusterIcons[key] = visibleCategories;
+    if (!_clusterIconBatchScheduled) {
+      _clusterIconBatchScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_flushClusterIcons());
+      });
+    }
+    return _pinBitmapFor(visibleCategories.first, selected: false);
+  }
+
+  Future<void> _flushClusterIcons() async {
+    _clusterIconBatchScheduled = false;
+    if (_pendingClusterIcons.isEmpty) return;
+    final batch = Map.of(_pendingClusterIcons);
+    _pendingClusterIcons.clear();
+    final built = await Future.wait([
+      for (final categories in batch.values)
+        _buildClusterBitmap(
+          categories: categories,
+          devicePixelRatio: _devicePixelRatio,
+        ),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      var index = 0;
+      for (final key in batch.keys) {
+        _clusterIcons[key] = built[index++];
+      }
+    });
+  }
 
   static Future<BitmapDescriptor> _buildClusterBitmap({
-    required int count,
+    required List<MapPinCategory> categories,
     required double devicePixelRatio,
   }) async {
-    const double logicalSize = 40;
-    final size = (logicalSize * devicePixelRatio).round();
-    final scale = size / logicalSize;
+    const width = 58.0;
+    const height = 42.0;
+    final pixelWidth = (width * devicePixelRatio).round();
+    final pixelHeight = (height * devicePixelRatio).round();
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
       recorder,
-      Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
     );
-    canvas.scale(scale);
-    final center = const Offset(logicalSize / 2, logicalSize / 2);
-    final radius = logicalSize / 2 - 2;
-
-    canvas.drawCircle(
-      center,
-      radius,
+    canvas.scale(devicePixelRatio);
+    final pill = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(5, 5, width - 10, height - 10),
+      const Radius.circular(16),
+    );
+    canvas.drawRRect(
+      pill.shift(const Offset(0, 2)),
       Paint()
-        ..color = AppColors.mapPinShadowActive
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+        ..color = AppColors.mapPinShadowActive.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-    canvas.drawCircle(center, radius, Paint()..color = AppColors.primary500);
-    canvas.drawCircle(
-      center,
-      radius,
+    canvas.drawRRect(pill, Paint()..color = Colors.white);
+    canvas.drawRRect(
+      pill,
       Paint()
         ..color = AppColors.surface100
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth = 1.5,
     );
-
-    final label = count >= _clusterOverflowKey ? '9+' : '$count';
-    final textPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(
-        text: label,
-        style: TextStyle(
-          fontFamily: 'Leelawadee',
-          fontWeight: FontWeight.w700,
-          fontSize: label.length > 1 ? 13 : 15,
-          color: AppColors.settingsTextDark,
-        ),
-      )
-      ..layout();
-    textPainter.paint(
-      canvas,
-      center - Offset(textPainter.width / 2, textPainter.height / 2),
-    );
+    final centers = switch (categories.length) {
+      1 => const [Offset(width / 2, height / 2)],
+      2 => const [Offset(22, height / 2), Offset(36, height / 2)],
+      _ => const [
+        Offset(16, height / 2),
+        Offset(29, height / 2),
+        Offset(42, height / 2),
+      ],
+    };
+    for (var i = 0; i < categories.length; i++) {
+      final center = centers[i];
+      const radius = 11.5;
+      canvas.drawCircle(center, radius + 2, Paint()..color = Colors.white);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()..color = const Color(0xFFF2F0E9),
+      );
+      final icon = mapPinIcon(categories[i]);
+      final glyph = TextPainter(textDirection: TextDirection.ltr)
+        ..text = TextSpan(
+          text: String.fromCharCode(icon.codePoint),
+          style: TextStyle(
+            fontFamily: icon.fontFamily,
+            package: icon.fontPackage,
+            fontSize: 15,
+            color: AppColors.settingsTextDark,
+          ),
+        )
+        ..layout();
+      glyph.paint(canvas, center - Offset(glyph.width / 2, glyph.height / 2));
+    }
 
     final picture = recorder.endRecording();
-    final image = await picture.toImage(size, size);
+    final image = await picture.toImage(pixelWidth, pixelHeight);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
     // el tamaño visual del pin al renderizarlo a mayor densidad.
@@ -592,9 +916,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     required bool selected,
     required MapPinCategory category,
     required double devicePixelRatio,
+    bool ecoActivity = false,
   }) async {
-    final icon = mapPinIcon(category);
-    final accentColor = mapPinColor(category);
     final logicalWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
     final logicalHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
     final width = (logicalWidth * devicePixelRatio).round();
@@ -606,7 +929,45 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
     );
     canvas.scale(devicePixelRatio);
-    final center = Offset(logicalWidth / 2, logicalWidth / 2);
+    _paintPinInto(
+      canvas,
+      originX: 0,
+      selected: selected,
+      category: category,
+      ecoActivity: ecoActivity,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
+    // el tamaño visual del pin al renderizarlo a mayor densidad.
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio,
+    );
+  }
+
+  /// Dibuja el pin (sombra, círculo, anillo y glifo) sobre [canvas] con su
+  /// borde izquierdo en [originX] y su tope en y=0.
+  ///
+  /// Lo comparten el bitmap suelto ([_buildPinBitmap]) y el etiquetado
+  /// ([_buildLabeledPinBitmap]): el dibujo del pin es idéntico en los dos,
+  /// lo único que cambia es el lienzo que lo rodea.
+  static void _paintPinInto(
+    Canvas canvas, {
+    required double originX,
+    required bool selected,
+    required MapPinCategory category,
+    required bool ecoActivity,
+  }) {
+    final icon = ecoActivity ? Icons.eco_rounded : mapPinIcon(category);
+    final accentColor = ecoActivity
+        ? AppColors.oliveText
+        : mapPinColor(category);
+    final logicalWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
+    final logicalHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
+    final center = Offset(originX + logicalWidth / 2, logicalWidth / 2);
     final radius = logicalWidth / 2 - 2.5;
 
     if (selected) {
@@ -637,7 +998,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     canvas.drawCircle(
       center,
       radius,
-      Paint()..color = selected ? AppColors.primary500 : AppColors.surface100,
+      Paint()
+        // El pin de jornada va relleno de verde con glifo claro, al revés que
+        // los de negocio (claros con anillo de color): así se distingue de un
+        // vistazo qué es un negocio y qué una actividad.
+        ..color = selected
+            ? AppColors.primary500
+            : (ecoActivity ? AppColors.oliveText : AppColors.surface100),
     );
     canvas.drawCircle(
       center,
@@ -647,7 +1014,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         // relleno dorado ya comunica "seleccionado"); el no seleccionado usa
         // el color de acento de su categoría para ser legible sin depender
         // del glifo.
-        ..color = selected ? AppColors.surface100 : accentColor
+        ..color = selected || ecoActivity ? AppColors.surface100 : accentColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5,
     );
@@ -659,7 +1026,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           fontSize: selected ? 20 : 16,
           fontFamily: icon.fontFamily,
           package: icon.fontPackage,
-          color: selected ? AppColors.settingsTextDark : accentColor,
+          color: selected
+              ? AppColors.settingsTextDark
+              : (ecoActivity ? AppColors.surface100 : accentColor),
         ),
       )
       ..layout();
@@ -667,16 +1036,179 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       canvas,
       center - Offset(iconPainter.width / 2, iconPainter.height / 2),
     );
+  }
+
+  /// Ancho máximo de la etiqueta antes de partir el nombre en dos líneas y
+  /// luego recortarlo con elipsis.
+  ///
+  /// No es un número estético: la grilla de clustering agrupa los pines que
+  /// caen dentro de ~55px (`marker_clustering.dart`), así que una etiqueta
+  /// mucho más ancha que eso se montaría sobre la del vecino que el
+  /// clustering decidió dejar suelto.
+  static const double _kPinLabelMaxWidth = 92;
+  static const double _kPinLabelGap = 2;
+
+  /// Margen alrededor de la etiqueta para que el halo de 3px no quede
+  /// cortado contra el borde del bitmap.
+  static const double _kPinLabelPadding = 4;
+
+  /// Pin + nombre del negocio debajo, al estilo de Google Maps.
+  ///
+  /// Existe porque un pin solo es un identificador pobre en cuanto hay más
+  /// de un puñado de negocios en pantalla: el color y el glifo dicen la
+  /// categoría, pero no *cuál* de los cinco restaurantes de la zona es cada
+  /// uno, y averiguarlo obligaba a tocar pin por pin.
+  static Future<_LabeledPin> _buildLabeledPinBitmap({
+    required _PinLabelRequest request,
+    required double devicePixelRatio,
+  }) async {
+    final nameParts = [_PinLabelPart(request.name, AppColors.textPrimary)];
+    final detail = request.detail;
+    final detailParts = detail == null
+        ? null
+        : <_PinLabelPart>[
+            _PinLabelPart(
+              String.fromCharCode(Icons.star_rounded.codePoint),
+              AppColors.goldFill,
+              fontFamily: Icons.star_rounded.fontFamily,
+              fontPackage: Icons.star_rounded.fontPackage,
+              fontSize: 10,
+            ),
+            _PinLabelPart(' $detail', AppColors.settingsTextDark),
+          ];
+
+    // El halo claro va DEBAJO del texto: sin él el nombre desaparece sobre
+    // tiles oscuros (bosque, agua), que es exactamente como lo resuelve
+    // Google Maps.
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round
+      ..color = AppColors.surface100;
+
+    final nameText = _pinLabelPainter(nameParts, fontSize: 11.5, maxLines: 2);
+    final nameHalo = _pinLabelPainter(
+      nameParts,
+      fontSize: 11.5,
+      maxLines: 2,
+      stroke: halo,
+    );
+    final detailText = detailParts == null
+        ? null
+        : _pinLabelPainter(
+            detailParts,
+            fontSize: 10,
+            maxLines: 1,
+            weight: FontWeight.w600,
+          );
+    final detailHalo = detailParts == null
+        ? null
+        : _pinLabelPainter(
+            detailParts,
+            fontSize: 10,
+            maxLines: 1,
+            weight: FontWeight.w600,
+            stroke: halo,
+          );
+
+    final selected = request.selected;
+    final pinWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
+    final pinHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
+    final detailWidth = detailText?.width ?? 0;
+    final labelWidth = nameText.width > detailWidth
+        ? nameText.width
+        : detailWidth;
+    final labelHeight =
+        nameText.height +
+        (detailText == null ? 0 : _kPinLabelGap + detailText.height);
+
+    final logicalWidth =
+        (labelWidth > pinWidth ? labelWidth : pinWidth) + _kPinLabelPadding * 2;
+    final logicalHeight =
+        pinHeight + _kPinLabelGap + labelHeight + _kPinLabelPadding;
+    final width = (logicalWidth * devicePixelRatio).round();
+    final height = (logicalHeight * devicePixelRatio).round();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    canvas.scale(devicePixelRatio);
+    _paintPinInto(
+      canvas,
+      originX: (logicalWidth - pinWidth) / 2,
+      selected: selected,
+      category: request.category,
+      ecoActivity: request.ecoActivity,
+    );
+
+    var dy = pinHeight + _kPinLabelGap;
+    final nameDx = (logicalWidth - nameText.width) / 2;
+    nameHalo.paint(canvas, Offset(nameDx, dy));
+    nameText.paint(canvas, Offset(nameDx, dy));
+    if (detailText != null) {
+      dy += nameText.height + _kPinLabelGap;
+      final detailDx = (logicalWidth - detailText.width) / 2;
+      detailHalo!.paint(canvas, Offset(detailDx, dy));
+      detailText.paint(canvas, Offset(detailDx, dy));
+    }
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(width, height);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
-    // el tamaño visual del pin al renderizarlo a mayor densidad.
-    return BitmapDescriptor.bytes(
-      bytes!.buffer.asUint8List(),
-      imagePixelRatio: devicePixelRatio,
+    // El punto geográfico es el centro del círculo (o la punta de la cola si
+    // está seleccionado), no el centro del bitmap: la etiqueta cuelga hacia
+    // abajo, así que anclar por el medio dejaría el pin flotando sobre su
+    // propia coordenada.
+    final anchorY = selected
+        ? (pinHeight - 1.5) / logicalHeight
+        : (pinWidth / 2) / logicalHeight;
+    return _LabeledPin(
+      icon: BitmapDescriptor.bytes(
+        bytes!.buffer.asUint8List(),
+        imagePixelRatio: devicePixelRatio,
+      ),
+      anchor: Offset(0.5, anchorY),
     );
+  }
+
+  /// [stroke] con valor pinta el contorno del halo en vez del relleno; se
+  /// llama dos veces con el mismo texto para componer halo + texto.
+  static TextPainter _pinLabelPainter(
+    List<_PinLabelPart> parts, {
+    required double fontSize,
+    required int maxLines,
+    FontWeight weight = FontWeight.w700,
+    Paint? stroke,
+  }) {
+    return TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: maxLines,
+      ellipsis: '…',
+      text: TextSpan(
+        children: [
+          for (final part in parts)
+            TextSpan(
+              text: part.text,
+              style: TextStyle(
+                fontSize: part.fontSize ?? fontSize,
+                fontWeight: weight,
+                height: 1.15,
+                // Sin fontFamily salvo en los glifos de ícono: esto se pinta
+                // sobre un canvas de dart:ui, donde google_fonts no puede
+                // resolver la familia (misma excepción ya documentada para
+                // los otros TextPainter del mapa).
+                fontFamily: part.fontFamily,
+                package: part.fontPackage,
+                color: stroke == null ? part.color : null,
+                foreground: stroke,
+              ),
+            ),
+        ],
+      ),
+    )..layout(maxWidth: _kPinLabelMaxWidth);
   }
 
   Future<void> _animateCameraTo(LatLng target, {double zoom = 16}) async {
@@ -714,6 +1246,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _onEcoActivitiesChanged() => unawaited(_loadEcoActivities());
+
+  /// Jornadas próximas con coordenadas. Falla suave: el mapa de negocios no
+  /// debe quedar inutilizable porque el feed ECO no respondió.
+  Future<void> _loadEcoActivities() async {
+    try {
+      final activities = await EcoService().getUpcomingActivities();
+      if (!mounted) return;
+      setState(() {
+        _ecoActivities = activities
+            .where((a) => a.hasCoordinates)
+            .toList(growable: false);
+      });
+    } on EcoServiceException {
+      // Se queda sin pines de jornada hasta la próxima carga.
+    }
+  }
+
   Future<void> _loadCategories() async {
     try {
       final categories = await _businessStorageService.getAllCategories();
@@ -727,23 +1277,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   Future<void> _onMapCreated(GoogleMapController controller) async {
     _mapController = controller;
+    unawaited(_loadEcoActivities());
     await _loadAllBusinessesAndFitCamera();
   }
 
-  /// Trae solo lo que está dentro del viewport actual (con margen
-  /// [_kViewportPadding]) en cada [GoogleMap.onCameraIdle], para no
-  /// descargar la tabla `businesses` completa al hacer pan/zoom.
-  ///
-  /// Los resultados se *fusionan* en [_businesses] en vez de reemplazarlo:
-  /// es una carga incremental, así que hacer zoom en un pin no debe hacer
-  /// desaparecer los demás. [_loadAllBusinessesAndFitCamera] es quien
-  /// reemplaza el set completo (y así refleja negocios borrados en otro
-  /// lado). Es silencioso a propósito: sin spinner ni overlay de error para
-  /// un refresco de fondo que no afecta los pines ya visibles.
+  /// Fetches businesses near the settled viewport. Replacing this set avoids
+  /// stale markers from previously visited areas; a generation token below
+  /// ignores network responses that arrive after a newer pan/zoom.
   Future<void> _loadBusinessesInViewport() async {
+    final generation = ++_viewportLoadGeneration;
     final controller = _mapController;
     if (controller == null) return;
     final region = await controller.getVisibleRegion();
+    if (!mounted || generation != _viewportLoadGeneration) return;
     final padded = _paddedBounds(region, factor: _kViewportPadding);
 
     try {
@@ -753,22 +1299,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         maxLng: padded.northeast.longitude,
         maxLat: padded.northeast.latitude,
       );
-      if (!mounted) return;
-      final merged = {
-        for (final business in _businesses) business.id: business,
-      };
-      for (final business in businesses) {
-        // Defensivo solamente: `businesses.location` es NOT NULL, pero sin
-        // coordenadas no se puede anclar un pin.
-        if (business.latitude == null || business.longitude == null) continue;
-        merged[business.id] = business;
-      }
+      if (!mounted || generation != _viewportLoadGeneration) return;
       setState(() {
-        _businesses = merged.values.toList(growable: false);
+        // Keep only businesses near this viewport. Accumulating old results
+        // leaves stale clusters scattered across the map after panning.
+        _businesses = businesses
+            .where(
+              (business) =>
+                  business.latitude != null && business.longitude != null,
+            )
+            .toList(growable: false);
+        if (!_businesses.any((b) => b.id == _selectedBusinessId)) {
+          _selectedBusinessId = null;
+        }
         _loadError = null;
       });
     } on BusinessServiceException catch (e) {
-      if (!mounted || _businesses.isNotEmpty) return;
+      if (!mounted || generation != _viewportLoadGeneration) return;
+      if (_businesses.isNotEmpty) return;
       setState(() => _loadError = e.message);
     }
   }
@@ -821,23 +1369,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
     await _carouselController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOut,
+      duration: AppMotion.largeDuration,
+      curve: AppMotion.standard,
     );
   }
 
-  /// Tap directo en pin (vs. card o búsqueda): además de seleccionar, abre
-  /// un bottom sheet estilo Google Maps con el detalle — Estado 19b separa
-  /// ambos comportamientos (card solo mueve cámara, pin abre panel). Tocar
-  /// el pin ya seleccionado lo deselecciona en vez de reabrir el sheet.
+  /// Tap directo en pin: selecciona el negocio y deja que el carrusel de
+  /// abajo se expanda en su card (Estado 19b).
+  ///
+  /// Antes esto además abría un `showModalBottomSheet` con la **misma**
+  /// [_BusinessCarouselCard] que el carrusel ya estaba expandiendo debajo:
+  /// el detalle se dibujaba dos veces y el scrim del modal oscurecía el
+  /// mapa entero. Es lo contrario de lo que hace Google Maps, donde la
+  /// ficha convive con un mapa que sigue visible y navegable, y era lo que
+  /// obligaba a cerrar el panel para volver a ubicarse.
   Future<void> _onMarkerTapped(BusinessModel business) async {
     if (business.id == _selectedBusinessId) {
       setState(() => _selectedBusinessId = null);
       return;
     }
     await _selectBusiness(business);
-    if (!mounted) return;
-    await _showBusinessSheet(business);
   }
 
   /// Espejo del toggle de [_onMarkerTapped] pero para cards del carrusel:
@@ -849,38 +1400,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return;
     }
     unawaited(_selectBusiness(business));
-  }
-
-  /// Reusa [_BusinessCarouselCard] tal cual dentro del chrome de
-  /// [_PinDetailSheetChrome] en vez de duplicar ese layout.
-  Future<void> _showBusinessSheet(BusinessModel business) {
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) => _PinDetailSheetChrome(
-        child: _BusinessCarouselCard(
-          business: business,
-          distanceKm: LocationService.distanceKm(
-            _userPosition,
-            business.latitude,
-            business.longitude,
-          ),
-          onNavigate: () {
-            Navigator.of(sheetContext).pop();
-            _startTripPreview(business);
-          },
-          onViewProfile: () {
-            Navigator.of(sheetContext).pop();
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => BusinessDetailScreen(business: business),
-              ),
-            );
-          },
-        ),
-      ),
-    );
   }
 
   void _jumpCarouselTo(int index) {
@@ -897,6 +1416,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   /// Chips (Estado 19a): filtran pines y carrusel, y reencuadran la cámara
   /// a lo que queda visible.
+  Future<void> _openFilterSheet() async {
+    _searchFocusNode.unfocus();
+    final filters = await showGeographicDestinationPicker(
+      context,
+      initial: _destination,
+    );
+    if (!mounted || filters == null) return;
+    DiscoveryDestinationService().destination.value = filters.destination;
+  }
+
+  void _onDestinationChanged() {
+    if (!mounted) return;
+    setState(() {
+      _destination = DiscoveryDestinationService().destination.value;
+      if (!_filteredBusinesses.any((b) => b.id == _selectedBusinessId)) {
+        _selectedBusinessId = null;
+      }
+    });
+    _jumpCarouselTo(0);
+    if (!_isNavigating && !_isPreviewingTrip && _pendingFocus == null) {
+      unawaited(_fitCameraToBusinesses(_filteredBusinesses));
+    }
+  }
+
   void _onCategorySelected(String category) {
     setState(() {
       _selectedCategory = category;
@@ -945,6 +1488,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       // que no llegan aquí, sin una conexión viva que cerrar).
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onRemoteBusinessesChanged);
+      _unsubscribeReviews ??= ReviewService().subscribeToChanges(
+        _onReviewsChanged,
+      );
+      // También sincroniza si la publicación Realtime aún no está habilitada
+      // o se perdió un evento durante una desconexión.
+      _reviewsPoll ??= Timer.periodic(const Duration(seconds: 15), (_) {
+        if (WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          unawaited(_refreshReviews());
+        }
+      });
       // Una solicitud de foco pendiente gana sobre el encuadre general —
       // si no, la cámara encuadraría todo y luego volaría al pin pedido.
       if (_pendingFocus != null) {
@@ -966,26 +1521,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _fitCameraToBusinesses(List<BusinessModel> businesses) async {
     final controller = _mapController;
     if (controller == null) return;
-    if (businesses.isEmpty) {
+    final points = [
+      for (final business in businesses)
+        LatLng(business.latitude!, business.longitude!),
+      for (final activity in _filteredEcoActivities)
+        LatLng(activity.latitude!, activity.longitude!),
+    ];
+    if (points.isEmpty) {
       await controller.animateCamera(
         CameraUpdate.newLatLngZoom(_kDefaultMapCenter, 13),
       );
       return;
     }
-    if (businesses.length == 1) {
-      final business = businesses.first;
+    if (points.length == 1) {
       await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(
-          LatLng(business.latitude!, business.longitude!),
-          14,
-        ),
+        CameraUpdate.newLatLngZoom(points.first, 14),
       );
       return;
     }
-    final points = [
-      for (final business in businesses)
-        LatLng(business.latitude!, business.longitude!),
-    ];
     await controller.animateCamera(
       CameraUpdate.newLatLngBounds(_boundsForPoints(points), 72),
     );
@@ -998,54 +1551,68 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// [_confirmStartTrip] para Fase 2). Si no se puede obtener una ruta real
   /// (sin key, sin red, sin resultado), muestra la razón en un snackbar y
   /// nunca dibuja una ruta inventada.
-  Future<void> _startTripPreview(BusinessModel business) async {
-    debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
-    final lat = business.latitude;
-    final lng = business.longitude;
-    if (lat == null || lng == null) {
-      debugPrint('[MapScreen] aborted: business has no coordinates');
-      return;
-    }
-    final destination = LatLng(lat, lng);
+  Future<bool> _startTripPreview(
+    BusinessModel business, {
+    bool isBusiness = true,
+    TravelMode mode = TravelMode.driving,
+  }) async {
+    if (_isNavigating || _isStartingTripPreview) return false;
+    setState(() => _isStartingTripPreview = true);
+    try {
+      debugPrint('[MapScreen] "Cómo llegar" tapped for ${business.name}');
+      final lat = business.latitude;
+      final lng = business.longitude;
+      if (lat == null ||
+          lng == null ||
+          !LocationService.validCoordinates(lat, lng)) {
+        debugPrint('[MapScreen] aborted: business has no coordinates');
+        return false;
+      }
+      final destination = LatLng(lat, lng);
 
-    final position = await LocationService().getCurrentPosition(
-      forceRefresh: true,
-    );
-    if (!mounted) return;
-    if (position == null) {
-      debugPrint(
-        '[MapScreen] aborted: could not get current position '
-        '(location permission/services?)',
+      final position = await LocationService().getCurrentPosition(
+        forceRefresh: true,
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No se pudo obtener tu ubicación actual.'),
-        ),
+      if (!mounted) return false;
+      if (position == null) {
+        debugPrint(
+          '[MapScreen] aborted: could not get current position '
+          '(location permission/services?)',
+        );
+        AppSnackbar.showError(
+          context,
+          'No se pudo obtener tu ubicación actual.',
+        );
+        return false;
+      }
+      final origin = LatLng(position.latitude, position.longitude);
+
+      final route = await _fetchTripRoute(
+        origin: origin,
+        destination: destination,
+        mode: mode,
       );
-      return;
+      if (route == null || !mounted) return false;
+
+      setState(() {
+        _isPreviewingTrip = true;
+        _tripMode = mode;
+        _itineraryRequest = null;
+        _tripOrigin = origin;
+        _navigationTarget = business;
+        _tripHasBusiness = isBusiness;
+        _navigationRoute = route;
+        _selectedBusinessId = business.id;
+      });
+      // Oculta el bottom nav de MainLayout durante ambas fases del viaje —
+      // carrusel y chrome de búsqueda ya se ocultan solos en build() según
+      // `_isPreviewingTrip`/`_isNavigating`.
+      MapFocusController().navigationActive.value = true;
+      await _fitTripPreviewCamera();
+      return true;
+    } finally {
+      if (mounted) setState(() => _isStartingTripPreview = false);
     }
-    final origin = LatLng(position.latitude, position.longitude);
-
-    final route = await _fetchTripRoute(
-      origin: origin,
-      destination: destination,
-      mode: TravelMode.driving,
-    );
-    if (route == null || !mounted) return;
-
-    setState(() {
-      _isPreviewingTrip = true;
-      _tripMode = TravelMode.driving;
-      _tripOrigin = origin;
-      _navigationTarget = business;
-      _navigationRoute = route;
-      _selectedBusinessId = business.id;
-    });
-    // Oculta el bottom nav de MainLayout durante ambas fases del viaje —
-    // carrusel y chrome de búsqueda ya se ocultan solos en build() según
-    // `_isPreviewingTrip`/`_isNavigating`.
-    MapFocusController().navigationActive.value = true;
-    await _fitTripPreviewCamera();
   }
 
   /// Compartido por [_startTripPreview] y [_changeTripMode] — envuelve
@@ -1065,9 +1632,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     } on DirectionsServiceException catch (e) {
       debugPrint('[MapScreen] route failed: ${e.message}');
       if (!mounted) return null;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnackbar.showError(context, e.message);
       return null;
     }
   }
@@ -1093,7 +1658,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// deja la ruta/modo anterior en pantalla en vez de limpiarlo, para que
   /// una solicitud fallida no deje el preview sin nada dibujado.
   Future<void> _changeTripMode(TravelMode mode) async {
-    if (mode == _tripMode || _isChangingTripMode) return;
+    if (mode == _tripMode || _isChangingTripMode || _isConfirmingTrip) return;
     final origin = _tripOrigin;
     final target = _navigationTarget;
     if (origin == null || target == null || target.latitude == null) return;
@@ -1103,7 +1668,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       destination: LatLng(target.latitude!, target.longitude!),
       mode: mode,
     );
-    if (!mounted) return;
+    if (!mounted || !_isPreviewingTrip || _navigationTarget != target) return;
+
     if (route == null) {
       setState(() => _isChangingTripMode = false);
       return;
@@ -1120,59 +1686,87 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// la ruta ya cargada, inclina la cámara a vista de manejo y abre el
   /// stream de posición que alimenta [_onPositionUpdate].
   Future<void> _confirmStartTrip() async {
-    final origin = _tripOrigin;
-    final route = _navigationRoute;
-    if (origin == null || route == null) return;
+    if (_isConfirmingTrip) return;
+    setState(() => _isConfirmingTrip = true);
+    try {
+      final origin = _tripOrigin;
+      final route = _navigationRoute;
+      if (origin == null ||
+          route == null ||
+          _isChangingTripMode ||
+          !_isPreviewingTrip) {
+        return;
+      }
+      // El preview ("Cómo llegar") sí está permitido desde cualquier cara: lo
+      // que no tiene sentido bajo la identidad de un negocio es salir de viaje.
+      if (!await FaceGuard.allow(context, FaceLimitedAction.viaje)) return;
+      if (!mounted || !_isPreviewingTrip) return;
 
-    final initialBearing = route.points.length > 1
-        ? Geolocator.bearingBetween(
-            origin.latitude,
-            origin.longitude,
-            route.points[1].latitude,
-            route.points[1].longitude,
-          )
-        : 0.0;
+      final target = _navigationTarget;
+      if (target?.latitude == null || target?.longitude == null) return;
+      final startedAt = DateTime.now().toUtc();
+      _tripOwnerId = AuthService().currentAuthUser?.id;
+      _tripId = const Uuid().v4();
+      _tripStartedAt = startedAt;
+      _pendingArrivalAt = null;
+      _arrivalTracker = TripArrivalTracker(
+        destination: LatLng(target!.latitude!, target.longitude!),
+        startedAt: startedAt,
+      );
 
-    setState(() {
-      _isPreviewingTrip = false;
-      _isNavigating = true;
-      _isCameraLocked = true;
-      _remainingMeters = route.distanceMeters.toDouble();
-      _remainingRoutePoints = route.points;
-      _routeTrimIndex = 0;
-      _currentStepIndex = 0;
-      _distanceToStepMeters = null;
-      _announcedCurrentStep = false;
-      _currentSpeedKmh = null;
-      _vehicleDisplayPosition = origin;
-      _vehicleDisplayBearing = initialBearing;
-      // El puck del vehículo reemplaza al punto azul de Google — ambos a
-      // la vez mostrarían dos marcadores de usuario superpuestos.
-      _myLocationEnabled = false;
-    });
+      final initialBearing = route.points.length > 1
+          ? Geolocator.bearingBetween(
+              origin.latitude,
+              origin.longitude,
+              route.points[1].latitude,
+              route.points[1].longitude,
+            )
+          : 0.0;
 
-    // Transición 3D inmediata — _onPositionUpdate toma el control del
-    // encuadre desde el primer fix de GPS real.
-    await _animateNavigationCamera(
-      CameraPosition(
-        target: origin,
-        zoom: _kNavCameraZoom,
-        tilt: _kNavCameraTilt,
-        bearing: initialBearing,
-      ),
-    );
+      setState(() {
+        _isPreviewingTrip = false;
+        _isNavigating = true;
+        _isCameraLocked = true;
+        _remainingMeters = route.distanceMeters.toDouble();
+        _remainingRoutePoints = route.points;
+        _routeTrimIndex = 0;
+        _currentStepIndex = 0;
+        _distanceToStepMeters = null;
+        _announcedCurrentStep = false;
+        _currentSpeedKmh = null;
+        _vehicleDisplayPosition = origin;
+        _vehicleDisplayBearing = initialBearing;
+        // El puck del vehículo reemplaza al punto azul de Google — ambos a
+        // la vez mostrarían dos marcadores de usuario superpuestos.
+        _myLocationEnabled = false;
+      });
 
-    if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
-      unawaited(TtsService().speak(route.steps.first.instruction));
+      // Transición 3D inmediata — _onPositionUpdate toma el control del
+      // encuadre desde el primer fix de GPS real.
+      await _animateNavigationCamera(
+        CameraPosition(
+          target: origin,
+          zoom: _kNavCameraZoom,
+          tilt: _kNavCameraTilt,
+          bearing: initialBearing,
+        ),
+      );
+      if (!mounted || !_isNavigating) return;
+
+      if (_voiceGuidanceEnabled && route.steps.isNotEmpty) {
+        unawaited(TtsService().speak(route.steps.first.instruction));
+      }
+
+      await _positionSub?.cancel();
+      _positionSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 5,
+        ),
+      ).listen(_onPositionUpdate);
+    } finally {
+      if (mounted) setState(() => _isConfirmingTrip = false);
     }
-
-    await _positionSub?.cancel();
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 5,
-      ),
-    ).listen(_onPositionUpdate);
   }
 
   /// Sale del preview (Fase 1) sin llegar a iniciar el viaje — el espejo
@@ -1182,6 +1776,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final target = _navigationTarget;
     setState(() {
       _isPreviewingTrip = false;
+      _isChangingTripMode = false;
+      _itineraryRequest = null;
       _tripMode = TravelMode.driving;
       _tripOrigin = null;
       _navigationTarget = null;
@@ -1193,6 +1789,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// "Cancelar viaje" — limpia la ruta y vuelve a Estado 19a/19b con el
   /// destino aún seleccionado, para no dejar un mapa en blanco.
   Future<void> _stopNavigation() async {
+    _arrivalTracker?.cancel();
     await _positionSub?.cancel();
     _positionSub = null;
     _vehicleLerpController.stop();
@@ -1202,6 +1799,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     final target = _navigationTarget;
     setState(() {
       _isNavigating = false;
+      _itineraryRequest = null;
+      _arrivalTracker = null;
+      _tripOwnerId = null;
+      _tripId = null;
+      _tripStartedAt = null;
+      _pendingArrivalAt = null;
+      _tripHasBusiness = false;
       _isCameraLocked = true;
       _navigationTarget = null;
       _navigationRoute = null;
@@ -1284,6 +1888,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// recorta la ruta dibujada, avanza/anuncia la maniobra y actualiza el
   /// velocímetro.
   void _onPositionUpdate(Position position) {
+    if (!mounted || !_isNavigating || _isCompletingTrip) return;
+    final arrival = _arrivalTracker?.update(position, now: DateTime.now());
+    if (arrival != null) {
+      _pendingArrivalAt = arrival;
+      unawaited(_completeNavigation());
+      return;
+    }
     final newPos = LatLng(position.latitude, position.longitude);
     final previous = _vehicleDisplayPosition;
     var targetBearing = _vehicleDisplayBearing;
@@ -1382,6 +1993,215 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
     }
   }
+
+  Future<void> _completeNavigation() async {
+    final target = _navigationTarget;
+    final arrivedAt = _pendingArrivalAt;
+    if (!_isNavigating ||
+        _isCompletingTrip ||
+        target == null ||
+        arrivedAt == null) {
+      return;
+    }
+    setState(() => _isCompletingTrip = true);
+    try {
+      TravelPostcard? postcard;
+      final ownerId = _tripOwnerId;
+      if (_tripHasBusiness && ownerId != null) {
+        postcard = await PassportService().recordCompletedTrip(
+          tripId: _tripId!,
+          ownerId: ownerId,
+          business: target,
+          startedAt: _tripStartedAt!,
+          completedAt: arrivedAt,
+        );
+      }
+      final current = _itineraryRequest;
+      final itinerary = current == null
+          ? null
+          : MapRouteRequest(
+              destinationId: current.destinationId,
+              destinationName: current.destinationName,
+              latitude: current.latitude,
+              longitude: current.longitude,
+              routeId: current.routeId,
+              stopVisitKey: current.stopVisitKey,
+              accountId: current.accountId,
+              mode: _tripMode,
+              category: current.category,
+            );
+      if (itinerary?.routeId != null &&
+          itinerary?.stopVisitKey != null &&
+          itinerary?.accountId ==
+              (AuthService().currentAuthUser?.id ?? 'guest')) {
+        await RouteTravelService.instance.setStatus(
+          accountId: itinerary!.accountId!,
+          routeId: itinerary.routeId!,
+          visitKey: itinerary.stopVisitKey!,
+          status: StopVisitStatus.visited,
+        );
+      }
+      await _stopNavigation();
+      if (!mounted) return;
+      if (itinerary?.routeId != null) {
+        if (postcard != null) {
+          AppSnackbar.showSuccess(
+            context,
+            'Tu sello de viaje se guardó en el pasaporte.',
+          );
+        }
+        await _showItineraryArrival(target.name, itinerary!);
+        return;
+      }
+      if (postcard == null) {
+        AppSnackbar.showInfo(
+          context,
+          '¡Llegaste a ${target.name}! Viaje completado.',
+        );
+        return;
+      }
+      await _showEarnedPostcard(postcard);
+    } on PassportServiceException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
+    } catch (_) {
+      if (mounted) {
+        AppSnackbar.showError(
+          context,
+          'No se pudo guardar la visita. Puedes reintentar.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCompletingTrip = false);
+    }
+  }
+
+  Future<void> _showItineraryArrival(
+    String name,
+    MapRouteRequest request,
+  ) async {
+    final session = RouteTravelService.instance.active.value;
+    if (session == null ||
+        session.route.id != request.routeId ||
+        session.accountId != request.accountId) {
+      return;
+    }
+    final arrived = session.route.stops
+        .where((s) => s.visitKey == request.stopVisitKey)
+        .firstOrNull;
+    final next = arrived == null ? null : session.nextForDay(arrived.dayNumber);
+    final continueTrip = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: AppColors.surface100,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '¡Llegaste a $name!',
+                style: AppTextStyles.sectionTitle.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                next == null
+                    ? 'Terminaste las paradas de este día. Descansa o elige otro día.'
+                    : 'Tu visita está guardada. Continúa a ${next.title} cuando estás listo.',
+                style: AppTextStyles.settingsSubtitle,
+              ),
+              const SizedBox(height: 16),
+              if (next != null && next.hasCoordinates)
+                FilledButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                  child: const Text('Ir a la siguiente parada'),
+                ),
+              TextButton(
+                onPressed: () => Navigator.of(sheetContext).pop(false),
+                child: const Text('Ver mi itinerario'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted ||
+        (AuthService().currentAuthUser?.id ?? 'guest') != request.accountId) {
+      return;
+    }
+    if (continueTrip == true && next != null) {
+      await _openRequestedTrip(
+        MapRouteRequest(
+          destinationId: next.kind.name == 'business'
+              ? next.sourceId
+              : 'route-stop-${next.sourceKey}',
+          destinationName: next.title,
+          latitude: next.latitude!,
+          longitude: next.longitude!,
+          routeId: request.routeId,
+          stopVisitKey: next.visitKey,
+          accountId: request.accountId,
+          mode: request.mode,
+          category: next.category.label,
+        ),
+      );
+    } else if (continueTrip == false) {
+      await pushSharedAxis(context, RouteTravelScreen(route: session.route));
+    }
+  }
+
+  Future<void> _showEarnedPostcard(
+    TravelPostcard postcard,
+  ) => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: AppColors.surface,
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('¡Viaje completado!', style: AppTextStyles.heading),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                postcard.title,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(
+                width: 120,
+                height: 64,
+                child: PostcardSeal(postcard: postcard),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'Tu postal está en el pasaporte.\n'
+                'Sellada el ${postcard.sealDateLabel} a las ${postcard.sealTimeLabel}.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.body,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  PassportService.openRequested.value = true;
+                  MainTabController().switchTo(4);
+                },
+                child: const Text('Ver mi pasaporte'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 
   /// ETA de lo que falta: duración total de la ruta escalada por la
   /// fracción de distancia restante. Deliberadamente derivada de la única
@@ -1505,19 +2325,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (cluster.isSingle) {
           final business = cluster.businesses.first;
           final isSelected = business.id == _selectedBusinessId;
-          final icon = _pinBitmapFor(
-            mapPinCategoryFor(business.category),
+          final category = mapPinCategoryFor(business.category);
+          // La calificación solo acompaña al nombre si el negocio tiene
+          // reseñas: un "0.0" bajo cada local nuevo diría que está mal
+          // calificado, no que todavía nadie lo calificó.
+          final labeled = _labeledPinFor(
+            name: business.name,
+            category: category,
             selected: isSelected,
+            detail: business.reviews.isEmpty
+                ? null
+                : business.averageRating.toStringAsFixed(1),
           );
+          final icon =
+              labeled?.icon ?? _pinBitmapFor(category, selected: isSelected);
           if (icon == null) continue; // Bitmap aún no cargado.
           markers.add(
             Marker(
               markerId: MarkerId(business.id),
               position: cluster.position,
               icon: icon,
-              // El pin seleccionado se ancla por la punta de su cola, los
-              // demás por su centro.
-              anchor: isSelected ? _kSelectedPinAnchor : const Offset(0.5, 0.5),
+              // Con etiqueta el ancla la calcula el propio bitmap (el
+              // lienzo crece hacia abajo); sin ella, el pin seleccionado se
+              // ancla por la punta de su cola y los demás por su centro.
+              anchor:
+                  labeled?.anchor ??
+                  (isSelected ? _kSelectedPinAnchor : const Offset(0.5, 0.5)),
               // Por encima de sus vecinos para no quedar tapado entre pines
               // muy juntos.
               zIndexInt: isSelected ? 2 : 0,
@@ -1525,7 +2358,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           );
         } else {
-          final icon = _clusterIcons[_clusterIconKey(cluster.count)];
+          final icon = _clusterIconFor(cluster);
           if (icon == null) {
             continue; // Bitmap aún no cargado — se omite este frame.
           }
@@ -1543,6 +2376,32 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           );
         }
+      }
+    }
+
+    // Solo fuera de viaje: durante preview/navegación la pantalla se reduce
+    // al destino y su ruta, y un pin extra sería ruido.
+    final ecoIcon = _ecoPinIcon;
+    if (!_isNavigating && !_isPreviewingTrip && ecoIcon != null) {
+      for (final activity in _filteredEcoActivities) {
+        // Misma etiqueta que los negocios: una jornada sin nombre visible
+        // es todavía más difícil de reconocer, porque todos los pines ECO
+        // comparten color y glifo.
+        final labeled = _labeledPinFor(
+          name: activity.title,
+          category: MapPinCategory.eco,
+          selected: false,
+          ecoActivity: true,
+        );
+        markers.add(
+          Marker(
+            markerId: MarkerId('__eco__${activity.id}'),
+            position: LatLng(activity.latitude!, activity.longitude!),
+            icon: labeled?.icon ?? ecoIcon,
+            anchor: labeled?.anchor ?? const Offset(0.5, 0.5),
+            onTap: () => _onEcoMarkerTapped(activity),
+          ),
+        );
       }
     }
 
@@ -1564,6 +2423,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return markers;
   }
 
+  Future<void> _onEcoMarkerTapped(EcoActivityModel activity) async {
+    await _animateCameraTo(LatLng(activity.latitude!, activity.longitude!));
+    if (!mounted) return;
+    await pushSharedAxis(context, EcoDetailScreen(activity: activity));
+    if (!mounted) return;
+    // Pudo haberse unido/salido, o el organizador pudo editarla.
+    await _loadEcoActivities();
+  }
+
   /// Encuadra la cámara a los bordes exactos de los miembros del cluster
   /// (en vez de un zoom fijo) para que se resuelva en un solo tap sin
   /// importar qué tan dispersos estén.
@@ -1577,14 +2445,144 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildRecommendationsCarousel(List<BusinessModel> filtered) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedContainer(
+          // Al expandir hay que reservar toda la altura antes de mostrar los
+          // botones de la tarjeta. Al colapsar sí puede animarse el espacio.
+          duration: _selectedBusinessId == null
+              ? AppMotion.respect(context, AppMotion.standardDuration)
+              : Duration.zero,
+          curve: AppMotion.decelerate,
+          height: _carouselHeight,
+          child: PageView.builder(
+            controller: _carouselController,
+            padEnds: false,
+            itemCount: filtered.length,
+            itemBuilder: (context, index) {
+              final business = filtered[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _BusinessCarouselCard(
+                    business: business,
+                    expanded: business.id == _selectedBusinessId,
+                    distanceKm: LocationService.distanceKm(
+                      _userPosition,
+                      business.latitude,
+                      business.longitude,
+                    ),
+                    onTap: () => _onCarouselCardTapped(business),
+                    onNavigate: () => _startTripPreview(business),
+                    onViewProfile: () => pushSharedAxis(
+                      context,
+                      BusinessDetailScreen(business: business),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomDock(List<BusinessModel> filtered) {
+    Widget? panel;
+    if (_isPreviewingTrip && _navigationTarget != null) {
+      panel = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: _TripPreviewPanel(
+          destinationName: _navigationTarget!.name,
+          distanceLabel: _tripPreviewDistanceLabel,
+          etaLabel: _remainingEtaLabel,
+          arrivalLabel: _tripPreviewArrivalLabel,
+          onStart: _isChangingTripMode || _isConfirmingTrip
+              ? null
+              : _confirmStartTrip,
+        ),
+      );
+    } else if (_isNavigating && _navigationTarget != null) {
+      panel = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: _NavigationPanel(
+          destinationName: _navigationTarget!.name,
+          etaLabel: _remainingEtaLabel,
+          remainingLabel: _remainingDistanceLabel,
+          voiceEnabled: _voiceGuidanceEnabled,
+          onToggleVoice: _toggleVoiceGuidance,
+          onCancel: _isCompletingTrip ? null : _stopNavigation,
+          isCompleting: _isCompletingTrip,
+          onRetryCompletion: !_isCompletingTrip && _pendingArrivalAt != null
+              ? _completeNavigation
+              : null,
+        ),
+      );
+    } else if (filtered.isNotEmpty) {
+      panel = _buildRecommendationsCarousel(filtered);
+    }
+
+    return MapBottomDock(
+      recommendationLabel:
+          !_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty
+          ? const _CarouselHeaderLabel()
+          : null,
+      leading: _isNavigating && _currentSpeedKmh != null
+          ? _SpeedometerBadge(speedKmh: _currentSpeedKmh!)
+          : null,
+      locationControl: !_isNavigating || !_isCameraLocked
+          ? _RecenterButton(
+              isLoading: _isNavigating ? false : _locatingUser,
+              icon: _isNavigating
+                  ? Icons.center_focus_strong_rounded
+                  : Icons.my_location_rounded,
+              onPressed: _isNavigating
+                  ? _recenterNavigationCamera
+                  : () => _locateUser(animate: true),
+            )
+          : null,
+      assistantControl: !_isNavigating && !_isPreviewingTrip
+          ? const AssistantFab()
+          : null,
+      panel: panel,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredBusinesses;
-    final categories = [_kAllCategories, ..._categories];
+    final categories = [
+      _kAllCategories,
+      if (_ecoActivities.isNotEmpty) _kEcoCategory,
+      ..._categories,
+    ];
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundCream,
+      backgroundColor: AppColors.background,
       extendBody: true,
+      // El teclado NO encoge esta pantalla, por dos motivos encadenados.
+      //
+      // El visible: con el comportamiento por defecto el `Stack` se recorta
+      // al espacio que deja el teclado, así que el dock —anclado en
+      // `bottom: 0`— se despegaba del borde inferior y quedaba flotando a
+      // media pantalla junto al mapa aplastado.
+      //
+      // El que lo volvía difícil de ver: `Scaffold` envuelve el body en un
+      // `MediaQuery.removeViewInsets(removeBottom: true)` cuando resuelve
+      // el inset él mismo, así que `viewInsetsOf(context).bottom` **siempre**
+      // valía 0 ahí dentro y el guard de abajo (escrito justo para ocultar
+      // el dock al teclear) nunca se cumplía: era código muerto.
+      //
+      // Dejándolo en `false` el mapa ocupa la pantalla completa detrás del
+      // teclado —que es lo correcto acá, porque el campo de búsqueda vive
+      // arriba y el teclado nunca lo tapa— y el inset real vuelve a llegar
+      // al body, con lo que el guard por fin funciona.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1650,11 +2648,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
               ),
             )
-          else if (_loadError != null)
+          else if (_loadError != null && !_isNavigating && !_isPreviewingTrip)
             Positioned.fill(
               child: _MapErrorOverlay(
                 message: _loadError!,
-                onRetry: _loadAllBusinessesAndFitCamera,
+                // También los favoritos: sin red ambas lecturas fallan juntas.
+                onRetry: () {
+                  unawaited(FavoritesService().preload());
+                  unawaited(_loadAllBusinessesAndFitCamera());
+                },
+              ),
+            ),
+          if (_isStartingTripPreview)
+            Center(
+              child: Card(
+                color: AppColors.surface100,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Preparando el trayecto…',
+                        style: AppTextStyles.mapRowTitle,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           // Oculto en ambas fases de viaje: el selector de modo (Fase 1) y
@@ -1667,6 +2689,50 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    ValueListenableBuilder<RouteTravelSession?>(
+                      valueListenable: RouteTravelService.instance.active,
+                      builder: (context, session, _) {
+                        if (session == null ||
+                            session.isFinished ||
+                            session.accountId !=
+                                (AuthService().currentAuthUser?.id ??
+                                    'guest')) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Material(
+                            color: AppColors.surface100,
+                            borderRadius: BorderRadius.circular(16),
+                            child: ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.route_rounded),
+                              title: Text(
+                                session.route.title,
+                                style: AppTextStyles.mapRowTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: const Text('Continuar mi ruta'),
+                              trailing: IconButton(
+                                tooltip: 'Desactivar modo ruta',
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () => unawaited(
+                                  RouteTravelService.instance.deactivate(
+                                    accountId: session.accountId,
+                                    routeId: session.route.id,
+                                  ),
+                                ),
+                              ),
+                              onTap: () => pushSharedAxis(
+                                context,
+                                RouteTravelScreen(route: session.route),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1675,12 +2741,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             controller: _searchController,
                             focusNode: _searchFocusNode,
                             onSubmitted: _onSearchSubmitted,
+                            hintText: _destination.isActive
+                                ? 'Buscar en ${_destination.label}...'
+                                : 'Buscar negocio o lugar...',
                           ),
                         ),
                         const SizedBox(width: 10),
-                        _MapFilterButton(
-                          onTap: () => _onCategorySelected(_kAllCategories),
-                        ),
+                        _MapFilterButton(onTap: _openFilterSheet),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1703,11 +2770,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     if (!_isLoading &&
                         _loadError == null &&
                         _businesses.isNotEmpty &&
-                        filtered.isEmpty)
+                        filtered.isEmpty &&
+                        _filteredEcoActivities.isEmpty)
                       const Padding(
                         padding: EdgeInsets.only(top: 10),
                         child: _EmptyBusinessesBanner(
-                          message: 'Ningún negocio coincide con tu búsqueda.',
+                          message: 'Ningún lugar coincide con tus filtros.',
                         ),
                       )
                     else if (!_isLoading &&
@@ -1736,6 +2804,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   _CircleIconButton(
                     icon: Icons.close_rounded,
                     onTap: _cancelTripPreview,
+                    label: 'Cancelar vista previa del viaje',
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1746,93 +2815,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ],
-              ),
-            ),
-          // Carrusel persistente "Recomendaciones destacadas" (Pantalla 2a):
-          // scrollear es solo navegar, no selecciona ni mueve la cámara —
-          // solo tocar una card o su pin lo hace.
-          if (!_isNavigating && !_isPreviewingTrip && filtered.isNotEmpty)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(left: 12, bottom: 8),
-                        child: _CarouselHeaderLabel(),
-                      ),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutCubic,
-                        height: _carouselHeight,
-                        child: PageView.builder(
-                          controller: _carouselController,
-                          padEnds: false,
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) {
-                            final business = filtered[index];
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                              ),
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: _BusinessCarouselCard(
-                                  business: business,
-                                  expanded: business.id == _selectedBusinessId,
-                                  distanceKm: LocationService.distanceKm(
-                                    _userPosition,
-                                    business.latitude,
-                                    business.longitude,
-                                  ),
-                                  onTap: () => _onCarouselCardTapped(business),
-                                  onNavigate: () => _startTripPreview(business),
-                                  onViewProfile: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => BusinessDetailScreen(
-                                          business: business,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          // Fase 1 — panel inferior del preview: distancia, ETA, hora de
-          // llegada y botón "Iniciar viaje" (ver [_confirmStartTrip]).
-          if (_isPreviewingTrip && _navigationTarget != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _TripPreviewPanel(
-                    destinationName: _navigationTarget!.name,
-                    distanceLabel: _tripPreviewDistanceLabel,
-                    etaLabel: _remainingEtaLabel,
-                    arrivalLabel: _tripPreviewArrivalLabel,
-                    onStart: _confirmStartTrip,
-                  ),
-                ),
               ),
             ),
           // Fase 2 — banner de maniobra (siguiente giro + distancia, ícono
@@ -1853,70 +2835,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 distanceLabel: _maneuverDistanceLabel,
               ),
             ),
-          // Estado 19c — panel inferior con ETA, distancia restante y
-          // acciones Voz/Cancelar. El bottom nav de MainLayout está oculto
-          // mientras se muestra (ver _confirmStartTrip).
-          if (_isNavigating && _navigationTarget != null)
+          // El dock respeta la barra inferior y coloca controles y tarjetas
+          // en el mismo flujo. Al escribir una búsqueda se retira y libera
+          // el mapa: con el teclado abierto no hay lugar para él, y los
+          // resultados ya se ven como pines etiquetados sobre el mapa.
+          //
+          // La condición es "¿hay teclado tapando la pantalla?", no "¿el
+          // campo tiene foco?". Se probaron las dos: el foco **no** sirve
+          // porque el botón atrás de Android cierra el teclado sin soltar
+          // el foco, y el dock se quedaba escondido sobre un mapa sin
+          // controles.
+          //
+          // Que este inset llegue de verdad depende de que ningún
+          // `Scaffold` de arriba resuelva el teclado por su cuenta: hacerlo
+          // envuelve a los hijos en `MediaQuery.removeViewInsets(
+          // removeBottom: true)` y acá llegaría siempre 0. El shell de
+          // `MainLayout` lo hacía, y ese era el bug — ver su comentario y
+          // `test/map_keyboard_inset_test.dart`.
+          if (MediaQuery.viewInsetsOf(context).bottom == 0)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: _NavigationPanel(
-                    destinationName: _navigationTarget!.name,
-                    etaLabel: _remainingEtaLabel,
-                    remainingLabel: _remainingDistanceLabel,
-                    voiceEnabled: _voiceGuidanceEnabled,
-                    onToggleVoice: _toggleVoiceGuidance,
-                    onCancel: _stopNavigation,
-                  ),
-                ),
-              ),
-            ),
-          // Fase 2 — velocímetro, abajo a la izquierda para no solaparse
-          // con el botón de recentrar ni el panel inferior.
-          if (_isNavigating && _currentSpeedKmh != null)
-            Positioned(
-              left: 16,
-              bottom: _kNavigationPanelHeight + 16,
-              child: SafeArea(
-                top: false,
-                bottom: false,
-                child: _SpeedometerBadge(speedKmh: _currentSpeedKmh!),
-              ),
-            ),
-          // Oculto por completo mientras navega con la cámara ya bloqueada
-          // al vehículo — nada que recentrar. Al arrastrar el mapa (ver
-          // `onCameraMoveStarted`) se vuelve el botón de mira "Recentrar".
-          if (!_isNavigating || !_isCameraLocked)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              right: 16,
-              // Se posiciona justo encima de lo que ocupe el fondo de la
-              // pantalla (panel de navegación, panel de preview, o carrusel).
-              bottom: _isNavigating
-                  ? _kNavigationPanelHeight + 16
-                  : _isPreviewingTrip
-                  ? _kTripPreviewPanelHeight + 16
-                  : (filtered.isEmpty ? 16 : _carouselHeight + 16),
-              child: SafeArea(
-                top: false,
-                bottom: false,
-                child: _isNavigating
-                    ? _RecenterButton(
-                        isLoading: false,
-                        icon: Icons.center_focus_strong_rounded,
-                        onPressed: _recenterNavigationCamera,
-                      )
-                    : _RecenterButton(
-                        isLoading: _locatingUser,
-                        onPressed: () => _locateUser(animate: true),
-                      ),
-              ),
+              child: _buildBottomDock(filtered),
             ),
         ],
       ),
@@ -1934,22 +2875,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
 /// Altura del carrusel sin card seleccionada (Estado 19a) — con margen
 /// extra para redondeo de fuente, evita overflow de `RenderFlex`.
-const double _kCarouselCompactHeight = 108;
+const double _kCarouselCompactHeight = 112;
 
 /// Altura del carrusel con card expandida y "Cómo llegar"/"Ver perfil"
 /// (Estado 19b), Pantalla 2a.
-const double _kCarouselExpandedHeight = 168;
-
-/// Altura fija de la línea de badge en la card compacta — reservada haya
-/// o no badge, para que todas las cards midan igual.
-const double _kCompactBadgeSlotHeight = 26;
-
-/// Espacio que ocupa [_NavigationPanel] al fondo — lo que el botón de
-/// recentrar debe despejar mientras navega.
-const double _kNavigationPanelHeight = 132;
-
-/// Espacio que ocupa [_TripPreviewPanel] al fondo durante el preview.
-const double _kTripPreviewPanelHeight = 170;
+const double _kCarouselExpandedHeight = 196;
 
 /// Mapea el `maneuver` de Directions al ícono correspondiente; `null`
 /// (paso sin maniobra especial, típicamente el primero de la ruta) cae a
@@ -1981,32 +2911,43 @@ IconData _travelModeIcon(TravelMode mode) => switch (mode) {
 };
 
 class _CircleIconButton extends StatelessWidget {
-  const _CircleIconButton({required this.icon, required this.onTap});
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    required this.label,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
 
+  /// Descripción para lectores de pantalla — el botón no tiene texto visible.
+  final String label;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          shape: BoxShape.circle,
-          border: Border.all(color: AppColors.mapControlBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.mapControlShadowStrong,
-              offset: Offset(0, 4),
-              blurRadius: 14,
-            ),
-          ],
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.mapControlBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.mapControlShadowStrong,
+                offset: Offset(0, 4),
+                blurRadius: 14,
+              ),
+            ],
+          ),
+          child: Icon(icon, size: 18, color: AppColors.settingsTextDark),
         ),
-        child: Icon(icon, size: 18, color: AppColors.settingsTextDark),
       ),
     );
   }
@@ -2026,10 +2967,10 @@ class _TripModeSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(AppSpacing.xs),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2082,11 +3023,11 @@ class _TripModeButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.quickDuration,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2128,15 +3069,15 @@ class _TripPreviewPanel extends StatelessWidget {
   final String distanceLabel;
   final String etaLabel;
   final String arrivalLabel;
-  final VoidCallback onStart;
+  final VoidCallback? onStart;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2185,7 +3126,7 @@ class _TripPreviewPanel extends StatelessWidget {
                 foregroundColor: AppColors.settingsTextDark,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 textStyle: AppTextStyles.mapRowTitle.copyWith(fontSize: 14),
               ),
@@ -2247,7 +3188,7 @@ class _ManeuverBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: AppColors.primary500,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: const [
           BoxShadow(
             color: AppColors.mapCardShadow,
@@ -2362,6 +3303,8 @@ class _NavigationPanel extends StatelessWidget {
     required this.voiceEnabled,
     required this.onToggleVoice,
     required this.onCancel,
+    this.isCompleting = false,
+    this.onRetryCompletion,
   });
 
   final String destinationName;
@@ -2369,7 +3312,9 @@ class _NavigationPanel extends StatelessWidget {
   final String remainingLabel;
   final bool voiceEnabled;
   final VoidCallback onToggleVoice;
-  final VoidCallback onCancel;
+  final VoidCallback? onCancel;
+  final bool isCompleting;
+  final VoidCallback? onRetryCompletion;
 
   @override
   Widget build(BuildContext context) {
@@ -2377,7 +3322,7 @@ class _NavigationPanel extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppRadius.xl),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2400,7 +3345,7 @@ class _NavigationPanel extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: AppColors.primary500,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2475,18 +3420,20 @@ class _NavigationPanel extends StatelessWidget {
                   child: ElevatedButton.icon(
                     onPressed: onCancel,
                     icon: const Icon(Icons.close_rounded, size: 16),
-                    label: const Text('Cancelar viaje'),
+                    label: Text(
+                      isCompleting ? 'Sellando postal…' : 'Cancelar viaje',
+                    ),
                     style: ElevatedButton.styleFrom(
                       // Alerta suave, no un bloque rojo sólido: fondo coral
                       // pálido con el tinte destructivo canónico del texto/ícono.
-                      backgroundColor: AppColors.complementario1,
-                      foregroundColor: AppColors.settingsDanger,
+                      backgroundColor: AppColors.coralPaleFill,
+                      foregroundColor: AppColors.destructive,
                       elevation: 0,
                       padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                         side: const BorderSide(
-                          color: AppColors.complementario2,
+                          color: AppColors.coralPaleBorder,
                         ),
                       ),
                       textStyle: AppTextStyles.mapRowTitle.copyWith(
@@ -2498,6 +3445,14 @@ class _NavigationPanel extends StatelessWidget {
               ),
             ],
           ),
+          if (onRetryCompletion != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: onRetryCompletion,
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: const Text('Reintentar guardar la postal'),
+            ),
+          ],
         ],
       ),
     );
@@ -2560,11 +3515,12 @@ class _CarouselHeaderLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
+      heightFactor: 1,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: Border.all(color: AppColors.mapControlBorder),
           boxShadow: const [
             BoxShadow(
@@ -2583,11 +3539,12 @@ class _CarouselHeaderLabel extends StatelessWidget {
               color: AppColors.primary500,
             ),
             const SizedBox(width: 5),
-            Text(
-              'Recomendaciones destacadas',
-              style: AppTextStyles.mapRowTitle.copyWith(
-                fontSize: 12,
-                color: AppColors.settingsTextDark,
+            Flexible(
+              child: Text(
+                'Recomendaciones destacadas',
+                style: AppTextStyles.mapRowTitle.copyWith(
+                  color: AppColors.settingsTextDark,
+                ),
               ),
             ),
           ],
@@ -2602,17 +3559,19 @@ class _MapSearchBar extends StatelessWidget {
     required this.controller,
     this.focusNode,
     this.onSubmitted,
+    required this.hintText,
   });
 
   final TextEditingController controller;
   final FocusNode? focusNode;
   final ValueChanged<String>? onSubmitted;
+  final String hintText;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(18),
@@ -2645,7 +3604,7 @@ class _MapSearchBar extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
-                hintText: 'Buscar negocio o lugar...',
+                hintText: hintText,
                 hintStyle: AppTextStyles.caption.copyWith(
                   color: AppColors.settingsTextMuted,
                 ),
@@ -2658,8 +3617,7 @@ class _MapSearchBar extends StatelessWidget {
   }
 }
 
-/// Botón cuadrado junto a la búsqueda; al tocarlo resetea el filtro de
-/// categoría a "Todos".
+/// Abre el selector de destino compartido con Inicio y ECO.
 class _MapFilterButton extends StatelessWidget {
   const _MapFilterButton({required this.onTap});
 
@@ -2667,28 +3625,31 @@ class _MapFilterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: AppColors.surface100,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.mapControlBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: AppColors.mapControlShadow,
-              offset: Offset(0, 4),
-              blurRadius: 16,
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.tune,
-          size: 18,
-          color: AppColors.settingsTextDark,
+    return Tooltip(
+      message: 'Filtrar por destino',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface100,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.mapControlBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.mapControlShadow,
+                offset: Offset(0, 4),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.tune,
+            size: 18,
+            color: AppColors.settingsTextDark,
+          ),
         ),
       ),
     );
@@ -2711,12 +3672,12 @@ class _CategoryChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(right: 8),
+        margin: const EdgeInsets.only(right: AppSpacing.sm),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? AppColors.primary500 : AppColors.surface100,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(AppRadius.pill),
           border: selected
               ? null
               : Border.all(color: AppColors.mapControlBorder),
@@ -2757,17 +3718,17 @@ class _MapErrorOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AppColors.backgroundCream,
+      color: AppColors.background,
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
                 Icons.wifi_off_rounded,
                 size: 40,
-                color: AppColors.settingsDanger,
+                color: AppColors.destructive,
               ),
               const SizedBox(height: 12),
               Text(
@@ -2813,10 +3774,13 @@ class _EmptyBusinessesBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         color: AppColors.surface100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         border: Border.all(color: AppColors.mapControlBorder),
         boxShadow: const [
           BoxShadow(
@@ -2848,44 +3812,59 @@ class _EmptyBusinessesBanner extends StatelessWidget {
   }
 }
 
-/// Handle de arrastre sobre [child] para el sheet de detalle de pin (ver
-/// [MapScreen._showBusinessSheet]) — evita un [DraggableScrollableSheet]
-/// completo para contenido que no hace scroll.
-class _PinDetailSheetChrome extends StatelessWidget {
-  const _PinDetailSheetChrome({required this.child});
+/// Bitmap de pin **con etiqueta** más el ancla que le corresponde.
+///
+/// Las dos cosas viajan juntas porque el ancla deja de ser constante en
+/// cuanto el lienzo crece hacia abajo para alojar el nombre: el punto
+/// geográfico sigue siendo el centro del círculo (o la punta de la cola en
+/// el seleccionado), que ya no coincide con el centro del bitmap.
+class _LabeledPin {
+  const _LabeledPin({required this.icon, required this.anchor});
 
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                color: AppColors.profileDivider,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
+  final BitmapDescriptor icon;
+  final Offset anchor;
 }
 
-/// Card compartida por el carrusel persistente (Pantalla 2a) y el sheet de
-/// detalle de pin ([MapScreen._showBusinessSheet]), para que un negocio se
-/// vea igual sin importar cómo se seleccionó. Sin precio ni botón de
-/// reserva, por diseño de Pantalla 2b.
+/// Lo necesario para generar un [_LabeledPin]; se juntan durante el build y
+/// se resuelven después del frame (ver `_MapScreenState._flushPinLabels`).
+class _PinLabelRequest {
+  const _PinLabelRequest({
+    required this.name,
+    required this.detail,
+    required this.category,
+    required this.selected,
+    required this.ecoActivity,
+  });
+
+  final String name;
+  final String? detail;
+  final MapPinCategory category;
+  final bool selected;
+  final bool ecoActivity;
+}
+
+/// Un tramo de texto de la etiqueta con su propio color/tipografía — existe
+/// para poder mezclar el glifo dorado de la estrella con el texto normal
+/// dentro de un solo `TextPainter`.
+class _PinLabelPart {
+  const _PinLabelPart(
+    this.text,
+    this.color, {
+    this.fontFamily,
+    this.fontPackage,
+    this.fontSize,
+  });
+
+  final String text;
+  final Color color;
+  final String? fontFamily;
+  final String? fontPackage;
+  final double? fontSize;
+}
+
+/// Card del carrusel persistente del mapa (Pantalla 2a), que se expande al
+/// seleccionar un negocio. Sin precio ni botón de reserva, por diseño de
+/// Pantalla 2b.
 class _BusinessCarouselCard extends StatelessWidget {
   const _BusinessCarouselCard({
     required this.business,
@@ -2923,31 +3902,27 @@ class _BusinessCarouselCard extends StatelessWidget {
     final locationLabel = km == null
         ? business.city
         : '${business.city} · a ${km.toStringAsFixed(0)} km';
-    final rating = business.averageRating;
     final firstActivity = business.activities.isNotEmpty
         ? activityLabel(business.activities.first)
         : null;
     // Aún no existe columna `is_eco` — el opt-in real del dueño (Sello ECO,
     // Pantalla 4c) tiene prioridad; category/activities es solo fallback
     // para negocios guardados antes de ese campo.
-    final isEco =
-        business.ecoSealRequested ||
-        business.category.toLowerCase().contains('eco') ||
-        business.activities.any(
-          (a) => activityLabel(a).toLowerCase().contains('eco'),
-        );
+    final isEco = _hasEcoBadge(business);
 
     final header = GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: expanded
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(expanded ? 16 : 12),
             child: SizedBox(
-              width: expanded ? 78 : 52,
-              height: expanded ? 78 : 52,
+              width: expanded ? 78 : 64,
+              height: expanded ? 78 : 64,
               child: LocalImage(
                 path: imagePath,
                 fallbackIcon: Icons.storefront_outlined,
@@ -2977,7 +3952,7 @@ class _BusinessCarouselCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(height: 3),
+                SizedBox(height: expanded ? 3 : AppSpacing.xs),
                 Row(
                   children: [
                     Icon(
@@ -2998,8 +3973,13 @@ class _BusinessCarouselCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                if (expanded)
+                const SizedBox(height: AppSpacing.xs),
+                MapBusinessRating(
+                  average: business.averageRating,
+                  count: business.reviews.length,
+                ),
+                if (expanded && (firstActivity != null || isEco)) ...[
+                  const SizedBox(height: AppSpacing.xs),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
@@ -3011,46 +3991,13 @@ class _BusinessCarouselCard extends StatelessWidget {
                           textColor: AppColors.settingsTextMuted,
                           bordered: true,
                         ),
-                      if (isEco)
-                        _MapTag(
-                          label: 'ECO',
-                          background: AppColors.ecoGreen500,
-                          textColor: AppColors.surface100,
-                        ),
-                      if (rating > 0)
-                        _MapTag(
-                          label: '★ ${rating.toStringAsFixed(1)}',
-                          background: AppColors.settingsBackground,
-                          textColor: AppColors.settingsTextDark,
-                          bordered: true,
-                        ),
+                      if (isEco) const EcoBadge(),
                     ],
-                  )
-                // El layout compacto muestra a lo sumo un badge (ECO
-                // primero) en un slot de altura fija (vacío si no aplica
-                // ninguno) — dejar esta línea opcional antes causaba
-                // overflow/desalineación entre cards con y sin badge.
-                else
-                  SizedBox(
-                    height: _kCompactBadgeSlotHeight,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: isEco
-                          ? _MapTag(
-                              label: 'ECO',
-                              background: AppColors.ecoGreen500,
-                              textColor: AppColors.surface100,
-                            )
-                          : rating > 0
-                          ? _MapTag(
-                              label: '★ ${rating.toStringAsFixed(1)}',
-                              background: AppColors.settingsBackground,
-                              textColor: AppColors.settingsTextDark,
-                              bordered: true,
-                            )
-                          : const SizedBox.shrink(),
-                    ),
                   ),
+                ] else if (!expanded && isEco) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  const EcoBadge(),
+                ],
               ],
             ),
           ),
@@ -3059,9 +4006,9 @@ class _BusinessCarouselCard extends StatelessWidget {
     );
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.all(12),
+      duration: AppMotion.quickDuration,
+      curve: AppMotion.decelerate,
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: AppColors.surface100,
         borderRadius: BorderRadius.circular(22),
@@ -3080,8 +4027,8 @@ class _BusinessCarouselCard extends StatelessWidget {
         ],
       ),
       child: AnimatedSize(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.quickDuration,
+        curve: AppMotion.decelerate,
         alignment: Alignment.topCenter,
         child: expanded
             ? Stack(
@@ -3110,7 +4057,9 @@ class _BusinessCarouselCard extends StatelessWidget {
                                   elevation: 0,
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
                                   ),
                                   textStyle: AppTextStyles.mapRowTitle.copyWith(
                                     fontSize: 12,
@@ -3136,7 +4085,9 @@ class _BusinessCarouselCard extends StatelessWidget {
                                   elevation: 0,
                                   padding: EdgeInsets.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(
+                                      AppRadius.sm,
+                                    ),
                                   ),
                                   textStyle: AppTextStyles.mapRowTitle.copyWith(
                                     fontSize: 12,
@@ -3181,7 +4132,7 @@ class _MapTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
         border: bordered ? Border.all(color: AppColors.mapControlBorder) : null,
       ),
       child: Text(
@@ -3216,7 +4167,12 @@ class _FavoriteToggle extends StatelessWidget {
             if (!await GuestGuard.allow(context, GuestFeature.favoritos)) {
               return;
             }
-            await FavoritesService().toggleFavorite(businessId);
+            if (!context.mounted) return;
+            if (!await FaceGuard.allow(context, FaceLimitedAction.favoritos)) {
+              return;
+            }
+            if (!context.mounted) return;
+            await toggleFavoriteWithFeedback(context, businessId);
           },
           child: Container(
             width: 30,
