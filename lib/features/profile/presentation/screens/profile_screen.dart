@@ -478,11 +478,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onTap: _openAccountSwitcher,
                         ),
                         ProfileHeaderIconButton(
-                          label: 'Editar perfil',
-                          icon: Icons.edit_outlined,
-                          onTap: _openSettings,
-                        ),
-                        ProfileHeaderIconButton(
                           label: 'Ajustes',
                           icon: Icons.settings_outlined,
                           onTap: _openSettings,
