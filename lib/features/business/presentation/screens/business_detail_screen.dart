@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -161,67 +163,112 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     await AddToRouteBottomSheet.showForBusiness(context, _business);
   }
 
-  /// Desde que la persona toca "Enviar" hasta que la fila queda escrita: con
-  /// esto no se puede abrir otra reseña ni publicar la misma dos veces.
+  /// Tope para publicar una reseña. Sin red la petición puede quedarse
+  /// colgada mucho más que esto, y el botón no debe girar para siempre.
+  static const _reviewPublishTimeout = Duration(seconds: 15);
+
+  /// Desde que la persona toca "Enviar" hasta que la fila queda escrita (o
+  /// falla): con esto la misma reseña no se publica dos veces.
   bool _isSubmittingReview = false;
 
-  Future<void> _openWriteReview() async {
+  /// Última reseña que no se pudo publicar. Se conserva para no perder lo que
+  /// la persona escribió: "Reintentar" la reenvía y "Escribir una reseña" la
+  /// vuelve a mostrar prellenada.
+  ReviewDraft? _failedReviewDraft;
+
+  /// Con [retry] la hoja se abre con la reseña fallida y la envía sola, para
+  /// que el spinner se vea en el botón "Enviar reseña".
+  Future<void> _openWriteReview({bool retry = false}) async {
     if (_isSubmittingReview) return;
     if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
     if (!mounted) return;
-    final draft = await showModalBottomSheet<_ReviewDraft>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface100,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => const _WriteReviewSheet(),
+      builder: (context) => WriteReviewSheet(
+        initialDraft: _failedReviewDraft,
+        autoSubmit: retry && _failedReviewDraft != null,
+        onSubmit: _submitReview,
+      ),
     );
-    if (draft == null || !mounted) return;
+  }
 
+  /// Lo llama la hoja al tocar "Enviar reseña", mientras sigue abierta (así
+  /// el spinner y el bloqueo viven en ese botón). Devuelve `true` si se
+  /// publicó, `false` si falló (ya avisó con `AppSnackbar`) y `null` si
+  /// ignoró la llamada por haber otra en curso.
+  Future<bool?> _submitReview(ReviewDraft draft) async {
+    if (_isSubmittingReview) return null;
     setState(() => _isSubmittingReview = true);
     try {
-      final profile = _currentProfile ?? await _authService.getCurrentProfile();
-      final authorName = profile != null && profile.fullName.trim().isNotEmpty
-          ? profile.fullName
-          : 'Viajero Níkara';
-
-      final review = ReviewModel(
-        id: const Uuid().v4(),
-        authorName: authorName,
-        authorId: _authService.currentAuthUser?.id ?? '',
-        rating: draft.rating,
-        comment: draft.comment,
-        date: DateTime.now(),
-        mediaPaths: draft.mediaPaths,
-      );
-
       // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
       // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
       // mostrarla igual haría creer que quedó publicada para todos.
-      await _businessStorageService.addReview(_business, review);
-      if (!mounted) return;
+      final review = await _publishReview(draft).timeout(_reviewPublishTimeout);
+      if (!mounted) return true;
       setState(() {
+        _failedReviewDraft = null;
         _businessState = _businessState.copyWith(
           reviews: [..._businessState.reviews, review],
         );
       });
-
-      AppSnackbar.showSuccess(context, '¡Gracias por tu reseña! +20 puntos');
+      AppSnackbar.showSuccess(context, '¡Gracias por tu reseña!');
+      return true;
+    } on TimeoutException {
+      _failReview(
+        draft,
+        'La publicación tardó demasiado. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
     } on ReviewServiceException catch (e) {
-      if (!mounted) return;
-      AppSnackbar.showError(context, e.message);
+      _failReview(draft, e.message);
     } on Exception {
-      if (!mounted) return;
-      AppSnackbar.showError(
-        context,
+      _failReview(
+        draft,
         'No se pudo publicar tu reseña. Verifica tu internet e intenta de '
         'nuevo.',
       );
     } finally {
       if (mounted) setState(() => _isSubmittingReview = false);
     }
+    return false;
+  }
+
+  Future<ReviewModel> _publishReview(ReviewDraft draft) async {
+    final profile = _currentProfile ?? await _authService.getCurrentProfile();
+    final authorName = profile != null && profile.fullName.trim().isNotEmpty
+        ? profile.fullName
+        : 'Viajero Níkara';
+
+    final review = ReviewModel(
+      id: const Uuid().v4(),
+      authorName: authorName,
+      authorId: _authService.currentAuthUser?.id ?? '',
+      rating: draft.rating,
+      comment: draft.comment,
+      date: DateTime.now(),
+      mediaPaths: draft.mediaPaths,
+    );
+    await _businessStorageService.addReview(_business, review);
+    return review;
+  }
+
+  /// Guarda la reseña y avisa con un "Reintentar". La hoja se cierra después
+  /// de esto (el aviso quedaría tapado por ella), por eso el texto se guarda
+  /// aquí y no en la hoja.
+  void _failReview(ReviewDraft draft, String message) {
+    if (!mounted) return;
+    _failedReviewDraft = draft;
+    AppSnackbar.showError(
+      context,
+      message,
+      actionLabel: 'Reintentar',
+      onAction: () => unawaited(_openWriteReview(retry: true)),
+    );
   }
 
   /// Enfoca el mapa propio de Níkara (no Google Maps externo) porque el mapa in-app ya traza ruta real y sigue el viaje.
@@ -319,7 +366,6 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         : _ReviewsTab(
                             business: _business,
                             onWriteReview: _openWriteReview,
-                            isSubmitting: _isSubmittingReview,
                           ),
                   ),
                 ],
@@ -1254,17 +1300,10 @@ class _ReportLinkSection extends StatelessWidget {
 }
 
 class _ReviewsTab extends StatelessWidget {
-  const _ReviewsTab({
-    required this.business,
-    required this.onWriteReview,
-    required this.isSubmitting,
-  });
+  const _ReviewsTab({required this.business, required this.onWriteReview});
 
   final BusinessModel business;
   final VoidCallback onWriteReview;
-
-  /// Mientras se publica una reseña: el botón queda deshabilitado con spinner.
-  final bool isSubmitting;
 
   @override
   Widget build(BuildContext context) {
@@ -1274,10 +1313,8 @@ class _ReviewsTab extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: isSubmitting ? null : onWriteReview,
-            icon: isSubmitting
-                ? const AppSpinner(size: 18, color: AppColors.primary500)
-                : const Icon(Icons.rate_review_outlined, size: 18),
+            onPressed: onWriteReview,
+            icon: const Icon(Icons.rate_review_outlined, size: 18),
             label: const Text('Escribir una reseña'),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,
@@ -1681,8 +1718,9 @@ class _ContactBar extends StatelessWidget {
 }
 
 /// [BusinessDetailScreen] (no el sheet) estampa identidad, id y timestamp para construir el [ReviewModel] real.
-class _ReviewDraft {
-  const _ReviewDraft({
+@visibleForTesting
+class ReviewDraft {
+  const ReviewDraft({
     required this.rating,
     required this.comment,
     required this.mediaPaths,
@@ -1694,17 +1732,52 @@ class _ReviewDraft {
 }
 
 /// Usa `pickMultipleMedia` como control único para fotos y videos, ya que no hay un picker de video separado en el proyecto.
-class _WriteReviewSheet extends StatefulWidget {
-  const _WriteReviewSheet();
+///
+/// Publica desde dentro: [onSubmit] corre mientras la hoja sigue abierta, así
+/// "Enviar reseña" muestra el spinner y queda bloqueado mientras dura, y la
+/// hoja no se puede cerrar a medio publicar. [onSubmit] devuelve `true` si se
+/// publicó, `false` si falló y `null` si ignoró la llamada; la hoja se cierra
+/// salvo con `null`.
+@visibleForTesting
+class WriteReviewSheet extends StatefulWidget {
+  const WriteReviewSheet({
+    super.key,
+    required this.onSubmit,
+    this.initialDraft,
+    this.autoSubmit = false,
+  });
+
+  final Future<bool?> Function(ReviewDraft draft) onSubmit;
+
+  /// Reseña que no se pudo publicar: la hoja se abre con ese texto.
+  final ReviewDraft? initialDraft;
+
+  /// Envía [initialDraft] apenas se muestra la hoja ("Reintentar").
+  final bool autoSubmit;
 
   @override
-  State<_WriteReviewSheet> createState() => _WriteReviewSheetState();
+  State<WriteReviewSheet> createState() => _WriteReviewSheetState();
 }
 
-class _WriteReviewSheetState extends State<_WriteReviewSheet> {
-  int _rating = 5;
-  final _commentController = TextEditingController();
-  final List<XFile> _media = [];
+class _WriteReviewSheetState extends State<WriteReviewSheet> {
+  late int _rating = widget.initialDraft?.rating.round().clamp(1, 5) ?? 5;
+  late final _commentController = TextEditingController(
+    text: widget.initialDraft?.comment ?? '',
+  );
+  late final List<XFile> _media = [
+    ...?widget.initialDraft?.mediaPaths.map(XFile.new),
+  ];
+  bool _isPublishing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoSubmit) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_submit());
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -1720,19 +1793,30 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
 
   void _removeMedia(int index) => setState(() => _media.removeAt(index));
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_isPublishing) return;
     final comment = _commentController.text.trim();
     if (comment.isEmpty) {
       AppSnackbar.showInfo(context, 'Escribe un comentario antes de enviar');
       return;
     }
-    Navigator.of(context).pop(
-      _ReviewDraft(
-        rating: _rating.toDouble(),
-        comment: comment,
-        mediaPaths: _media.map((x) => x.path).toList(),
-      ),
-    );
+    setState(() => _isPublishing = true);
+    bool? result;
+    try {
+      result = await widget.onSubmit(
+        ReviewDraft(
+          rating: _rating.toDouble(),
+          comment: comment,
+          mediaPaths: _media.map((x) => x.path).toList(),
+        ),
+      );
+    } finally {
+      // Con resultado la hoja se cierra, así que no se vuelve a habilitar el
+      // botón un instante antes de desaparecer.
+      if (mounted && result == null) setState(() => _isPublishing = false);
+    }
+    if (result == null || !mounted) return;
+    Navigator.of(context).pop();
   }
 
   InputDecoration _commentDecoration() {
@@ -1763,187 +1847,186 @@ class _WriteReviewSheetState extends State<_WriteReviewSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Escribir una reseña',
-                  style: AppTextStyles.detailSectionTitle,
-                ),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: AppColors.segmentedTrackBg,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      semanticLabel: 'Cerrar',
-                      size: 18,
-                      color: AppColors.settingsTextDark,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+    // Mientras se publica la hoja no se cierra (ni con atrás, ni arrastrando,
+    // ni con la X): cerrarla a medio enviar dejaría la reseña sin dueño.
+    return PopScope(
+      canPop: !_isPublishing,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  for (var i = 1; i <= 5; i++)
-                    GestureDetector(
-                      onTap: () => setState(() => _rating = i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xs,
-                        ),
-                        child: Icon(
-                          i <= _rating
-                              ? Icons.star_rounded
-                              : Icons.star_border_rounded,
-                          size: 40,
-                          color: AppColors.primary500,
-                        ),
+                  Text(
+                    'Escribir una reseña',
+                    style: AppTextStyles.detailSectionTitle,
+                  ),
+                  GestureDetector(
+                    onTap: _isPublishing
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: AppColors.segmentedTrackBg,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        semanticLabel: 'Cerrar',
+                        size: 18,
+                        color: AppColors.settingsTextDark,
                       ),
                     ),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Tu comentario',
-              style: AppTextStyles.detailActivityLabel.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _commentController,
-              maxLines: 4,
-              decoration: _commentDecoration(),
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: _pickMedia,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.surface200.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  border: Border.all(
-                    color: AppColors.primary500.withValues(alpha: 0.4),
-                  ),
-                ),
-                child: Column(
+              const SizedBox(height: 20),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      color: AppColors.primary500,
-                      size: 28,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Adjuntar fotos o videos',
-                      style: AppTextStyles.subtitle2,
-                    ),
+                    for (var i = 1; i <= 5; i++)
+                      GestureDetector(
+                        onTap: () => setState(() => _rating = i),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.xs,
+                          ),
+                          child: Icon(
+                            i <= _rating
+                                ? Icons.star_rounded
+                                : Icons.star_border_rounded,
+                            size: 40,
+                            color: AppColors.primary500,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-            ),
-            if (_media.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 72,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _media.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final path = _media[index].path;
-                    return Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                          child: SizedBox(
-                            width: 72,
-                            height: 72,
-                            child: isVideoPath(path)
-                                ? Container(
-                                    color: AppColors.neutral800,
-                                    alignment: Alignment.center,
-                                    child: const Icon(
-                                      Icons.videocam,
-                                      color: AppColors.surface100,
-                                    ),
-                                  )
-                                : LocalImage(path: path),
+              const SizedBox(height: 20),
+              Text(
+                'Tu comentario',
+                style: AppTextStyles.detailActivityLabel.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _commentController,
+                maxLines: 4,
+                decoration: _commentDecoration(),
+              ),
+              const SizedBox(height: 16),
+              GestureDetector(
+                onTap: _pickMedia,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface200.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    border: Border.all(
+                      color: AppColors.primary500.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        color: AppColors.primary500,
+                        size: 28,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Adjuntar fotos o videos',
+                        style: AppTextStyles.subtitle2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (_media.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 72,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _media.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final path = _media[index].path;
+                      return Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
+                            child: SizedBox(
+                              width: 72,
+                              height: 72,
+                              child: isVideoPath(path)
+                                  ? Container(
+                                      color: AppColors.neutral800,
+                                      alignment: Alignment.center,
+                                      child: const Icon(
+                                        Icons.videocam,
+                                        color: AppColors.surface100,
+                                      ),
+                                    )
+                                  : LocalImage(path: path),
+                            ),
                           ),
-                        ),
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: () => _removeMedia(index),
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: AppColors.removeButtonBackground,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                semanticLabel: 'Quitar foto',
-                                size: 14,
-                                color: AppColors.surface100,
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeMedia(index),
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: const BoxDecoration(
+                                  color: AppColors.removeButtonBackground,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  semanticLabel: 'Quitar foto',
+                                  size: 14,
+                                  color: AppColors.surface100,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              // Sin doble toque: mientras `_submit` no termina, el botón queda
+              // deshabilitado con spinner (`isLoading` cubre el envío
+              // automático de "Reintentar").
+              SizedBox(
+                width: double.infinity,
+                child: AppLoadingButton(
+                  label: 'Enviar reseña',
+                  isLoading: _isPublishing,
+                  onPressed: _submit,
                 ),
               ),
             ],
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary500,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                  ),
-                ),
-                child: Text(
-                  'Enviar reseña',
-                  style: AppTextStyles.buttonLg.copyWith(
-                    color: AppColors.textInk,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

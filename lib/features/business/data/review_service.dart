@@ -174,9 +174,10 @@ class ReviewService {
         'comment': sanitizeMultilineText(comment),
       });
       revision.value++;
-    } on PostgrestException catch (e) {
-      throw ReviewServiceException(
-        'No se pudo publicar tu reseña: ${e.message}',
+    } on PostgrestException {
+      // El texto de Postgrest viene en inglés y habla de la base de datos.
+      throw const ReviewServiceException(
+        'No se pudo publicar tu reseña. Intenta de nuevo en un momento.',
       );
     } catch (_) {
       throw const ReviewServiceException(
