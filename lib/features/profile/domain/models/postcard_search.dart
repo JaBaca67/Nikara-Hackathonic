@@ -31,7 +31,6 @@ List<TravelPostcard> searchPostcards(
     if (category != null && mainCategory != category) return false;
     final label = switch (mainCategory) {
       'Restaurante' => 'Comida',
-      'Tour' => 'Tours',
       'Eco-destino' => 'Naturaleza',
       _ => mainCategory,
     };

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
+import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
 
 import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/eco/data/organization_service.dart';
@@ -24,6 +27,9 @@ class EditOrganizationScreen extends StatefulWidget {
 
 class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
   final _formKey = GlobalKey<FormState>();
+  late NicaraguaOriginPlace? _municipality = municipalityByCode(
+    widget.organization.municipalityCode,
+  );
   late final _nameController = TextEditingController(
     text: widget.organization.name,
   );
@@ -70,6 +76,7 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
         name: _nameController.text.trim(),
         handle: _handleController.text,
         description: _descriptionController.text.trim(),
+        municipalityCode: _municipality?.municipalityCode,
         logoUrl: logo.url,
         clearLogo: logo.clear,
         bannerUrl: banner.url,
@@ -216,6 +223,21 @@ class _EditOrganizationScreenState extends State<EditOrganizationScreen> {
                             controller: _descriptionController,
                             hint: 'Qué hace la fundación y por qué importa.',
                             maxLines: 4,
+                          ),
+                        ],
+                      ),
+                      const EcoSectionIntro(
+                        title: 'Ubicación de la fundación',
+                        subtitle:
+                            'Selecciona su departamento, ciudad y municipio.',
+                      ),
+                      EcoFormCard(
+                        children: [
+                          NicaraguaLocationFormFields(
+                            initialValue: _municipality,
+                            enabled: !_isBusy,
+                            onChanged: (place) =>
+                                setState(() => _municipality = place),
                           ),
                         ],
                       ),

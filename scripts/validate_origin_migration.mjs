@@ -79,5 +79,56 @@ await db.exec("reset role; set role authenticated; update profiles set show_orig
 assert.deepEqual(await scalar("select residence_type, origin_country_code, origin_city, origin_municipality from public_profiles where full_name='Viajera'"), {residence_type:null, origin_country_code:null, origin_city:null, origin_municipality:null});
 await db.exec('reset role');
 assert.equal((await scalar("select origin_city from profiles where id='11111111-1111-4111-8111-111111111111'")).origin_city, 'Masaya');
+
+// 041 conserva texto histórico sin inventar lugares y protege nuevas escrituras.
+const legacyOrigin = await scalar("select origin_city, origin_municipality from profiles where id='11111111-1111-4111-8111-111111111111'");
+for (const [id, city, municipality] of [
+  ['55555555-5555-4555-8555-555555555555', ' nindiri ', ' NINDIRI '],
+  ['66666666-6666-4666-8666-666666666666', 'Wiwilí', 'Wiwilí'],
+]) {
+  await db.query('insert into auth.users values ($1,$2,$3,$4)', [
+    id, `${id}@example.com`,
+    { residence_type: 'nicaraguan', origin_country_code: 'NI', origin_city: city, origin_municipality: municipality },
+    { provider: 'email' },
+  ]);
+}
+const catalogMigration = readFileSync(new URL('../supabase/sql/041_origin_place_catalog.sql', import.meta.url), 'utf8');
+await db.exec(catalogMigration);
+await db.exec(catalogMigration);
+assert.deepEqual(await scalar("select origin_city, origin_municipality from profiles where id='11111111-1111-4111-8111-111111111111'"), legacyOrigin);
+assert.deepEqual(await scalar("select origin_city, origin_municipality from profiles where id='55555555-5555-4555-8555-555555555555'"), {origin_city: 'Nindirí', origin_municipality: 'Nindirí'});
+assert.deepEqual(await scalar("select origin_city, origin_municipality from profiles where id='66666666-6666-4666-8666-666666666666'"), {origin_city: 'Wiwilí', origin_municipality: 'Wiwilí'});
+
+// Compara el catálogo embarcado en Flutter con los valores de Postgres.
+const dartCatalog = readFileSync(new URL('../lib/core/models/nicaragua_origin_places.dart', import.meta.url), 'utf8');
+const places = [...dartCatalog.matchAll(/NicaraguaOriginPlace\(\s*'(\d{4})',\s*'([^']+)',\s*'([^']+)'(?:,\s*city:\s*'([^']+)')?/g)]
+  .map(([, municipality_code, department, municipality, city]) => ({municipality_code, department, municipality, city: city ?? municipality}))
+  .sort((a, b) => a.municipality_code.localeCompare(b.municipality_code));
+assert.equal(places.length, 153);
+assert.deepEqual((await db.query('select municipality_code, department, municipality, city from origin_places order by municipality_code')).rows, places);
+
+await db.exec('set role anon;');
+assert.equal((await scalar('select count(*)::integer as count from origin_places')).count, 153);
+await assert.rejects(db.exec("insert into origin_places values ('9999','X','X','X','{}')"), /permission denied/);
+await db.exec('reset role; set role authenticated;');
+await db.exec("update profiles set bio='Los datos antiguos no bloquean cambios ajenos al origen' where id=auth.uid()");
+await assert.rejects(db.exec("update origin_places set city='Inventada' where municipality_code='6010'"), /permission denied/);
+await assert.rejects(db.exec("update profiles set origin_city='Inventada', origin_municipality='Inventado' where id=auth.uid()"), /profiles_origin_place_catalog/);
+await assert.rejects(db.exec("update profiles set origin_city='Masaya', origin_municipality='Nindirí' where id=auth.uid()"), /profiles_origin_place_catalog/);
+await assert.rejects(db.exec("update profiles set origin_city='nindiri', origin_municipality='nindiri' where id=auth.uid()"), /profiles_origin_place_catalog/);
+await db.exec("update profiles set origin_city='Malpaisillo', origin_municipality='Larreynaga' where id=auth.uid();");
+await db.exec("update profiles set residence_type='foreign', origin_country_code='ES', origin_city=null, origin_municipality=null where id=auth.uid();");
+await db.exec('reset role;');
+await assert.rejects(db.query('insert into auth.users values ($1,$2,$3,$4)', [
+  '77777777-7777-4777-8777-777777777777', 'invalid-place@example.com',
+  { residence_type: 'nicaraguan', origin_country_code: 'NI', origin_city: 'Inventada', origin_municipality: 'Inventado' },
+  { provider: 'email' },
+]), /profiles_origin_place_catalog/);
+assert.equal((await scalar("select count(*)::integer as count from auth.users where email='invalid-place@example.com'")).count, 0);
+await db.query('insert into auth.users values ($1,$2,$3,$4)', [
+  '88888888-8888-4888-8888-888888888888', 'bilwi@example.com',
+  { residence_type: 'nicaraguan', origin_country_code: 'NI', origin_city: 'Bilwi', origin_municipality: 'Puerto Cabezas' },
+  { provider: 'email' },
+]);
 await db.close();
-console.log('SQL validado: migración repetible, registro/Google, validaciones, RLS, grants y privacidad pública.');
+console.log('SQL validado: 039 y 041 repetibles, catálogo idéntico a Flutter, registro/Google, claves foráneas, datos históricos, RLS, grants y privacidad.');

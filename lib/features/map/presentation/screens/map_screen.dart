@@ -119,6 +119,23 @@ class _MapScreenState extends State<MapScreen>
   /// build síncrono.
   final Map<int, BitmapDescriptor> _clusterIcons = {};
 
+  /// Pines con el nombre del negocio dibujado debajo, cacheados por
+  /// contenido (ver [_labeledPinFor]): a diferencia de [_pinIcons], que
+  /// alcanza con uno por categoría, acá cada negocio necesita su propio
+  /// bitmap porque el texto es parte de la imagen.
+  final Map<String, _LabeledPin> _labeledPins = {};
+
+  /// Etiquetas pedidas durante un build y todavía sin generar. Se juntan y
+  /// se resuelven en lote después del frame: generar un PNG no puede pasar
+  /// dentro de `build`, y hacerlo de a uno dispararía un `setState` por pin.
+  final Map<String, _PinLabelRequest> _pendingPinLabels = {};
+  bool _pinLabelBatchScheduled = false;
+
+  /// Tope del caché de etiquetas. Al pasarlo se vacía entero en vez de
+  /// expulsar de a una: el set visible se regenera en el frame siguiente y
+  /// una política LRU acá sería más código del que el problema justifica.
+  static const int _kMaxLabeledPins = 240;
+
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _carouselController = PageController(viewportFraction: 0.88);
@@ -499,9 +516,13 @@ class _MapScreenState extends State<MapScreen>
     if (_selectedCategory == _kEcoCategory) return const [];
     return _businesses
         .where((b) {
+          // Normalizado, no `b.category` crudo: los chips vienen del
+          // catálogo y la columna es texto libre, así que un negocio
+          // semilla ("Turismo y Miradores") no calzaría con ningún chip.
           final matchesCategory =
               _selectedCategory == _kAllCategories ||
-              b.category == _selectedCategory;
+              (businessCategoryPresetFor(b.category) ?? b.category) ==
+                  _selectedCategory;
           final matchesSearch =
               _searchQuery.isEmpty ||
               b.name.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -526,14 +547,16 @@ class _MapScreenState extends State<MapScreen>
   /// bitmaps porque `google_maps_flutter` no permite un widget Flutter vivo
   /// como marker (a diferencia de `flutter_map`'s `Marker.child`), así que
   /// cada badge de Pantalla 2b se dibuja en un canvas.
+  static double get _devicePixelRatio =>
+      WidgetsBinding
+          .instance
+          .platformDispatcher
+          .implicitView
+          ?.devicePixelRatio ??
+      2.0;
+
   Future<void> _loadMarkerIcons() async {
-    final dpr =
-        WidgetsBinding
-            .instance
-            .platformDispatcher
-            .implicitView
-            ?.devicePixelRatio ??
-        2.0;
+    final dpr = _devicePixelRatio;
     final clusterKeys = [2, 3, 4, 5, 6, 7, 8, 9, _clusterOverflowKey];
     final pinCategories = MapPinCategory.values;
     final results = await Future.wait([
@@ -584,6 +607,70 @@ class _MapScreenState extends State<MapScreen>
   }) {
     final byCategory = selected ? _pinIconsSelected : _pinIcons;
     return byCategory[category] ?? byCategory[MapPinCategory.general];
+  }
+
+  /// Pin etiquetado ya listo, o `null` la primera vez que se pide (y de
+  /// paso encola su generación). Quien llama cae al pin sin nombre ese
+  /// frame, así el mapa nunca aparece vacío esperando bitmaps.
+  ///
+  /// La clave es el *contenido* y no el id del negocio: dos locales con el
+  /// mismo nombre, categoría y calificación comparten bitmap, y editar el
+  /// nombre invalida el viejo solo.
+  _LabeledPin? _labeledPinFor({
+    required String name,
+    required MapPinCategory category,
+    required bool selected,
+    String? detail,
+    bool ecoActivity = false,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    final key =
+        '${ecoActivity ? 'eco' : 'biz'}|$selected|${category.name}'
+        '|$trimmed|${detail ?? ''}';
+    final cached = _labeledPins[key];
+    if (cached != null) return cached;
+    if (!_pendingPinLabels.containsKey(key)) {
+      _pendingPinLabels[key] = _PinLabelRequest(
+        name: trimmed,
+        detail: detail,
+        category: category,
+        selected: selected,
+        ecoActivity: ecoActivity,
+      );
+      _schedulePinLabelFlush();
+    }
+    return null;
+  }
+
+  void _schedulePinLabelFlush() {
+    if (_pinLabelBatchScheduled) return;
+    _pinLabelBatchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_flushPinLabels());
+    });
+  }
+
+  Future<void> _flushPinLabels() async {
+    _pinLabelBatchScheduled = false;
+    if (_pendingPinLabels.isEmpty) return;
+    final batch = Map.of(_pendingPinLabels);
+    _pendingPinLabels.clear();
+    final dpr = _devicePixelRatio;
+    final built = await Future.wait([
+      for (final request in batch.values)
+        _buildLabeledPinBitmap(request: request, devicePixelRatio: dpr),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      if (_labeledPins.length + built.length > _kMaxLabeledPins) {
+        _labeledPins.clear();
+      }
+      var i = 0;
+      for (final key in batch.keys) {
+        _labeledPins[key] = built[i++];
+      }
+    });
   }
 
   /// 9+ se agrupa en un solo bitmap compartido en vez de generar uno por
@@ -739,10 +826,6 @@ class _MapScreenState extends State<MapScreen>
     required double devicePixelRatio,
     bool ecoActivity = false,
   }) async {
-    final icon = ecoActivity ? Icons.eco_rounded : mapPinIcon(category);
-    final accentColor = ecoActivity
-        ? AppColors.oliveText
-        : mapPinColor(category);
     final logicalWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
     final logicalHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
     final width = (logicalWidth * devicePixelRatio).round();
@@ -754,7 +837,45 @@ class _MapScreenState extends State<MapScreen>
       Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
     );
     canvas.scale(devicePixelRatio);
-    final center = Offset(logicalWidth / 2, logicalWidth / 2);
+    _paintPinInto(
+      canvas,
+      originX: 0,
+      selected: selected,
+      category: category,
+      ecoActivity: ecoActivity,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(width, height);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
+    // el tamaño visual del pin al renderizarlo a mayor densidad.
+    return BitmapDescriptor.bytes(
+      bytes!.buffer.asUint8List(),
+      imagePixelRatio: devicePixelRatio,
+    );
+  }
+
+  /// Dibuja el pin (sombra, círculo, anillo y glifo) sobre [canvas] con su
+  /// borde izquierdo en [originX] y su tope en y=0.
+  ///
+  /// Lo comparten el bitmap suelto ([_buildPinBitmap]) y el etiquetado
+  /// ([_buildLabeledPinBitmap]): el dibujo del pin es idéntico en los dos,
+  /// lo único que cambia es el lienzo que lo rodea.
+  static void _paintPinInto(
+    Canvas canvas, {
+    required double originX,
+    required bool selected,
+    required MapPinCategory category,
+    required bool ecoActivity,
+  }) {
+    final icon = ecoActivity ? Icons.eco_rounded : mapPinIcon(category);
+    final accentColor = ecoActivity
+        ? AppColors.oliveText
+        : mapPinColor(category);
+    final logicalWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
+    final logicalHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
+    final center = Offset(originX + logicalWidth / 2, logicalWidth / 2);
     final radius = logicalWidth / 2 - 2.5;
 
     if (selected) {
@@ -823,16 +944,179 @@ class _MapScreenState extends State<MapScreen>
       canvas,
       center - Offset(iconPainter.width / 2, iconPainter.height / 2),
     );
+  }
+
+  /// Ancho máximo de la etiqueta antes de partir el nombre en dos líneas y
+  /// luego recortarlo con elipsis.
+  ///
+  /// No es un número estético: la grilla de clustering agrupa los pines que
+  /// caen dentro de ~55px (`marker_clustering.dart`), así que una etiqueta
+  /// mucho más ancha que eso se montaría sobre la del vecino que el
+  /// clustering decidió dejar suelto.
+  static const double _kPinLabelMaxWidth = 92;
+  static const double _kPinLabelGap = 2;
+
+  /// Margen alrededor de la etiqueta para que el halo de 3px no quede
+  /// cortado contra el borde del bitmap.
+  static const double _kPinLabelPadding = 4;
+
+  /// Pin + nombre del negocio debajo, al estilo de Google Maps.
+  ///
+  /// Existe porque un pin solo es un identificador pobre en cuanto hay más
+  /// de un puñado de negocios en pantalla: el color y el glifo dicen la
+  /// categoría, pero no *cuál* de los cinco restaurantes de la zona es cada
+  /// uno, y averiguarlo obligaba a tocar pin por pin.
+  static Future<_LabeledPin> _buildLabeledPinBitmap({
+    required _PinLabelRequest request,
+    required double devicePixelRatio,
+  }) async {
+    final nameParts = [_PinLabelPart(request.name, AppColors.textPrimary)];
+    final detail = request.detail;
+    final detailParts = detail == null
+        ? null
+        : <_PinLabelPart>[
+            _PinLabelPart(
+              String.fromCharCode(Icons.star_rounded.codePoint),
+              AppColors.goldFill,
+              fontFamily: Icons.star_rounded.fontFamily,
+              fontPackage: Icons.star_rounded.fontPackage,
+              fontSize: 10,
+            ),
+            _PinLabelPart(' $detail', AppColors.settingsTextDark),
+          ];
+
+    // El halo claro va DEBAJO del texto: sin él el nombre desaparece sobre
+    // tiles oscuros (bosque, agua), que es exactamente como lo resuelve
+    // Google Maps.
+    final halo = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round
+      ..color = AppColors.surface100;
+
+    final nameText = _pinLabelPainter(nameParts, fontSize: 11.5, maxLines: 2);
+    final nameHalo = _pinLabelPainter(
+      nameParts,
+      fontSize: 11.5,
+      maxLines: 2,
+      stroke: halo,
+    );
+    final detailText = detailParts == null
+        ? null
+        : _pinLabelPainter(
+            detailParts,
+            fontSize: 10,
+            maxLines: 1,
+            weight: FontWeight.w600,
+          );
+    final detailHalo = detailParts == null
+        ? null
+        : _pinLabelPainter(
+            detailParts,
+            fontSize: 10,
+            maxLines: 1,
+            weight: FontWeight.w600,
+            stroke: halo,
+          );
+
+    final selected = request.selected;
+    final pinWidth = selected ? _kSelectedPinDiameter : _kPinDiameter;
+    final pinHeight = selected ? _kSelectedPinHeight : _kPinDiameter;
+    final detailWidth = detailText?.width ?? 0;
+    final labelWidth = nameText.width > detailWidth
+        ? nameText.width
+        : detailWidth;
+    final labelHeight =
+        nameText.height +
+        (detailText == null ? 0 : _kPinLabelGap + detailText.height);
+
+    final logicalWidth =
+        (labelWidth > pinWidth ? labelWidth : pinWidth) + _kPinLabelPadding * 2;
+    final logicalHeight =
+        pinHeight + _kPinLabelGap + labelHeight + _kPinLabelPadding;
+    final width = (logicalWidth * devicePixelRatio).round();
+    final height = (logicalHeight * devicePixelRatio).round();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(
+      recorder,
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    );
+    canvas.scale(devicePixelRatio);
+    _paintPinInto(
+      canvas,
+      originX: (logicalWidth - pinWidth) / 2,
+      selected: selected,
+      category: request.category,
+      ecoActivity: request.ecoActivity,
+    );
+
+    var dy = pinHeight + _kPinLabelGap;
+    final nameDx = (logicalWidth - nameText.width) / 2;
+    nameHalo.paint(canvas, Offset(nameDx, dy));
+    nameText.paint(canvas, Offset(nameDx, dy));
+    if (detailText != null) {
+      dy += nameText.height + _kPinLabelGap;
+      final detailDx = (logicalWidth - detailText.width) / 2;
+      detailHalo!.paint(canvas, Offset(detailDx, dy));
+      detailText.paint(canvas, Offset(detailDx, dy));
+    }
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(width, height);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    // Sin imagePixelRatio el bitmap se trata como 1:1, duplicando/triplicando
-    // el tamaño visual del pin al renderizarlo a mayor densidad.
-    return BitmapDescriptor.bytes(
-      bytes!.buffer.asUint8List(),
-      imagePixelRatio: devicePixelRatio,
+    // El punto geográfico es el centro del círculo (o la punta de la cola si
+    // está seleccionado), no el centro del bitmap: la etiqueta cuelga hacia
+    // abajo, así que anclar por el medio dejaría el pin flotando sobre su
+    // propia coordenada.
+    final anchorY = selected
+        ? (pinHeight - 1.5) / logicalHeight
+        : (pinWidth / 2) / logicalHeight;
+    return _LabeledPin(
+      icon: BitmapDescriptor.bytes(
+        bytes!.buffer.asUint8List(),
+        imagePixelRatio: devicePixelRatio,
+      ),
+      anchor: Offset(0.5, anchorY),
     );
+  }
+
+  /// [stroke] con valor pinta el contorno del halo en vez del relleno; se
+  /// llama dos veces con el mismo texto para componer halo + texto.
+  static TextPainter _pinLabelPainter(
+    List<_PinLabelPart> parts, {
+    required double fontSize,
+    required int maxLines,
+    FontWeight weight = FontWeight.w700,
+    Paint? stroke,
+  }) {
+    return TextPainter(
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: maxLines,
+      ellipsis: '…',
+      text: TextSpan(
+        children: [
+          for (final part in parts)
+            TextSpan(
+              text: part.text,
+              style: TextStyle(
+                fontSize: part.fontSize ?? fontSize,
+                fontWeight: weight,
+                height: 1.15,
+                // Sin fontFamily salvo en los glifos de ícono: esto se pinta
+                // sobre un canvas de dart:ui, donde google_fonts no puede
+                // resolver la familia (misma excepción ya documentada para
+                // los otros TextPainter del mapa).
+                fontFamily: part.fontFamily,
+                package: part.fontPackage,
+                color: stroke == null ? part.color : null,
+                foreground: stroke,
+              ),
+            ),
+        ],
+      ),
+    )..layout(maxWidth: _kPinLabelMaxWidth);
   }
 
   Future<void> _animateCameraTo(LatLng target, {double zoom = 16}) async {
@@ -1001,18 +1285,21 @@ class _MapScreenState extends State<MapScreen>
     );
   }
 
-  /// Tap directo en pin (vs. card o búsqueda): además de seleccionar, abre
-  /// un bottom sheet estilo Google Maps con el detalle — Estado 19b separa
-  /// ambos comportamientos (card solo mueve cámara, pin abre panel). Tocar
-  /// el pin ya seleccionado lo deselecciona en vez de reabrir el sheet.
+  /// Tap directo en pin: selecciona el negocio y deja que el carrusel de
+  /// abajo se expanda en su card (Estado 19b).
+  ///
+  /// Antes esto además abría un `showModalBottomSheet` con la **misma**
+  /// [_BusinessCarouselCard] que el carrusel ya estaba expandiendo debajo:
+  /// el detalle se dibujaba dos veces y el scrim del modal oscurecía el
+  /// mapa entero. Es lo contrario de lo que hace Google Maps, donde la
+  /// ficha convive con un mapa que sigue visible y navegable, y era lo que
+  /// obligaba a cerrar el panel para volver a ubicarse.
   Future<void> _onMarkerTapped(BusinessModel business) async {
     if (business.id == _selectedBusinessId) {
       setState(() => _selectedBusinessId = null);
       return;
     }
     await _selectBusiness(business);
-    if (!mounted) return;
-    await _showBusinessSheet(business);
   }
 
   /// Espejo del toggle de [_onMarkerTapped] pero para cards del carrusel:
@@ -1024,34 +1311,6 @@ class _MapScreenState extends State<MapScreen>
       return;
     }
     unawaited(_selectBusiness(business));
-  }
-
-  /// Reusa [_BusinessCarouselCard] tal cual dentro del chrome de
-  /// [_PinDetailSheetChrome] en vez de duplicar ese layout.
-  Future<void> _showBusinessSheet(BusinessModel business) {
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) => _PinDetailSheetChrome(
-        child: _BusinessCarouselCard(
-          business: business,
-          distanceKm: LocationService.distanceKm(
-            _userPosition,
-            business.latitude,
-            business.longitude,
-          ),
-          onNavigate: () {
-            Navigator.of(sheetContext).pop();
-            _startTripPreview(business);
-          },
-          onViewProfile: () {
-            Navigator.of(sheetContext).pop();
-            pushSharedAxis(context, BusinessDetailScreen(business: business));
-          },
-        ),
-      ),
-    );
   }
 
   void _jumpCarouselTo(int index) {
@@ -1807,19 +2066,32 @@ class _MapScreenState extends State<MapScreen>
         if (cluster.isSingle) {
           final business = cluster.businesses.first;
           final isSelected = business.id == _selectedBusinessId;
-          final icon = _pinBitmapFor(
-            mapPinCategoryFor(business.category),
+          final category = mapPinCategoryFor(business.category);
+          // La calificación solo acompaña al nombre si el negocio tiene
+          // reseñas: un "0.0" bajo cada local nuevo diría que está mal
+          // calificado, no que todavía nadie lo calificó.
+          final labeled = _labeledPinFor(
+            name: business.name,
+            category: category,
             selected: isSelected,
+            detail: business.reviews.isEmpty
+                ? null
+                : business.averageRating.toStringAsFixed(1),
           );
+          final icon =
+              labeled?.icon ?? _pinBitmapFor(category, selected: isSelected);
           if (icon == null) continue; // Bitmap aún no cargado.
           markers.add(
             Marker(
               markerId: MarkerId(business.id),
               position: cluster.position,
               icon: icon,
-              // El pin seleccionado se ancla por la punta de su cola, los
-              // demás por su centro.
-              anchor: isSelected ? _kSelectedPinAnchor : const Offset(0.5, 0.5),
+              // Con etiqueta el ancla la calcula el propio bitmap (el
+              // lienzo crece hacia abajo); sin ella, el pin seleccionado se
+              // ancla por la punta de su cola y los demás por su centro.
+              anchor:
+                  labeled?.anchor ??
+                  (isSelected ? _kSelectedPinAnchor : const Offset(0.5, 0.5)),
               // Por encima de sus vecinos para no quedar tapado entre pines
               // muy juntos.
               zIndexInt: isSelected ? 2 : 0,
@@ -1853,12 +2125,21 @@ class _MapScreenState extends State<MapScreen>
     final ecoIcon = _ecoPinIcon;
     if (!_isNavigating && !_isPreviewingTrip && ecoIcon != null) {
       for (final activity in _filteredEcoActivities) {
+        // Misma etiqueta que los negocios: una jornada sin nombre visible
+        // es todavía más difícil de reconocer, porque todos los pines ECO
+        // comparten color y glifo.
+        final labeled = _labeledPinFor(
+          name: activity.title,
+          category: MapPinCategory.eco,
+          selected: false,
+          ecoActivity: true,
+        );
         markers.add(
           Marker(
             markerId: MarkerId('__eco__${activity.id}'),
             position: LatLng(activity.latitude!, activity.longitude!),
-            icon: ecoIcon,
-            anchor: const Offset(0.5, 0.5),
+            icon: labeled?.icon ?? ecoIcon,
+            anchor: labeled?.anchor ?? const Offset(0.5, 0.5),
             onTap: () => _onEcoMarkerTapped(activity),
           ),
         );
@@ -2023,6 +2304,24 @@ class _MapScreenState extends State<MapScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
+      // El teclado NO encoge esta pantalla, por dos motivos encadenados.
+      //
+      // El visible: con el comportamiento por defecto el `Stack` se recorta
+      // al espacio que deja el teclado, así que el dock —anclado en
+      // `bottom: 0`— se despegaba del borde inferior y quedaba flotando a
+      // media pantalla junto al mapa aplastado.
+      //
+      // El que lo volvía difícil de ver: `Scaffold` envuelve el body en un
+      // `MediaQuery.removeViewInsets(removeBottom: true)` cuando resuelve
+      // el inset él mismo, así que `viewInsetsOf(context).bottom` **siempre**
+      // valía 0 ahí dentro y el guard de abajo (escrito justo para ocultar
+      // el dock al teclear) nunca se cumplía: era código muerto.
+      //
+      // Dejándolo en `false` el mapa ocupa la pantalla completa detrás del
+      // teclado —que es lo correcto acá, porque el campo de búsqueda vive
+      // arriba y el teclado nunca lo tapa— y el inset real vuelve a llegar
+      // al body, con lo que el guard por fin funciona.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -2206,7 +2505,22 @@ class _MapScreenState extends State<MapScreen>
               ),
             ),
           // El dock respeta la barra inferior y coloca controles y tarjetas
-          // en el mismo flujo. Al escribir una búsqueda libera el mapa.
+          // en el mismo flujo. Al escribir una búsqueda se retira y libera
+          // el mapa: con el teclado abierto no hay lugar para él, y los
+          // resultados ya se ven como pines etiquetados sobre el mapa.
+          //
+          // La condición es "¿hay teclado tapando la pantalla?", no "¿el
+          // campo tiene foco?". Se probaron las dos: el foco **no** sirve
+          // porque el botón atrás de Android cierra el teclado sin soltar
+          // el foco, y el dock se quedaba escondido sobre un mapa sin
+          // controles.
+          //
+          // Que este inset llegue de verdad depende de que ningún
+          // `Scaffold` de arriba resuelva el teclado por su cuenta: hacerlo
+          // envuelve a los hijos en `MediaQuery.removeViewInsets(
+          // removeBottom: true)` y acá llegaría siempre 0. El shell de
+          // `MainLayout` lo hacía, y ese era el bug — ver su comentario y
+          // `test/map_keyboard_inset_test.dart`.
           if (MediaQuery.viewInsetsOf(context).bottom == 0)
             Positioned(
               left: 0,
@@ -3163,44 +3477,59 @@ class _EmptyBusinessesBanner extends StatelessWidget {
   }
 }
 
-/// Handle de arrastre sobre [child] para el sheet de detalle de pin (ver
-/// [MapScreen._showBusinessSheet]) — evita un [DraggableScrollableSheet]
-/// completo para contenido que no hace scroll.
-class _PinDetailSheetChrome extends StatelessWidget {
-  const _PinDetailSheetChrome({required this.child});
+/// Bitmap de pin **con etiqueta** más el ancla que le corresponde.
+///
+/// Las dos cosas viajan juntas porque el ancla deja de ser constante en
+/// cuanto el lienzo crece hacia abajo para alojar el nombre: el punto
+/// geográfico sigue siendo el centro del círculo (o la punta de la cola en
+/// el seleccionado), que ya no coincide con el centro del bitmap.
+class _LabeledPin {
+  const _LabeledPin({required this.icon, required this.anchor});
 
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(
-                color: AppColors.profileDivider,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-            ),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
+  final BitmapDescriptor icon;
+  final Offset anchor;
 }
 
-/// Card compartida por el carrusel persistente (Pantalla 2a) y el sheet de
-/// detalle de pin ([MapScreen._showBusinessSheet]), para que un negocio se
-/// vea igual sin importar cómo se seleccionó. Sin precio ni botón de
-/// reserva, por diseño de Pantalla 2b.
+/// Lo necesario para generar un [_LabeledPin]; se juntan durante el build y
+/// se resuelven después del frame (ver `_MapScreenState._flushPinLabels`).
+class _PinLabelRequest {
+  const _PinLabelRequest({
+    required this.name,
+    required this.detail,
+    required this.category,
+    required this.selected,
+    required this.ecoActivity,
+  });
+
+  final String name;
+  final String? detail;
+  final MapPinCategory category;
+  final bool selected;
+  final bool ecoActivity;
+}
+
+/// Un tramo de texto de la etiqueta con su propio color/tipografía — existe
+/// para poder mezclar el glifo dorado de la estrella con el texto normal
+/// dentro de un solo `TextPainter`.
+class _PinLabelPart {
+  const _PinLabelPart(
+    this.text,
+    this.color, {
+    this.fontFamily,
+    this.fontPackage,
+    this.fontSize,
+  });
+
+  final String text;
+  final Color color;
+  final String? fontFamily;
+  final String? fontPackage;
+  final double? fontSize;
+}
+
+/// Card del carrusel persistente del mapa (Pantalla 2a), que se expande al
+/// seleccionar un negocio. Sin precio ni botón de reserva, por diseño de
+/// Pantalla 2b.
 class _BusinessCarouselCard extends StatelessWidget {
   const _BusinessCarouselCard({
     required this.business,

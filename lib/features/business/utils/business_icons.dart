@@ -23,7 +23,7 @@ const Map<String, List<String>> subcategoryPresetsByCategory = {
     'Repostería',
     'Food truck',
   ],
-  'Tour': [
+  'Tours': [
     'Tour operador',
     'Deportes acuáticos',
     'Senderismo/volcán',
@@ -39,11 +39,11 @@ const Map<String, List<String>> subcategoryPresetsByCategory = {
     'Turismo comunitario/indígena',
     'Sitio arqueológico',
   ],
-  'Transporte': [
-    'Alquiler de vehículos',
-    'Alquiler de motos/bicicletas',
-    'Traslados/shuttle',
-    'Lancha/ferry',
+  'Agroturismo': [
+    'Finca cafetalera',
+    'Finca cacaotera',
+    'Finca ganadera',
+    'Vivero/finca agrícola',
   ],
   'Bienestar': [
     'Spa',
@@ -57,19 +57,19 @@ const Map<String, List<String>> subcategoryPresetsByCategory = {
     'Concierto/música en vivo',
     'Feria gastronómica/artesanal',
   ],
-  'Compras y mercados': [
+  'Compras': [
     'Mercado artesanal',
     'Mercado municipal',
     'Tienda de souvenirs',
     'Boutique local',
   ],
-  'Agroturismo / Fincas': [
-    'Finca cafetalera',
-    'Finca cacaotera',
-    'Finca ganadera',
-    'Vivero/finca agrícola',
+  'Transporte': [
+    'Alquiler de vehículos',
+    'Alquiler de motos/bicicletas',
+    'Traslados/shuttle',
+    'Lancha/ferry',
   ],
-  'Servicios para el viajero': [
+  'Servicios': [
     'Cambio de moneda',
     'Farmacia/clínica',
     'Cajero automático',
@@ -79,8 +79,16 @@ const Map<String, List<String>> subcategoryPresetsByCategory = {
 };
 
 /// `[]` para una categoría sin preset (ej. dato legacy con categoría custom).
-List<String> subcategoriesFor(String category) =>
-    subcategoryPresetsByCategory[category] ?? const [];
+/// Pasa primero por [businessCategoryPresetFor] para que un negocio guardado
+/// con un nombre anterior del catálogo ("Tour", "Agroturismo / Fincas") siga
+/// ofreciendo sus subcategorías al editarse.
+List<String> subcategoriesFor(String category) {
+  final exact = subcategoryPresetsByCategory[category];
+  if (exact != null) return exact;
+  final preset = businessCategoryPresetFor(category);
+  if (preset == null) return const [];
+  return subcategoryPresetsByCategory[preset] ?? const [];
+}
 
 /// Chips de "qué incluye" para la tarjeta de Pase de día del wizard (solo
 /// categoría Hospedaje) y su despliegue en BusinessDetailScreen.
@@ -306,61 +314,106 @@ MapPinCategory mapPinCategoryFor(String category) {
 /// del wizard). Única fuente de verdad: `register_business_wizard.dart` la
 /// importa de acá en vez de declarar su propia lista, para que la barra de
 /// categorías de Inicio nunca pueda desincronizarse del catálogo real.
+///
+/// Dos reglas que no son cosméticas:
+///
+/// - **Una palabra por categoría.** Estos nombres se pintan tal cual en el
+///   chip del filtro de Inicio, donde el ancho lo fija el texto: un
+///   "Agroturismo / Fincas" se comía media fila y dejaba ver 3 categorías de
+///   11. Si hace falta una categoría nueva, el nombre se elige corto desde el
+///   principio, no se abrevia después en la UI.
+/// - **El orden es el del viaje**, no alfabético ni histórico: dónde dormir,
+///   dónde comer, qué hacer, qué ver, y al final lo logístico (Transporte,
+///   Servicios) que solo se busca cuando ya se tiene el plan.
 const List<String> kBusinessCategoryPresets = [
-  'Eco-destino',
-  'Restaurante',
   'Hospedaje',
-  'Tour',
+  'Restaurante',
+  'Tours',
+  'Eco-destino',
   'Cultura',
-  'Transporte',
+  'Agroturismo',
   'Bienestar',
   'Eventos',
-  'Compras y mercados',
-  'Agroturismo / Fincas',
-  'Servicios para el viajero',
+  'Compras',
+  'Transporte',
+  'Servicios',
 ];
 
 /// Ícono real por categoría — a diferencia de [mapPinIcon], que agrupa en
 /// las 8 familias visuales del Mapa, esto representa 1:1 el catálogo
 /// completo de [kBusinessCategoryPresets], para el filtro de Inicio.
 IconData businessCategoryIcon(String category) {
-  switch (category) {
-    case 'Eco-destino':
-      return Icons.eco_rounded;
-    case 'Restaurante':
-      return Icons.restaurant_rounded;
+  switch (businessCategoryPresetFor(category) ?? category) {
     case 'Hospedaje':
       return Icons.hotel_rounded;
-    case 'Tour':
+    case 'Restaurante':
+      return Icons.restaurant_rounded;
+    case 'Tours':
       return Icons.tour_rounded;
+    case 'Eco-destino':
+      return Icons.eco_rounded;
     case 'Cultura':
       return Icons.palette_rounded;
-    case 'Transporte':
-      return Icons.directions_car_filled_rounded;
+    case 'Agroturismo':
+      return Icons.agriculture_rounded;
     case 'Bienestar':
       return Icons.spa_rounded;
     case 'Eventos':
       return Icons.celebration_rounded;
-    case 'Compras y mercados':
+    case 'Compras':
       return Icons.storefront_rounded;
-    case 'Agroturismo / Fincas':
-      return Icons.agriculture_rounded;
-    case 'Servicios para el viajero':
+    case 'Transporte':
+      return Icons.directions_car_filled_rounded;
+    case 'Servicios':
       return Icons.support_agent_rounded;
     default:
       return Icons.category_rounded;
   }
 }
 
+/// Los valores crudos de `businesses.category` normalizados al catálogo y
+/// puestos en el orden de [kBusinessCategoryPresets], para los chips del
+/// Mapa. Un valor que no se reconozca se conserva al final en vez de
+/// desaparecer: perder un chip esconde negocios.
+List<String> orderedBusinessCategories(Iterable<String> rawValues) {
+  final present = rawValues
+      .where((category) => category.isNotEmpty)
+      .map((category) => businessCategoryPresetFor(category) ?? category)
+      .toSet();
+  final unknown =
+      present.where((c) => !kBusinessCategoryPresets.contains(c)).toList()
+        ..sort();
+  return [...kBusinessCategoryPresets.where(present.contains), ...unknown];
+}
+
+/// Nombres que tuvo el catálogo antes del 2026-10-07, cuando se acortaron
+/// para que entraran en el chip del filtro de Inicio. `businesses.category`
+/// es texto libre, así que las filas guardadas con el nombre viejo siguen
+/// existiendo: se resuelven acá por igualdad exacta y no por el encadenado de
+/// `contains` de abajo, que para "Agroturismo / Fincas" habría dado "Tours"
+/// (contiene "turismo").
+const Map<String, String> _renamedCategories = {
+  'Tour': 'Tours',
+  'Compras y mercados': 'Compras',
+  'Agroturismo / Fincas': 'Agroturismo',
+  'Servicios para el viajero': 'Servicios',
+};
+
 /// Normaliza el texto libre de `businesses.category` a uno de
-/// [kBusinessCategoryPresets]. Cubre tanto los presets actuales del wizard
-/// (match exacto) como categorías legacy de datos semilla con otra
-/// redacción (ej. "Cultura y Patrimonio", "Turismo y Miradores", "Artesanía
-/// y Alfarería", "Lagunas"). Devuelve `null` en vez de adivinar — mismo
-/// criterio que [mapPinCategoryFor] — para que el llamador decida cómo
-/// tratar un negocio sin categoría reconocible (ej. agruparlo en "Otros").
+/// [kBusinessCategoryPresets]. Cubre los presets actuales del wizard (match
+/// exacto), los nombres anteriores del catálogo ([_renamedCategories]) y las
+/// categorías de los datos semilla, que usan otra redacción ("Cultura y
+/// Patrimonio", "Turismo y Miradores", "Artesanía y Alfarería", "Gastronomía
+/// Tradicional"). Devuelve `null` en vez de adivinar — mismo criterio que
+/// [mapPinCategoryFor] — para que el llamador decida cómo tratar un negocio
+/// sin categoría reconocible (ej. agruparlo en "Otros").
+///
+/// El orden de las ramas importa: "Agroturismo" va **antes** que la de Tours
+/// porque contiene "turismo" como substring.
 String? businessCategoryPresetFor(String category) {
   if (kBusinessCategoryPresets.contains(category)) return category;
+  final renamed = _renamedCategories[category];
+  if (renamed != null) return renamed;
   final key = category.toLowerCase();
   if (key.contains('restaurant') ||
       key.contains('comida') ||
@@ -371,13 +424,22 @@ String? businessCategoryPresetFor(String category) {
       key.contains('hotel') ||
       key.contains('hostal') ||
       key.contains('cabañ') ||
-      key.contains('caban')) {
+      key.contains('caban') ||
+      key.contains('lodge')) {
     return 'Hospedaje';
+  }
+  if (key.contains('agroturismo') ||
+      key.contains('finca') ||
+      key.contains('cafetalera') ||
+      key.contains('cacaotera') ||
+      key.contains('ganadera') ||
+      key.contains('vivero')) {
+    return 'Agroturismo';
   }
   if (key.contains('tour') ||
       key.contains('turismo') ||
       key.contains('mirador')) {
-    return 'Tour';
+    return 'Tours';
   }
   if (key.contains('eco') ||
       key.contains('sender') ||
@@ -392,7 +454,11 @@ String? businessCategoryPresetFor(String category) {
       key.contains('reserva')) {
     return 'Eco-destino';
   }
+  // "arte" cubre tanto "Artesanía y Alfarería" como "Arte y Escultura", dos
+  // categorías de los datos semilla. Hasta ahora la segunda caía acá por
+  // accidente: "escultura" contiene "cultura".
   if (key.contains('artesan') ||
+      key.contains('arte') ||
       key.contains('cultura') ||
       key.contains('museo') ||
       key.contains('galería') ||
@@ -429,23 +495,18 @@ String? businessCategoryPresetFor(String category) {
       key.contains('boutique') ||
       key.contains('souvenir') ||
       key.contains('compras')) {
-    return 'Compras y mercados';
+    return 'Compras';
   }
-  if (key.contains('agroturismo') ||
-      key.contains('finca') ||
-      key.contains('cafetalera') ||
-      key.contains('cacaotera') ||
-      key.contains('ganadera') ||
-      key.contains('vivero')) {
-    return 'Agroturismo / Fincas';
-  }
-  if (key.contains('cambio de moneda') ||
+  // Última rama a propósito: "servicio" es genérico y se lo comerían
+  // categorías más específicas si se evaluara antes.
+  if (key.contains('servicio') ||
+      key.contains('cambio de moneda') ||
       key.contains('farmacia') ||
       key.contains('clínica') ||
       key.contains('clinica') ||
       key.contains('cajero') ||
       key.contains('gasolinera')) {
-    return 'Servicios para el viajero';
+    return 'Servicios';
   }
   return null;
 }

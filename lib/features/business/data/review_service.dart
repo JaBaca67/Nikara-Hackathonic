@@ -8,6 +8,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
+import 'package:nikara_app/features/eco/data/eco_moment_service.dart';
 
 class ReviewServiceException implements Exception {
   const ReviewServiceException(this.message);
@@ -235,6 +236,19 @@ class ReviewService {
     // evita un 400 críptico de Postgres si alguna pantalla manda 4.5.
     final safeRating = rating.round().clamp(1, 5);
 
+    if (targetType == ecoActivityTargetType) {
+      try {
+        final state = await EcoMomentService().getState(targetId);
+        if (state == null || !state.canPost) {
+          throw ReviewServiceException(
+            state?.blockedReason ?? 'Inicia sesión para compartir.',
+          );
+        }
+      } on EcoMomentException catch (e) {
+        throw ReviewServiceException(e.message);
+      }
+    }
+
     final mediaUrls = mediaFiles.isEmpty
         ? const <String>[]
         : await _uploadMedia(userId, mediaFiles);
@@ -262,8 +276,32 @@ class ReviewService {
       }
       revision.value++;
     } on PostgrestException catch (e) {
+      if (targetType == ecoActivityTargetType &&
+          e.code == 'P0001' &&
+          mediaUrls.isNotEmpty) {
+        // El trigger rechazó la fila: libera fotos nuevas si se cerró el foro
+        // o se agotó el cupo mientras se subían. No borra tras fallos ambiguos
+        // de conexión, donde la publicación podría haberse confirmado.
+        final prefix = _client.storage.from(mediaBucket).getPublicUrl('');
+        final paths = mediaUrls
+            .where((url) => url.startsWith(prefix))
+            .map((url) => Uri.decodeComponent(url.substring(prefix.length)))
+            .where((path) => path.startsWith('$userId/'))
+            .toList();
+        if (paths.isNotEmpty) {
+          try {
+            await _client.storage.from(mediaBucket).remove(paths);
+          } catch (_) {
+            debugPrint(
+              '[ReviewService] No se pudieron liberar fotos de un momento rechazado.',
+            );
+          }
+        }
+      }
       throw ReviewServiceException(
-        'No se pudo publicar tu reseña: ${e.message}',
+        targetType == ecoActivityTargetType && e.code == 'P0001'
+            ? e.message
+            : 'No se pudo publicar tu reseña: ${e.message}',
       );
     } catch (_) {
       throw const ReviewServiceException(

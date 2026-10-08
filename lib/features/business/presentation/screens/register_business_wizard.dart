@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
+import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -60,201 +63,6 @@ const List<String> _kCountryCodes = [
   '+502',
   '+1',
 ];
-
-/// El dropdown "Departamento" es solo un filtro en cascada de UI; únicamente el municipio elegido se persiste en `businesses.city`.
-const Map<String, List<String>> _kMunicipalitiesByDepartment = {
-  'Managua': [
-    'Managua',
-    'Ciudad Sandino',
-    'El Crucero',
-    'Mateare',
-    'San Francisco Libre',
-    'San Rafael del Sur',
-    'Tipitapa',
-    'Ticuantepe',
-    'Villa El Carmen',
-  ],
-  'Masaya': [
-    'Masaya',
-    'Catarina',
-    'La Concepción',
-    'Masatepe',
-    'Nandasmo',
-    'Nindirí',
-    'Niquinohomo',
-    'San Juan de Oriente',
-    'Tisma',
-  ],
-  'Granada': ['Granada', 'Diriá', 'Diriomo', 'Nandaime'],
-  'Rivas': [
-    'Rivas',
-    'Altagracia',
-    'Belén',
-    'Buenos Aires',
-    'Cárdenas',
-    'Moyogalpa',
-    'Potosí',
-    'San Jorge',
-    'San Juan del Sur',
-    'Tola',
-  ],
-  'Carazo': [
-    'Jinotepe',
-    'Diriamba',
-    'Dolores',
-    'El Rosario',
-    'La Conquista',
-    'La Paz de Carazo',
-    'San Marcos',
-    'Santa Teresa',
-  ],
-  'Chinandega': [
-    'Chinandega',
-    'Chichigalpa',
-    'Corinto',
-    'El Realejo',
-    'El Viejo',
-    'Posoltega',
-    'Puerto Morazán',
-    'San Francisco del Norte',
-    'San Pedro del Norte',
-    'Santo Tomás del Norte',
-    'Somotillo',
-    'Villanueva',
-  ],
-  'León': [
-    'León',
-    'Achuapa',
-    'El Jicaral',
-    'El Sauce',
-    'La Paz Centro',
-    'Larreynaga',
-    'Nagarote',
-    'Quezalguaque',
-    'Santa Rosa del Peñón',
-    'Telica',
-  ],
-  'Matagalpa': [
-    'Matagalpa',
-    'Ciudad Darío',
-    'Esquipulas',
-    'Terrabona',
-    'San Isidro',
-    'Sébaco',
-    'San Ramón',
-    'Matiguás',
-    'Río Blanco',
-    'Muy Muy',
-    'Rancho Grande',
-    'Tuma-La Dalia',
-    'San Dionisio',
-  ],
-  'Jinotega': [
-    'Jinotega',
-    'San Rafael del Norte',
-    'San Sebastián de Yalí',
-    'La Concordia',
-    'El Cuá',
-    'San José de Bocay',
-    'Santa María de Pantasma',
-    'Wiwilí de Jinotega',
-  ],
-  'Estelí': [
-    'Estelí',
-    'Condega',
-    'La Trinidad',
-    'Pueblo Nuevo',
-    'San Juan de Limay',
-    'San Nicolás',
-  ],
-  'Madriz': [
-    'Somoto',
-    'Las Sabanas',
-    'Palacagüina',
-    'San José de Cusmapa',
-    'San Juan de Río Coco',
-    'San Lucas',
-    'Telpaneca',
-    'Totogalpa',
-    'Yalagüina',
-  ],
-  'Nueva Segovia': [
-    'Ocotal',
-    'Ciudad Antigua',
-    'Dipilto',
-    'El Jícaro',
-    'Jalapa',
-    'Macuelizo',
-    'Mozonte',
-    'Murra',
-    'Quilalí',
-    'San Fernando',
-    'Santa María',
-    'Wiwilí',
-  ],
-  'Boaco': [
-    'Boaco',
-    'Camoapa',
-    'San José de los Remates',
-    'San Lorenzo',
-    'Santa Lucía',
-    'Teustepe',
-  ],
-  'Chontales': [
-    'Juigalpa',
-    'Acoyapa',
-    'Comalapa',
-    'Cuapa',
-    'El Coral',
-    'La Libertad',
-    'San Pedro de Lóvago',
-    'Santo Domingo',
-    'Santo Tomás',
-    'Villa Sandino',
-  ],
-  'Río San Juan': [
-    'San Carlos',
-    'El Almendro',
-    'El Castillo',
-    'Morrito',
-    'San Juan de Nicaragua',
-    'San Miguelito',
-  ],
-  'Región Autónoma de la Costa Caribe Norte': [
-    'Bilwi (Puerto Cabezas)',
-    'Bonanza',
-    'Mulukukú',
-    'Prinzapolka',
-    'Rosita',
-    'Siuna',
-    'Waslala',
-    'Waspán',
-  ],
-  'Región Autónoma de la Costa Caribe Sur': [
-    'Bluefields',
-    'Corn Island',
-    'Desembocadura de Río Grande',
-    'El Ayote',
-    'El Rama',
-    'El Tortuguero',
-    'Kukra Hill',
-    'La Cruz de Río Grande',
-    'Laguna de Perlas',
-    'Muelle de los Bueyes',
-    'Nueva Guinea',
-    'Paiwas',
-  ],
-};
-
-List<String> get _kDepartments => _kMunicipalitiesByDepartment.keys.toList();
-
-/// Si [city] no está en ningún departamento (valor recién tipeado o de antes del picker en cascada), cae al primer departamento.
-String _departmentForCity(String city) {
-  for (final entry in _kMunicipalitiesByDepartment.entries) {
-    if (entry.value.contains(city)) return entry.key;
-  }
-  return _kDepartments.first;
-}
 
 /// [weekdays] queda vacío en entradas de texto libre porque no se puede mapear texto arbitrario a días reales de forma confiable.
 /// Una franja horaria — cualquier combinación de días de la semana, no solo
@@ -464,8 +272,9 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   final _freeformScheduleController = TextEditingController();
 
   // --- Paso 2 (4b): Ubicación y pin en el mapa ---
-  late String _department = _kDepartments.first;
-  late String _city = _kMunicipalitiesByDepartment[_department]!.first;
+  final _locationFormKey = GlobalKey<FormState>();
+  NicaraguaOriginPlace? _municipality;
+  String _city = "";
   final _addressController = TextEditingController();
   GoogleMapController? _mapController;
   LatLng _mapCenter = kNikaraMapCenter;
@@ -522,9 +331,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _descriptionController.text = business.description;
     _accessDetailsController.text = business.accessDetails;
     _otherNotesController.text = business.otherNotes;
+    // Se normaliza al abrir el editor, no al leer: así un negocio guardado
+    // con una categoría de los datos semilla ("Turismo y Miradores") o con un
+    // nombre anterior del catálogo queda alineado al catálogo real la próxima
+    // vez que su dueño guarde, en vez de arrastrar texto libre para siempre.
+    // Si no se reconoce se conserva literal — nunca se adivina.
     _category = business.category.isEmpty
         ? kBusinessCategoryPresets.first
-        : business.category;
+        : (businessCategoryPresetFor(business.category) ?? business.category);
     _subcategory = business.subcategory;
     _dayPassEnabled = business.dayPassEnabled;
     if (business.dayPassPrice != null) {
@@ -535,11 +349,10 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
     _dayPassIncludes.addAll(business.dayPassIncludes);
     _dayPassScheduleController.text = business.dayPassSchedule;
     _dayPassNotesController.text = business.dayPassNotes;
-    _department = _departmentForCity(business.city);
-    _city = business.city.isEmpty
-        ? _kMunicipalitiesByDepartment[_department]!.first
-        : business.city;
-    _addressController.text = business.locationText;
+    _municipality =
+        municipalityByCode(business.municipalityCode) ??
+        resolveMunicipality(business.city);
+    _city = business.city;
     final phoneParts = _splitPhone(business.contactPhone);
     _countryCode = phoneParts.$1;
     _phoneController.text = phoneParts.$2;
@@ -665,6 +478,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   void _nextFromStep2() {
+    if (!(_locationFormKey.currentState?.validate() ?? false)) return;
     if (_addressController.text.trim().isEmpty) {
       AppSnackbar.showError(context, 'Ingresa una dirección o referencia');
       return;
@@ -780,6 +594,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
       subcategory: _subcategory,
       description: _descriptionController.text.trim(),
       city: _city,
+      municipalityCode: _municipality?.municipalityCode,
       locationText: _addressController.text.trim(),
       latitude: _confirmedLocation?.latitude,
       longitude: _confirmedLocation?.longitude,
@@ -814,6 +629,14 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
 
   Future<void> _finish() async {
     if (_isSaving) return;
+    if (_municipality == null) {
+      AppSnackbar.showError(
+        context,
+        'Selecciona la ciudad y el municipio del catálogo.',
+      );
+      _goToStep(1);
+      return;
+    }
     setState(() => _isSaving = true);
 
     final existing = widget.existingBusiness;
@@ -873,6 +696,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
         subcategory: _subcategory,
         description: _descriptionController.text.trim(),
         city: _city,
+        municipalityCode: _municipality?.municipalityCode,
         locationText: _addressController.text.trim(),
         latitude: location.latitude,
         longitude: location.longitude,
@@ -1064,7 +888,7 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                               _category = category;
                               // Los presets de subcategoría cambian con la
                               // categoría — una subcategoría elegida bajo
-                              // "Hospedaje" no tiene sentido bajo "Tour".
+                              // "Hospedaje" no tiene sentido bajo "Tours".
                               _subcategory = '';
                             }),
                           ),
@@ -1383,7 +1207,6 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
   }
 
   Widget _buildStep2() {
-    final municipalities = _kMunicipalitiesByDepartment[_department]!;
     return Column(
       children: [
         _header('Paso 2 de 4 · borrador guardado'),
@@ -1400,35 +1223,16 @@ class _RegisterBusinessWizardState extends State<RegisterBusinessWizard> {
                 ),
                 _card(
                   children: [
-                    Text('DEPARTAMENTO', style: AppTextStyles.wizardFieldLabel),
-                    const SizedBox(height: 7),
-                    _WizardDropdown(
-                      value: _department,
-                      items: _kDepartments,
-                      onChanged: (v) => setState(() {
-                        _department = v;
-                        _city = _kMunicipalitiesByDepartment[v]!.first;
-                      }),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'CIUDAD O MUNICIPIO',
-                      style: AppTextStyles.wizardFieldLabel,
-                    ),
-                    const SizedBox(height: 7),
-                    _WizardDropdown(
-                      value: municipalities.contains(_city)
-                          ? _city
-                          : municipalities.first,
-                      items: municipalities.contains(_city)
-                          ? municipalities
-                          : [_city, ...municipalities],
-                      onChanged: (v) => setState(() => _city = v),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      'Es lo único que se muestra en las tarjetas de Inicio y Mapa.',
-                      style: AppTextStyles.wizardCaption,
+                    Form(
+                      key: _locationFormKey,
+                      child: NicaraguaLocationFormFields(
+                        initialValue: _municipality,
+                        enabled: !_isSaving,
+                        onChanged: (place) => setState(() {
+                          _municipality = place;
+                          _city = place?.city ?? '';
+                        }),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -2774,56 +2578,6 @@ class _WizardTextField extends StatelessWidget {
         focusedBorder: const OutlineInputBorder(
           borderRadius: BorderRadius.all(Radius.circular(14)),
           borderSide: BorderSide(color: AppColors.wizardFocus, width: 1.5),
-        ),
-      ),
-    );
-  }
-}
-
-class _WizardDropdown extends StatelessWidget {
-  const _WizardDropdown({
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  final String value;
-  final List<String> items;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: AppColors.settingsBackground,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: AppColors.settingsTextDark.withValues(alpha: 0.07),
-        ),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: value,
-          isExpanded: true,
-          icon: const Icon(
-            Icons.expand_more,
-            color: AppColors.settingsTextMuted,
-          ),
-          style: AppTextStyles.wizardFieldValue,
-          dropdownColor: AppColors.surface100,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          items: [
-            for (final item in items)
-              DropdownMenuItem(
-                value: item,
-                child: Text(item, overflow: TextOverflow.ellipsis),
-              ),
-          ],
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
         ),
       ),
     );

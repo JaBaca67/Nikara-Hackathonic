@@ -34,8 +34,8 @@ RLS real habilitada — el resto del esquema valida pertenencia en Dart.
 | `avatar_url` | text, null | agregada en `013`; URL pública del bucket `avatars` de Storage. `015` otorga el `grant update` que le faltaba — sin él la columna era inescribible desde el cliente |
 | `residence_type` | text, null | `nicaraguan` o `foreign`; `039`, NULL para cuentas que aún deben completar procedencia |
 | `origin_country_code` | text, null | código del catálogo de países; Nicaragua = `NI` |
-| `origin_city` | text, null | obligatorio para nicaragüenses; máximo 100 caracteres |
-| `origin_municipality` | text, null | obligatorio para nicaragüenses; máximo 100 caracteres |
+| `origin_city` | text, null | nombre canónico de ciudad/cabecera; junto con municipio referencia `origin_places` desde `041` |
+| `origin_municipality` | text, null | municipio asociado a la ciudad seleccionada; FK compuesta desde `041` |
 | `public_display_name` | text | nombre público opcional; máximo 80 caracteres |
 | `bio` | text | presentación pública; máximo 300 caracteres |
 | `show_origin` | boolean | default true; al desactivar, la vista pública oculta todo el origen |
@@ -45,6 +45,27 @@ Procedencia y privacidad: [user_origin.md](user_origin.md). La migración `039`
 extiende `public_profiles` con origen condicionado por visibilidad y `bio`;
 `full_name` usa el nombre público cuando se personaliza. La tabla conserva
 los datos reales privados y sus políticas RLS.
+
+### `origin_places`
+
+Catálogo de solo lectura creado por `041_origin_place_catalog.sql`.
+Contiene 153 municipios y cabeceras, con RLS de lectura para `anon` y
+`authenticated`; las escrituras quedan reservadas a las migraciones.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `municipality_code` | text PK | código INIDE de cuatro dígitos |
+| `department` | text | departamento o región autónoma |
+| `city` | text | nombre canónico de la ciudad/cabecera |
+| `municipality` | text | municipio asociado; pareja `(city, municipality)` única |
+| `aliases` | text[] | variantes para búsqueda y normalización histórica |
+
+`profiles(origin_city, origin_municipality)` referencia esta pareja.
+La FK se crea `NOT VALID` para conservar datos históricos no reconocidos;
+un trigger valida nuevas inserciones y escrituras explícitas de procedencia.
+La migración normaliza solo parejas antiguas inequívocas y la app solicita
+seleccionar de nuevo las restantes. No cambia la proyección de privacidad
+de `public_profiles` ni añade datos privados al catálogo.
 
 ### `businesses`
 Negocios turísticos registrados vía el wizard "Registra tu negocio". Tabla
@@ -59,6 +80,7 @@ y columnas creadas fuera de `supabase/sql/` (dashboard); `003`/`007`/`008`/
 | `category` | text | libre, sin enum |
 | `description` | text | |
 | `city` | text | |
+| `municipality_code` | text FK → `origin_places.municipality_code`, null | destino normalizado (`042`); departamento, municipio y cabecera desde catálogo |
 | `address_text` | text | |
 | `location` | geography(Point,4326) | índice GiST (`003`) |
 | `phone` | text | |
@@ -78,6 +100,7 @@ RLS deshabilitada. (`010_organizations.sql`)
 | `id` | uuid PK | |
 | `name` | text | |
 | `handle` | text, UNIQUE | sin arroba, minúsculas |
+| `municipality_code` | text FK → `origin_places.municipality_code`, null | ubicación de la fundación (`042`), seleccionada al registrar o editar |
 | `description` | text | |
 | `logo_url` | text, null | URL pública del bucket `organizations` de Storage (`017`) |
 | `banner_url` | text, null | igual que `logo_url` |
@@ -97,6 +120,7 @@ Jornadas/actividades ambientales. RLS deshabilitada.
 | `description` | text | |
 | `category` | text | libre, sin enum |
 | `location` | text | etiqueta corta, no dirección completa |
+| `municipality_code` | text FK → `origin_places.municipality_code`, null | municipio de la jornada (`042`), independiente de la referencia |
 | `latitude` / `longitude` | double, null | punto elegido en el mapa (`MapLocationPicker`), no solo GPS |
 | `image_url` | text, null | portada única: URL pública del bucket `eco_activities` de Storage (`014`) |
 | `start_time` | timestamptz | |
@@ -410,6 +434,14 @@ Table profiles {
   avatar_url text [null]
 }
 
+Table origin_places {
+  municipality_code text [pk]
+  department text
+  city text
+  municipality text
+  aliases text [note: "text[]"]
+}
+
 Table businesses {
   id uuid [pk]
   owner_id uuid [ref: > profiles.id, note: "on delete cascade"]
@@ -417,6 +449,7 @@ Table businesses {
   category text
   description text
   city text
+  municipality_code text [ref: > origin_places.municipality_code, null]
   address_text text
   location text [note: "geography(Point,4326)"]
   phone text
@@ -430,6 +463,7 @@ Table organizations {
   id uuid [pk]
   name text
   handle text [unique]
+  municipality_code text [ref: > origin_places.municipality_code, null]
   description text
   logo_url text [null]
   banner_url text [null]
@@ -444,6 +478,7 @@ Table eco_activities {
   description text
   category text
   location text
+  municipality_code text [ref: > origin_places.municipality_code, null]
   latitude float [null]
   longitude float [null]
   image_url text [null, note: "portada, URL publica de Storage"]

@@ -1,4 +1,9 @@
 import 'dart:async';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
+import 'package:nikara_app/core/utils/search_normalize.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
+import 'package:nikara_app/features/home/domain/nearby_businesses.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -55,7 +60,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   static const _photoRotationInterval = Duration(seconds: 5);
 
   final _businessStorageService = BusinessStorageService();
@@ -66,11 +71,14 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userName;
   UserRole _role = UserRole.turista;
   Position? _userPosition;
+  bool _loadingPosition = true;
+  GeographicDestination _destination = const GeographicDestination();
 
   /// No leídas del usuario actual; 0 para invitados (no tienen bandeja).
   int _unreadNotifications = 0;
 
   Timer? _photoTimer;
+  Timer? _locationTimer;
   int _heroIndex = 0;
   int _heroPhotoIndex = 0;
 
@@ -102,12 +110,17 @@ class _HomeScreenState extends State<HomeScreen> {
   List<BusinessModel> get _heroBusinesses {
     final businesses = _businesses;
     if (businesses == null || businesses.isEmpty) return const [];
-    return businesses.reversed.take(5).toList(growable: false);
+    return _visibleBusinesses(businesses).take(5).toList(growable: false);
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _destination = DiscoveryDestinationService().destination.value;
+    DiscoveryDestinationService().destination.addListener(
+      _onDestinationChanged,
+    );
     // Home queda vivo pero fuera de pantalla en el IndexedStack de
     // MainLayout, así que sin este listener un negocio editado no se
     // refleja aquí hasta reiniciar la app.
@@ -119,29 +132,44 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadBusinesses();
     _loadUserName();
     _loadPosition();
+    _startLocationUpdates();
     _loadUnreadNotifications();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    DiscoveryDestinationService().destination.removeListener(
+      _onDestinationChanged,
+    );
     BusinessStorageService.revision.removeListener(_onBusinessesChanged);
     NotificationService.revision.removeListener(_onNotificationsChanged);
     unawaited(_unsubscribeBusinessChanges?.call());
     _photoTimer?.cancel();
+    _locationTimer?.cancel();
     _heroPageController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String value) {
-    setState(() => _searchQuery = value.trim());
+    setState(() {
+      _searchQuery = value.trim();
+      _heroIndex = 0;
+      _heroPhotoIndex = 0;
+      _gridLimit = _kGridPageSize;
+    });
+    _resetHero();
   }
 
   void _selectCategory(String? category) {
     setState(() {
       _selectedCategory = category;
+      _heroIndex = 0;
+      _heroPhotoIndex = 0;
       _gridLimit = _kGridPageSize;
     });
+    _resetHero();
   }
 
   void _onBusinessesChanged() {
@@ -197,10 +225,71 @@ class _HomeScreenState extends State<HomeScreen> {
     pushSharedAxis(context, const AdminShellScreen());
   }
 
-  Future<void> _loadPosition() async {
-    final position = await LocationService().getCurrentPosition();
-    if (!mounted || position == null) return;
-    setState(() => _userPosition = position);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadPosition(forceRefresh: true));
+      _startLocationUpdates();
+    } else {
+      _locationTimer?.cancel();
+    }
+  }
+
+  void _startLocationUpdates() {
+    _locationTimer?.cancel();
+    _locationTimer = Timer.periodic(LocationService.cacheLifetime, (_) {
+      unawaited(_loadPosition(forceRefresh: true));
+    });
+  }
+
+  Future<void> _loadPosition({
+    bool forceRefresh = false,
+    bool showFailure = false,
+  }) async {
+    if (mounted) {
+      setState(() {
+        _loadingPosition = true;
+        if (forceRefresh) _userPosition = null;
+      });
+    }
+    final position = await LocationService().getCurrentPosition(
+      forceRefresh: forceRefresh,
+      requestPermission: showFailure,
+    );
+    if (!mounted) return;
+    setState(() {
+      _userPosition = position;
+      _loadingPosition = false;
+    });
+    if (position == null && showFailure) {
+      AppSnackbar.showError(
+        context,
+        'No pudimos obtener tu ubicación. Revisa el GPS y los permisos de la aplicación.',
+      );
+    }
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([_loadBusinesses(), _loadPosition(forceRefresh: true)]);
+  }
+
+  void _resetHero() {
+    if (_heroPageController.hasClients) _heroPageController.jumpToPage(0);
+    _restartPhotoTimer();
+  }
+
+  void _selectDestination(GeographicDestination destination) {
+    DiscoveryDestinationService().destination.value = destination;
+  }
+
+  void _onDestinationChanged() {
+    setState(() {
+      _destination = DiscoveryDestinationService().destination.value;
+      _gridLimit = _kGridPageSize;
+      _heroIndex = 0;
+      _heroPhotoIndex = 0;
+    });
+    _resetHero();
   }
 
   Future<void> _loadBusinesses() async {
@@ -262,19 +351,26 @@ class _HomeScreenState extends State<HomeScreen> {
   /// usa `MapScreen` para su propia barra de búsqueda.
   List<BusinessModel> _searchFiltered(List<BusinessModel> businesses) {
     if (_searchQuery.isEmpty) return businesses;
-    final query = _searchQuery.toLowerCase();
+    final query = normalizeForSearch(_searchQuery);
     return businesses
         .where(
           (b) =>
-              b.name.toLowerCase().contains(query) ||
-              b.city.toLowerCase().contains(query) ||
-              b.category.toLowerCase().contains(query),
+              normalizeForSearch(b.name).contains(query) ||
+              normalizeForSearch(b.city).contains(query) ||
+              normalizeForSearch(b.category).contains(query),
         )
         .toList(growable: false);
   }
 
   List<BusinessModel> _visibleBusinesses(List<BusinessModel> businesses) {
-    final searched = _searchFiltered(businesses);
+    final searched = _searchFiltered(businesses)
+        .where(
+          (b) => _destination.matches(
+            municipalityByCode(b.municipalityCode) ??
+                resolveMunicipality(b.city),
+          ),
+        )
+        .toList();
     final category = _selectedCategory;
     final filtered = category == null
         ? searched
@@ -305,16 +401,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openFilterSheet() async {
-    final mode = await showModalBottomSheet<_SortMode>(
-      context: context,
-      backgroundColor: AppColors.surface100,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => _SortSheet(current: _sortMode),
+    final filters = await showGeographicDestinationPicker(
+      context,
+      initial: _destination,
+      showOrdering: true,
+      sortByDistance: _sortMode == _SortMode.cercanos,
     );
-    if (mode == null || !mounted) return;
-    setState(() => _sortMode = mode);
+    if (filters == null || !mounted) return;
+    setState(() {
+      _sortMode = filters.sortByDistance
+          ? _SortMode.cercanos
+          : _SortMode.recientes;
+      _heroIndex = 0;
+      _heroPhotoIndex = 0;
+    });
+    _selectDestination(filters.destination);
+    _resetHero();
   }
 
   @override
@@ -341,6 +443,9 @@ class _HomeScreenState extends State<HomeScreen> {
             notificationCount: _unreadNotifications,
             onNotificationTap: _openNotifications,
             onFilterTap: _openFilterSheet,
+            searchHint: _destination.isActive
+                ? 'Buscar en ${_destination.label}...'
+                : 'Buscar lagunas, tours, restaurantes...',
             // Siempre el catálogo completo, haya o no negocios de esa
             // categoría hoy: el carrusel representa lo que un negocio
             // *puede* registrar, no lo que ya existe. Filtrar por presencia
@@ -388,7 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // cuentas; este gesto es el reload explícito que pidió el usuario para
     // forzar un refresh manual sin esperar al socket.
     return RefreshIndicator(
-      onRefresh: _loadBusinesses,
+      onRefresh: _refresh,
       color: AppColors.primary500,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(
@@ -402,12 +507,22 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             if (_role.canAccessAdminPanel)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xxl,
+                  AppSpacing.lg,
+                  0,
+                ),
                 child: _AdminAccessBanner(role: _role, onTap: _openAdminPanel),
               ),
             if (heroBusinesses.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.xxl,
+                  AppSpacing.lg,
+                  0,
+                ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                   child: _HeroCarousel(
@@ -432,15 +547,42 @@ class _HomeScreenState extends State<HomeScreen> {
                       _gridLimit = _kGridPageSize;
                     }),
             ),
-            // Recibe `visible` y no la lista completa: así respeta el filtro
-            // de categoría y la búsqueda, igual que las otras dos secciones.
-            // Antes ignoraba ambos y mostraba lo más cercano aunque no
-            // tuviera nada que ver con lo que el usuario estaba filtrando.
+            if (visible.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  _destination.isActive
+                      ? 'No hay lugares que coincidan en ${_destination.label}.'
+                      : 'No hay lugares que coincidan con tus filtros.',
+                ),
+              ),
+            // El destino del viaje nunca reemplaza la ubicación física.
             if (_userPosition case final position?)
               _CercaDeTiSection(
-                businesses: visible,
+                businesses: businesses,
                 userPosition: position,
                 onTap: _openBusinessDetail,
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.neutral800,
+                  ),
+                  onPressed: _loadingPosition
+                      ? null
+                      : () => _loadPosition(
+                          forceRefresh: true,
+                          showFailure: true,
+                        ),
+                  icon: const Icon(Icons.my_location),
+                  label: Text(
+                    _loadingPosition
+                        ? 'Buscando tu ubicación…'
+                        : 'Activar ubicación para ver lugares cerca de ti',
+                  ),
+                ),
               ),
             // Cierra el feed con todo lo que hay.
             //
@@ -519,69 +661,6 @@ class _AdminAccessBanner extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SortSheet extends StatelessWidget {
-  const _SortSheet({required this.current});
-
-  final _SortMode current;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.xl,
-          AppSpacing.md,
-          AppSpacing.xl,
-          AppSpacing.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Ordenar por', style: AppTextStyles.sectionTitle),
-            const SizedBox(height: 8),
-            _SortOption(
-              label: 'Más recientes',
-              selected: current == _SortMode.recientes,
-              onTap: () => Navigator.of(context).pop(_SortMode.recientes),
-            ),
-            _SortOption(
-              label: 'Más cercanos',
-              selected: current == _SortMode.cercanos,
-              onTap: () => Navigator.of(context).pop(_SortMode.cercanos),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SortOption extends StatelessWidget {
-  const _SortOption({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      onTap: onTap,
-      title: Text(label),
-      trailing: Icon(
-        selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-        color: selected ? AppColors.primary500 : AppColors.neutral400,
       ),
     );
   }
@@ -690,16 +769,29 @@ class _HeroCard extends StatelessWidget {
           Positioned(
             left: 14,
             top: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.tagGold600,
-                borderRadius: BorderRadius.circular(AppRadius.pill),
-              ),
-              child: Text(
-                business.category,
-                style: AppTextStyles.homeHeroPill.copyWith(
-                  color: AppColors.settingsTextDark,
+            // El pill tiene techo: `businesses.category` es texto libre y sin
+            // este tope un valor largo se estiraba hasta debajo del badge ECO
+            // de la esquina opuesta.
+            right: 96,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.tagGold600,
+                  borderRadius: BorderRadius.circular(AppRadius.pill),
+                ),
+                child: Text(
+                  businessCategoryPresetFor(business.category) ??
+                      business.category,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.homeHeroPill.copyWith(
+                    color: AppColors.settingsTextDark,
+                  ),
                 ),
               ),
             ),
@@ -846,7 +938,7 @@ class _DestacadosSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.only(top: AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -868,7 +960,7 @@ class _DestacadosSection extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.md),
           if (businesses.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
@@ -995,7 +1087,14 @@ class _DestacadoCard extends StatelessWidget {
                                   ),
                                 ),
                                 child: Text(
-                                  business.category,
+                                  // Normalizada, no el texto libre crudo: los
+                                  // datos semilla traen nombres como
+                                  // "Gastronomía Tradicional" que el pill
+                                  // cortaba a "Gastronomía Tradicio…".
+                                  businessCategoryPresetFor(
+                                        business.category,
+                                      ) ??
+                                      business.category,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyles.homeMiniBadge.copyWith(
@@ -1071,17 +1170,8 @@ class _DestacadoCard extends StatelessWidget {
   }
 }
 
-/// "Cerca de ti": lista ordenada por distancia real. Solo se renderiza si hay posición GPS; sin ella no existe la sección en vez de mostrar distancias inventadas.
-/// "Cerca de ti": carrusel horizontal ordenado por distancia real.
-///
-/// Solo existe si hay posición GPS — sin ella no hay "cerca", y mostrar la
-/// sección con distancias inventadas sería peor que no mostrarla. El listado
-/// completo sin GPS lo cubre [_ExploreGridSection].
-///
-/// Pasó de lista vertical a carrusel para que las tres secciones de negocios
-/// de Inicio (Destacados, esta y Explorá todos) tengan la misma gramática:
-/// dos carruseles para recorrer y una grilla para abarcar. En vertical, con
-/// cinco filas apiladas, era la sección que más scroll consumía.
+/// Hasta seis lugares, de menor a mayor distancia desde la posición GPS.
+/// El listado completo sin GPS lo cubre [_ExploreGridSection].
 class _CercaDeTiSection extends StatelessWidget {
   const _CercaDeTiSection({
     required this.businesses,
@@ -1093,39 +1183,16 @@ class _CercaDeTiSection extends StatelessWidget {
   final Position userPosition;
   final ValueChanged<BusinessModel> onTap;
 
-  /// Ocho y no cinco: al scrollear en horizontal el costo de uno más es un
-  /// gesto, no una pantalla entera de scroll.
-  static const _maxItems = 8;
-
-  List<BusinessModel> get _nearest {
-    final withDistance = [...businesses]
-      ..removeWhere((b) => b.latitude == null || b.longitude == null)
-      ..sort((a, b) {
-        final da = LocationService.distanceKm(
-          userPosition,
-          a.latitude,
-          a.longitude,
-        )!;
-        final db = LocationService.distanceKm(
-          userPosition,
-          b.latitude,
-          b.longitude,
-        )!;
-        return da.compareTo(db);
-      });
-    return withDistance.take(_maxItems).toList(growable: false);
-  }
+  List<BusinessModel> get _nearest =>
+      nearbyBusinesses(businesses, userPosition);
 
   @override
   Widget build(BuildContext context) {
     final nearest = _nearest;
-    // Con el filtro de categoría puesto puede no quedar nada con
-    // coordenadas; entonces la sección no se dibuja en vez de mostrar un
-    // título sobre un vacío.
     if (nearest.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.only(top: AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1133,7 +1200,7 @@ class _CercaDeTiSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: Text('Cerca de ti', style: AppTextStyles.homeSectionTitle),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
             // Misma altura que Destacados: las dos filas son el mismo
             // componente con otro criterio de orden, y cualquier diferencia
@@ -1370,7 +1437,7 @@ class _LoadErrorState extends StatelessWidget {
 /// carrusel de Destacados.
 ///
 /// Resuelve un problema concreto del layout anterior: el único listado
-/// completo de negocios era "Cerca de ti", que toma como mucho 5 y
+/// completo de negocios era "Cerca de ti", que toma como mucho 6 y
 /// **desaparece entera sin posición GPS**. Un usuario que negara el permiso
 /// de ubicación solo veía el carrusel horizontal y nada más, por muchos
 /// negocios que hubiera registrados. Esta sección no depende del GPS: la
@@ -1399,7 +1466,7 @@ class _ExploreGridSection extends StatelessWidget {
     final hasMore = businesses.length > visible.length;
 
     return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.xl),
+      padding: const EdgeInsets.only(top: AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

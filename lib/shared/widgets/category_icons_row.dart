@@ -10,12 +10,14 @@ class CategoryIconsRow extends StatelessWidget {
     required this.selected,
     required this.onSelect,
     required this.iconBuilder,
+    this.labelBuilder,
     this.allLabel = 'Todos',
     this.iconColor,
   });
 
   final List<String> categories;
   final IconData Function(String) iconBuilder;
+  final String Function(String)? labelBuilder;
   final String allLabel;
   final Color? iconColor;
 
@@ -48,12 +50,15 @@ class CategoryIconsRow extends StatelessWidget {
             );
           }
           final category = categories[index - 1];
-          return _CategoryIcon(
-            icon: iconBuilder(category),
-            label: category,
-            iconColor: iconColor,
-            isSelected: selected == category,
-            onTap: () => onSelect(category),
+          return Tooltip(
+            message: category,
+            child: _CategoryIcon(
+              icon: iconBuilder(category),
+              label: labelBuilder?.call(category) ?? category,
+              iconColor: iconColor,
+              isSelected: selected == category,
+              onTap: () => onSelect(category),
+            ),
           );
         },
       ),
@@ -86,7 +91,15 @@ class _CategoryIcon extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            // `maxWidth` es el techo que impide que una etiqueta larga
+            // convierta un chip en media fila: el catálogo de categorías ya
+            // usa nombres de una palabra, pero el widget es compartido y no
+            // puede confiar en que el siguiente lo sea.
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              maxWidth: 96,
+              minHeight: 48,
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
               child: Column(
@@ -105,6 +118,7 @@ class _CategoryIcon extends StatelessWidget {
                   Text(
                     label,
                     maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.homeChipLabel.copyWith(
                       color: isSelected

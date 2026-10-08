@@ -15,7 +15,18 @@ enum EcoActivityStatus {
 }
 
 /// `eco_activities.category` sigue siendo texto libre (igual que `businesses.category`); este set es solo el curado que ofrece la UI, para no requerir migración por cada categoría nueva.
-const List<String> kEcoCategories = ['Reforestación', 'Fauna', 'Limpieza'];
+const List<String> kEcoCategories = [
+  'Reforestación',
+  'Fauna',
+  'Limpieza',
+  'Reciclaje',
+  'Agua y cuencas',
+  'Suelos y agroecología',
+  'Jardinería y viveros',
+  'Educación ambiental',
+  'Monitoreo de biodiversidad',
+  'Saneamiento ambiental',
+];
 
 /// Una persona inscrita en una jornada. `full_name`/`avatar_url` vienen del
 /// embed anidado `eco_participants -> profiles`, así que la lista de
@@ -84,6 +95,7 @@ class EcoActivityModel {
     required this.description,
     required this.category,
     required this.location,
+    this.municipalityCode,
     this.latitude,
     this.longitude,
     this.imageUrl,
@@ -115,6 +127,7 @@ class EcoActivityModel {
 
   /// Etiqueta corta ("Cerro Apante, Managua"), no una dirección completa — mismo rol que `BusinessModel.city`.
   final String location;
+  final String? municipalityCode;
   final double? latitude;
   final double? longitude;
 
@@ -260,6 +273,7 @@ class EcoActivityModel {
       description: description,
       category: category,
       location: location,
+      municipalityCode: municipalityCode,
       latitude: latitude,
       longitude: longitude,
       imageUrl: imageUrl,
@@ -303,6 +317,7 @@ class EcoActivityModel {
       description: row['description'] as String? ?? '',
       category: row['category'] as String? ?? '',
       location: row['location'] as String? ?? '',
+      municipalityCode: row['municipality_code'] as String?,
       latitude: (row['latitude'] as num?)?.toDouble(),
       longitude: (row['longitude'] as num?)?.toDouble(),
       // Ausente (no solo nula) mientras no haya corrido la migración 014.

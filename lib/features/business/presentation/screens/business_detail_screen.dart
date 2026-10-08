@@ -17,6 +17,7 @@ import 'package:nikara_app/features/business/domain/models/business_post_model.d
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/business/presentation/widgets/social_contact_row.dart';
 import 'package:nikara_app/features/business/utils/business_icons.dart';
+import 'package:nikara_app/features/business/utils/business_schedule.dart';
 import 'package:nikara_app/features/profile/presentation/screens/profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/features/routes/presentation/widgets/add_to_route_bottom_sheet.dart';
@@ -270,7 +271,7 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
               ],
             ),
             Transform.translate(
-              offset: const Offset(0, -18),
+              offset: const Offset(0, -kDetailQuickInfoOverlap),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: _QuickInfoCard(
@@ -328,6 +329,13 @@ class _CoverCaption extends StatelessWidget {
 
   final BusinessModel business;
 
+  String get _categoryLabel {
+    final category =
+        businessCategoryPresetFor(business.category) ?? business.category;
+    if (business.subcategory.isEmpty) return category;
+    return '${business.subcategory} · $category';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -335,9 +343,10 @@ class _CoverCaption extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         DetailCoverTagPill(
-          label: business.subcategory.isEmpty
-              ? business.category
-              : '${business.subcategory} · ${business.category}',
+          // Categoría normalizada: cruda, un dato semilla pintaba acá
+          // "Finca cafetalera · Agroturismo / Fincas", con la categoría
+          // repitiendo lo que la subcategoría ya dice.
+          label: _categoryLabel,
         ),
         const SizedBox(height: 10),
         Row(
@@ -379,24 +388,21 @@ class _CoverCaption extends StatelessWidget {
   }
 }
 
-/// Vive aquí y no en [DetailQuickInfoCard] porque el valor de "Hoy" sale del horario libre del negocio, no de un campo estructurado.
+/// Vive aquí y no en [DetailQuickInfoCard] porque el valor del horario sale
+/// del texto libre del negocio, no de un campo estructurado.
 class _QuickInfoCard extends StatelessWidget {
   const _QuickInfoCard({required this.business, required this.distanceKm});
 
   final BusinessModel business;
   final double? distanceKm;
 
-  /// Solo la primera línea del horario libre; nunca un "Abierto/Cerrado" inventado.
-  String get _todayValue {
-    final schedules = business.schedules.trim();
-    if (schedules.isEmpty) return 'No especificado';
-    final firstLine = schedules.split('\n').first.trim();
-    return firstLine.isEmpty ? 'No especificado' : firstLine;
-  }
-
   @override
   Widget build(BuildContext context) {
     final km = distanceKm;
+    // La etiqueta la decide el propio horario: "Hoy" solo si se pudo resolver
+    // la franja del día, "Horario" si es prosa libre — nunca un
+    // "Abierto/Cerrado" inventado.
+    final schedule = businessScheduleSummary(business.schedules);
     return DetailQuickInfoCard(
       items: [
         DetailQuickInfoItem(
@@ -408,8 +414,8 @@ class _QuickInfoCard extends StatelessWidget {
           value: km == null ? '—' : '${km.toStringAsFixed(0)} km',
         ),
         DetailQuickInfoItem(
-          label: 'Hoy',
-          value: _todayValue,
+          label: schedule.label,
+          value: schedule.value,
           valueColor: business.schedules.trim().isEmpty
               ? AppColors.settingsTextMuted
               : AppColors.oliveText,
@@ -1030,7 +1036,9 @@ class _AnnouncementCard extends StatelessWidget {
   }
 }
 
-/// Muestra el texto libre real de [BusinessModel.schedules] en vez de fabricar un horario estructurado por día que el modelo no tiene.
+/// Nunca fabrica un horario que el modelo no tenga: la prosa libre se muestra
+/// literal y solo el formato estructurado del wizard se traduce a días y horas
+/// legibles (crudo decía "1,2,3,4,5: 07:00–18:00").
 class _ScheduleSection extends StatelessWidget {
   const _ScheduleSection({required this.business});
 
@@ -1038,6 +1046,7 @@ class _ScheduleSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lines = businessScheduleLines(business.schedules);
     return DetailSection(
       title: 'Horarios',
       child: Container(
@@ -1057,11 +1066,21 @@ class _ScheduleSection extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                business.schedules.trim().isEmpty
-                    ? 'Horario no especificado'
-                    : business.schedules,
-                style: AppTextStyles.detailScheduleLabel,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (lines.isEmpty)
+                    Text(
+                      'Horario no especificado',
+                      style: AppTextStyles.detailScheduleLabel,
+                    )
+                  else
+                    for (var i = 0; i < lines.length; i++) ...[
+                      if (i != 0) const SizedBox(height: AppSpacing.xs),
+                      Text(lines[i], style: AppTextStyles.detailScheduleLabel),
+                    ],
+                ],
               ),
             ),
           ],

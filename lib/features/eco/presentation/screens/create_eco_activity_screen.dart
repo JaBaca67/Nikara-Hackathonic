@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
+import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -44,6 +47,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
+  NicaraguaOriginPlace? _municipality;
   final _capacityController = TextEditingController();
   final _requirementController = TextEditingController();
 
@@ -106,6 +110,9 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
     _titleController.text = activity.title;
     _descriptionController.text = activity.description;
     _locationController.text = activity.location;
+    _municipality =
+        municipalityByCode(activity.municipalityCode) ??
+        resolveLegacyEcoMunicipality(activity.location);
     _capacityController.text = activity.maxCapacity?.toString() ?? '';
     _requirements.addAll(activity.requirements);
     _existingImageUrl = activity.imageUrl;
@@ -359,6 +366,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           description: _descriptionController.text.trim(),
           category: _category,
           location: _locationController.text.trim(),
+          municipalityCode: _municipality?.municipalityCode,
           latitude: location?.latitude,
           longitude: location?.longitude,
           imageUrl: imageUrl,
@@ -374,6 +382,7 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
           description: _descriptionController.text.trim(),
           category: _category,
           location: _locationController.text.trim(),
+          municipalityCode: _municipality?.municipalityCode,
           latitude: location?.latitude,
           longitude: location?.longitude,
           imageUrl: imageUrl,
@@ -604,6 +613,12 @@ class _CreateEcoActivityScreenState extends State<CreateEcoActivityScreen> {
         ),
         EcoFormCard(
           children: [
+            NicaraguaLocationFormFields(
+              initialValue: _municipality,
+              enabled: !_isSaving,
+              onChanged: (place) => setState(() => _municipality = place),
+            ),
+            const SizedBox(height: 16),
             const EcoFieldLabel('Referencia'),
             EcoTextField(
               controller: _locationController,

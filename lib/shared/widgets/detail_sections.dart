@@ -122,7 +122,13 @@ class _DetailCoverImageState extends State<DetailCoverImage> {
                   ),
                   const Spacer(),
                   IgnorePointer(child: widget.caption),
-                  const SizedBox(height: 20),
+                  // Reserva la franja que pisa [DetailQuickInfoCard] más aire
+                  // propio. Con los 20px de antes quedaban 2px entre el baseline
+                  // del título y el borde de la tarjeta, y el título usa
+                  // `height: 1.15` —más apretado que la caja natural de League
+                  // Spartan—, así que las colas de "g"/"y" se pintaban fuera de
+                  // su línea y el blanco de la tarjeta las tapaba.
+                  const SizedBox(height: kDetailQuickInfoOverlap + 16),
                 ],
               ),
             ),
@@ -248,6 +254,11 @@ class DetailCoverTagPill extends StatelessWidget {
   }
 }
 
+/// Cuánto sube [DetailQuickInfoCard] sobre la portada. Lo consume también
+/// [DetailCoverImage] para reservar esa franja debajo de su caption — son los
+/// dos lados del mismo solape y moverlo en un solo lado los descuadra.
+const double kDetailQuickInfoOverlap = 18;
+
 /// Tarjeta flotante de datos rápidos, montada medio superpuesta a la portada.
 class DetailQuickInfoCard extends StatelessWidget {
   const DetailQuickInfoCard({super.key, required this.items});
@@ -270,14 +281,19 @@ class DetailQuickInfoCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i != 0)
-              Container(width: 1, height: 32, color: AppColors.profileDivider),
-            Expanded(child: items[i]),
+      // IntrinsicHeight para que el separador siga la altura real de la fila:
+      // con los 32px fijos de antes, un valor de dos líneas dejaba la línea
+      // divisoria flotando a media columna.
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < items.length; i++) ...[
+              if (i != 0) Container(width: 1, color: AppColors.profileDivider),
+              Expanded(child: items[i]),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -299,6 +315,7 @@ class DetailQuickInfoItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           label,
@@ -310,7 +327,10 @@ class DetailQuickInfoItem extends StatelessWidget {
         const SizedBox(height: 3),
         Text(
           value,
-          maxLines: 1,
+          // Dos líneas: la columna mide ~105px en un teléfono de 384dp y a
+          // una línea un horario o una ciudad compuesta ("San Juan de
+          // Limay") se cortaba a la mitad de la primera palabra.
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
           style: AppTextStyles.quickInfoValue.copyWith(

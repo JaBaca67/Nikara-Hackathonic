@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/origin_countries.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
 
 enum ResidenceType { nicaraguan, foreign }
 
@@ -22,10 +23,7 @@ class UserOrigin {
       switch (residenceType) {
         ResidenceType.nicaraguan =>
           countryCode == 'NI' &&
-              city.trim().isNotEmpty &&
-              municipality.trim().isNotEmpty &&
-              city.trim().length <= 100 &&
-              municipality.trim().length <= 100,
+              findNicaraguaOriginPlace(city, municipality) != null,
         ResidenceType.foreign => countryCode != 'NI',
         null => false,
       };

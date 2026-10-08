@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
+import 'package:nikara_app/shared/widgets/nicaragua_location_form_fields.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/validators.dart';
@@ -32,6 +34,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
   final _nameController = TextEditingController();
   final _handleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  NicaraguaOriginPlace? _municipality;
 
   // Sin `existingUrl`: en el alta siempre se parte de cero.
   var _logo = OrganizationImageSlot();
@@ -84,6 +87,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
         name: _nameController.text.trim(),
         handle: _handleController.text,
         description: _descriptionController.text.trim(),
+        municipalityCode: _municipality?.municipalityCode,
         logoUrl: logo.url,
         bannerUrl: banner.url,
       );
@@ -108,6 +112,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
       _handleController.clear();
       _descriptionController.clear();
       setState(() {
+        _municipality = null;
         _logo = OrganizationImageSlot();
         _banner = OrganizationImageSlot();
         _myOrganizations = [..._myOrganizations, organization];
@@ -239,6 +244,21 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
                                       'Qué hace la fundación y por qué '
                                       'importa.',
                                   maxLines: 4,
+                                ),
+                              ],
+                            ),
+                            const EcoSectionIntro(
+                              title: 'Ubicación de la fundación',
+                              subtitle:
+                                  'Selecciona su departamento, ciudad y municipio.',
+                            ),
+                            EcoFormCard(
+                              children: [
+                                NicaraguaLocationFormFields(
+                                  initialValue: _municipality,
+                                  enabled: !_isSaving,
+                                  onChanged: (place) =>
+                                      setState(() => _municipality = place),
                                 ),
                               ],
                             ),

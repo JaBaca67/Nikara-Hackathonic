@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nikara_app/core/models/origin_countries.dart';
+import 'package:nikara_app/core/models/nicaragua_origin_places.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
@@ -11,7 +12,7 @@ void main() {
     residenceType: ResidenceType.nicaraguan,
     countryCode: 'NI',
     city: ' Masaya ',
-    municipality: ' Nindirí ',
+    municipality: ' Masaya ',
   );
   test(
     'cuentas anteriores permanecen incompletas sin inventar procedencia',
@@ -64,7 +65,7 @@ void main() {
   });
   test('normaliza lugares y elimina datos locales al pasar a extranjero', () {
     expect(local.toRow()['origin_city'], 'Masaya');
-    expect(local.label, 'Nicaragua · Masaya, Nindirí');
+    expect(local.label, 'Nicaragua · Masaya');
     expect(
       const UserOrigin(
         residenceType: ResidenceType.nicaraguan,
@@ -112,6 +113,70 @@ void main() {
       );
     }
   });
+  test('catálogo municipal completo y sin nombres o códigos ambiguos', () {
+    expect(nicaraguaOriginPlaces.length, 153);
+    expect(
+      nicaraguaOriginPlaces.map((p) => p.municipalityCode).toSet(),
+      hasLength(153),
+    );
+    expect(
+      nicaraguaOriginPlaces.map((p) => p.municipality).toSet(),
+      hasLength(153),
+    );
+    expect(
+      nicaraguaOriginPlaces.map((p) => p.department).toSet(),
+      hasLength(17),
+    );
+    for (final place in nicaraguaOriginPlaces) {
+      expect(RegExp(r'^\d{4}$').hasMatch(place.municipalityCode), isTrue);
+      expect(place.searchText, isNot(contains('\uFFFD')));
+      expect(findNicaraguaOriginPlace(place.city, place.municipality), place);
+    }
+    expect(
+      findNicaraguaOriginPlace('Malpaisillo', 'Larreynaga')?.department,
+      'León',
+    );
+    expect(
+      findNicaraguaOriginPlace('Bilwi', 'Puerto Cabezas')?.municipalityCode,
+      '9110',
+    );
+  });
+  test(
+    'rechaza texto libre y combinaciones de ciudades y municipios ajenos',
+    () {
+      for (final origin in [
+        const UserOrigin(
+          residenceType: ResidenceType.nicaraguan,
+          countryCode: 'NI',
+          city: 'Mi ciudad',
+          municipality: 'Mi municipio',
+        ),
+        const UserOrigin(
+          residenceType: ResidenceType.nicaraguan,
+          countryCode: 'NI',
+          city: 'Masaya',
+          municipality: 'Nindirí',
+        ),
+        const UserOrigin(
+          residenceType: ResidenceType.nicaraguan,
+          countryCode: 'NI',
+          city: 'nindiri',
+          municipality: 'nindiri',
+        ),
+      ]) {
+        expect(origin.isComplete, isFalse);
+      }
+      expect(
+        const UserOrigin(
+          residenceType: ResidenceType.nicaraguan,
+          countryCode: 'NI',
+          city: 'Malpaisillo',
+          municipality: 'Larreynaga',
+        ).isComplete,
+        isTrue,
+      );
+    },
+  );
   test(
     'participantes y reseñas conservan la identidad pública y procedencia',
     () {

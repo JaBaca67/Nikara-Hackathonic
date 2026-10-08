@@ -150,6 +150,21 @@ class _MainLayoutState extends State<MainLayout> {
     return Scaffold(
       // Sin esto, las pantallas de atrás se detendrían antes del margen de la nav bar flotante, dejando ver el fondo del Scaffold.
       extendBody: true,
+      // El shell no resuelve el teclado: lo decide cada tab.
+      //
+      // Con el valor por defecto lo resolvía acá y eso rompía el Mapa: el
+      // `PageView` se encogía al espacio sobre el teclado, así que el dock
+      // del mapa —anclado a `bottom: 0` de su propio Stack— terminaba
+      // flotando a media pantalla; y como `Scaffold` además envuelve su
+      // body en `MediaQuery.removeViewInsets(removeBottom: true)`, el Mapa
+      // leía `viewInsets.bottom == 0` y ni siquiera podía detectar el
+      // teclado para apartarse.
+      //
+      // Las cinco pestañas traen su propio `Scaffold`, así que apagarlo acá
+      // no le quita el "keyboard avoidance" a ninguna: las que tienen
+      // formularios lo conservan por defecto y ahora reciben el inset real,
+      // y el Mapa se declara a pantalla completa a propósito.
+      resizeToAvoidBottomInset: false,
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,

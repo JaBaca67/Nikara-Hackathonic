@@ -1,4 +1,5 @@
 import 'package:nikara_app/core/models/review_status.dart';
+import 'package:nikara_app/core/models/geographic_destination.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/core/utils/search_normalize.dart';
 
@@ -9,6 +10,7 @@ class OrganizationModel {
     required this.name,
     required this.handle,
     this.description = '',
+    this.municipalityCode,
     this.logoUrl,
     this.bannerUrl,
     required this.ownerId,
@@ -27,6 +29,11 @@ class OrganizationModel {
   final String handle;
 
   final String description;
+  final String? municipalityCode;
+  String? get city => municipalityByCode(municipalityCode)?.city;
+  String? get municipality =>
+      municipalityByCode(municipalityCode)?.municipality;
+  String? get countryCode => municipalityCode == null ? null : 'NI';
 
   /// Puede ser URL http(s) o ruta local de `image_picker` indistintamente.
   final String? logoUrl;
@@ -84,6 +91,7 @@ class OrganizationModel {
       name: row['name'] as String? ?? '',
       handle: row['handle'] as String? ?? '',
       description: row['description'] as String? ?? '',
+      municipalityCode: row['municipality_code'] as String?,
       logoUrl: row['logo_url'] as String?,
       bannerUrl: row['banner_url'] as String?,
       ownerId: row['owner_id'] as String? ?? '',

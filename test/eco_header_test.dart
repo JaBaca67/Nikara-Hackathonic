@@ -11,6 +11,8 @@ import 'package:nikara_app/features/eco/presentation/screens/eco_main_screen.dar
 import 'package:nikara_app/features/eco/presentation/widgets/eco_discovery_header.dart';
 import 'package:nikara_app/features/home/presentation/widgets/search_header_widget.dart';
 import 'package:nikara_app/shared/widgets/category_icons_row.dart';
+import 'package:nikara_app/shared/widgets/catalog_selection_field.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 void main() {
@@ -28,7 +30,8 @@ void main() {
                 'title': '$category del río',
                 'category': category,
                 'description': 'Actividad ambiental',
-                'location': 'Granada',
+                'location': category == 'Fauna' ? 'Managua' : 'Granada',
+                'municipality_code': category == 'Fauna' ? '5525' : '7015',
                 'start_time': DateTime.now()
                     .add(const Duration(days: 10))
                     .toIso8601String(),
@@ -54,8 +57,17 @@ void main() {
       expect(find.byType(SearchHeaderWidget), findsOneWidget);
       expect(find.byType(CategoryIconsRow), findsOneWidget);
       expect(find.text('Actividades Ambientales'), findsOneWidget);
-      expect(find.text('2 disponibles'), findsOneWidget);
-      expect(find.text('2 iniciativas verificadas'), findsOneWidget);
+      expect(find.text('2 disponibles'), findsNothing);
+      expect(find.byType(GeographicFilterBar), findsNothing);
+      expect(find.text('Explorar destino'), findsNothing);
+      expect(find.text('2 actividades para explorar'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Descubre más'),
+        150,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
       expect(find.text('Descubre más'), findsOneWidget);
       expect(find.text('Limpieza del río'), findsWidgets);
       await tester.enterText(find.byType(TextField), 'rio');
@@ -66,15 +78,62 @@ void main() {
       expect(find.text('Fauna del río'), findsWidgets);
       expect(find.text('Limpieza del río'), findsNothing);
       FocusManager.instance.primaryFocus?.unfocus();
-      await tester.tap(find.byIcon(Icons.tune_rounded));
-      await tester.pumpAndSettle();
-      expect(find.text('Filtrar actividades'), findsOneWidget);
-      await tester.tap(find.widgetWithText(ListTile, 'Limpieza'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CategoryIconsRow),
+          matching: find.text('Limpieza'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Fauna del río'), findsNothing);
       await tester.enterText(find.byType(TextField), '');
       await tester.pumpAndSettle();
       expect(find.text('Limpieza del río'), findsWidgets);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CategoryIconsRow),
+          matching: find.text('Todas'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Fauna del río'),
+        150,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
+      expect(find.text('Fauna del río'), findsWidgets);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.tap(find.byIcon(Icons.tune_rounded));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Dónde quieres explorar?'), findsOneWidget);
+      await tester.tap(find.byType(CatalogSelectionField<String>));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Buscar en el catálogo'),
+        'granada',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ListTile, 'Granada'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Aplicar destino'));
+      await tester.pumpAndSettle();
+      expect(find.text('Limpieza del río'), findsWidgets);
+      expect(find.text('Fauna del río'), findsNothing);
+      expect(find.text('Buscar en Granada...'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.tune_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ver todo Nicaragua'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Fauna del río'),
+        150,
+        scrollable: find.byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        ),
+      );
+      expect(find.text('Fauna del río'), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -113,6 +172,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('15 disponibles'), findsNothing);
       expect(tester.takeException(), isNull);
       expect(
         tester.getSize(find.text('Actividades Ambientales')).height,

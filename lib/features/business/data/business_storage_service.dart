@@ -11,6 +11,7 @@ import 'package:nikara_app/core/utils/image_upload.dart';
 import 'package:nikara_app/core/utils/input_sanitizers.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
+import 'package:nikara_app/features/business/utils/business_icons.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
@@ -172,6 +173,15 @@ class BusinessStorageService {
     return () => _client.removeChannel(channel);
   }
 
+  /// Categorías presentes en los datos, ya normalizadas al catálogo de
+  /// [kBusinessCategoryPresets] y en su mismo orden.
+  ///
+  /// La columna es texto libre, así que crudas salían cosas como
+  /// "Agroturismo / Fincas" o "Gastronomía Tradicional" conviviendo con los
+  /// nombres del wizard: los chips del Mapa decían una cosa y los de Inicio
+  /// otra para el mismo negocio. Un valor que no se reconozca se conserva al
+  /// final en vez de desaparecer — perder un chip esconde negocios.
+  ///
   /// No se limita al viewport del mapa (a diferencia de [getBusinessesInBounds]) para que los chips de categoría no cambien al hacer pan.
   Future<List<String>> getAllCategories() async {
     try {
@@ -179,14 +189,11 @@ class BusinessStorageService {
           .from('businesses')
           .select('category')
           .eq('status', ReviewStatus.aprobado.wireValue);
-      final categories = (rows as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map((row) => row['category'] as String? ?? '')
-          .where((category) => category.isNotEmpty)
-          .toSet()
-          .toList();
-      categories.sort();
-      return categories;
+      return orderedBusinessCategories(
+        (rows as List<dynamic>).cast<Map<String, dynamic>>().map(
+          (row) => row['category'] as String? ?? '',
+        ),
+      );
     } on PostgrestException catch (e) {
       throw BusinessServiceException(
         'No se pudieron cargar las categorías: ${e.message}',
@@ -613,6 +620,7 @@ class BusinessStorageService {
       'subcategory': b.subcategory,
       'description': b.description,
       'city': b.city,
+      'municipality_code': b.municipalityCode,
       'address_text': b.locationText,
       // Formato EWKT que PostGIS interpreta directo; las coordenadas ya están garantizadas por _requireLocation.
       'location': 'SRID=4326;POINT(${b.longitude} ${b.latitude})',
@@ -660,6 +668,7 @@ class BusinessStorageService {
       subcategory: row['subcategory'] as String? ?? '',
       description: row['description'] as String? ?? '',
       city: row['city'] as String? ?? '',
+      municipalityCode: row['municipality_code'] as String?,
       locationText: row['address_text'] as String? ?? '',
       latitude: point?.$1,
       longitude: point?.$2,

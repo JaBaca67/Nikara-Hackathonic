@@ -17,6 +17,7 @@ class BusinessModel {
     this.subcategory = '',
     required this.description,
     required this.city,
+    this.municipalityCode,
     required this.locationText,
     this.latitude,
     this.longitude,
@@ -61,6 +62,7 @@ class BusinessModel {
 
   /// Etiqueta corta de ciudad/municipio (ej. "Masaya"); nunca la dirección completa.
   final String city;
+  final String? municipalityCode;
 
   /// Dirección exacta; solo se muestra en la sección "Mapa de ubicación exacta" del detalle, nunca en tarjetas compactas.
   final String locationText;
@@ -153,6 +155,7 @@ class BusinessModel {
     String? subcategory,
     String? description,
     String? city,
+    String? municipalityCode,
     String? locationText,
     double? latitude,
     double? longitude,
@@ -191,6 +194,7 @@ class BusinessModel {
       subcategory: subcategory ?? this.subcategory,
       description: description ?? this.description,
       city: city ?? this.city,
+      municipalityCode: municipalityCode ?? this.municipalityCode,
       locationText: locationText ?? this.locationText,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,

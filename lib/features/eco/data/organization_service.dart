@@ -90,6 +90,7 @@ class OrganizationService {
     required String name,
     required String handle,
     String description = '',
+    String? municipalityCode,
     String? logoUrl,
     String? bannerUrl,
   }) async {
@@ -112,6 +113,7 @@ class OrganizationService {
             'name': name,
             'handle': normalizedHandle,
             'description': description,
+            'municipality_code': ?municipalityCode,
             'logo_url': logoUrl,
             'banner_url': bannerUrl,
             'owner_id': userId,
@@ -180,6 +182,7 @@ class OrganizationService {
     required String name,
     required String handle,
     String description = '',
+    String? municipalityCode,
     String? logoUrl,
     bool clearLogo = false,
     String? bannerUrl,
@@ -197,6 +200,7 @@ class OrganizationService {
         'name': name,
         'handle': normalizedHandle,
         'description': description,
+        'municipality_code': ?municipalityCode,
       };
       if (clearLogo) {
         patch['logo_url'] = null;

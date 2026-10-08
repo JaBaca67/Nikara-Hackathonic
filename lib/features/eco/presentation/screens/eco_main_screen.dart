@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'package:nikara_app/core/models/geographic_destination.dart';
+import 'package:nikara_app/core/services/discovery_destination_service.dart';
+import 'package:nikara_app/shared/widgets/geographic_filter_bar.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -42,6 +45,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   Future<void> Function()? _unsubscribe;
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  GeographicDestination _destination = const GeographicDestination();
 
   final _featuredController = PageController();
   int _featuredPage = 0;
@@ -49,12 +53,19 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   @override
   void initState() {
     super.initState();
+    _destination = DiscoveryDestinationService().destination.value;
+    DiscoveryDestinationService().destination.addListener(
+      _onDestinationChanged,
+    );
     EcoService.revision.addListener(_onChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    DiscoveryDestinationService().destination.removeListener(
+      _onDestinationChanged,
+    );
     EcoService.revision.removeListener(_onChanged);
     _featuredController.dispose();
     _searchController.dispose();
@@ -63,6 +74,14 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   }
 
   void _onChanged() => unawaited(_load(silent: true));
+
+  void _onDestinationChanged() {
+    setState(() {
+      _destination = DiscoveryDestinationService().destination.value;
+      _featuredPage = 0;
+    });
+    if (_featuredController.hasClients) _featuredController.jumpToPage(0);
+  }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() => _isLoading = true);
@@ -94,7 +113,12 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
         normalizeForSearch(
           '${activity.title} ${activity.description} ${activity.location} ${activity.category}',
         ).contains(normalizeForSearch(_searchQuery));
-    return matchesCategory && matchesSearch;
+    return matchesCategory &&
+        matchesSearch &&
+        _destination.matches(
+          municipalityByCode(activity.municipalityCode) ??
+              resolveLegacyEcoMunicipality(activity.location),
+        );
   }).toList();
 
   int get _joinedCount =>
@@ -127,44 +151,12 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
   }
 
   Future<void> _openFilterSheet() async {
-    final category = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Filtrar actividades', style: AppTextStyles.sectionTitle),
-              const SizedBox(height: AppSpacing.md),
-              for (final category in [_kAllCategories, ...kEcoCategories])
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    category == _kAllCategories
-                        ? Icons.grid_view_rounded
-                        : ecoCategoryIcon(category),
-                  ),
-                  title: Text(category, style: AppTextStyles.body),
-                  trailing: category == _selectedCategory
-                      ? const Icon(
-                          Icons.check_rounded,
-                          color: AppColors.oliveText,
-                        )
-                      : null,
-                  onTap: () => Navigator.pop(context, category),
-                ),
-            ],
-          ),
-        ),
-      ),
+    final result = await showGeographicDestinationPicker(
+      context,
+      initial: _destination,
     );
-    if (mounted && category != null) _selectCategory(category);
+    if (!mounted || result == null) return;
+    DiscoveryDestinationService().destination.value = result.destination;
   }
 
   Future<void> _openDetail(EcoActivityModel activity) async {
@@ -222,12 +214,15 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                   : _activities.length,
             ),
             showNotifications: false,
-            searchHint: 'Buscar actividades ambientales...',
+            searchHint: _destination.isActive
+                ? 'Buscar en ${_destination.label}...'
+                : 'Buscar actividades ambientales...',
             controller: _searchController,
             onSearchChanged: _onSearchChanged,
             onFilterTap: _openFilterSheet,
             categoryContent: CategoryIconsRow(
               categories: kEcoCategories,
+              labelBuilder: ecoCategoryLabel,
               iconBuilder: ecoCategoryIcon,
               iconColor: AppColors.oliveText,
               allLabel: _kAllCategories,
@@ -255,17 +250,21 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(
                           AppSpacing.xl,
-                          AppSpacing.lg,
+                          AppSpacing.xxl,
                           AppSpacing.xl,
                           AppSpacing.xxxl,
                         ),
                         children: [
                           if (_joinedCount > 0) ...[
                             _JoinedBanner(count: _joinedCount),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: AppSpacing.xxl),
                           ],
                           if (filtered.isEmpty)
-                            const _EcoEmptyState()
+                            _destination.isActive
+                                ? Text(
+                                    'No hay próximas jornadas que coincidan en ${_destination.label}.',
+                                  )
+                                : const _EcoEmptyState()
                           else ...[
                             if (featured.isNotEmpty) ...[
                               _FeaturedCarousel(
@@ -277,7 +276,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                                 onOpen: _openDetail,
                                 onJoin: _toggleJoin,
                               ),
-                              const SizedBox(height: 22),
+                              const SizedBox(height: AppSpacing.xxxl),
                             ],
                             Text(
                               'Descubre más',
@@ -286,7 +285,7 @@ class _EcoMainScreenState extends State<EcoMainScreen> {
                                 fontSize: 15,
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: AppSpacing.lg),
                             for (final (index, activity) in filtered.indexed)
                               Padding(
                                 padding: const EdgeInsets.only(

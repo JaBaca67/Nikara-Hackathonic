@@ -14,6 +14,9 @@ import 'package:nikara_app/features/admin/presentation/widgets/rejection_reason_
 import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/features/business/domain/models/review_model.dart';
 import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/eco/data/eco_moment_service.dart';
+import 'package:nikara_app/features/eco/domain/models/eco_moment_state.dart';
+import 'package:nikara_app/features/eco/presentation/widgets/eco_moment_policy_sheet.dart';
 import 'package:nikara_app/features/eco/domain/models/eco_activity_model.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_organizer.dart';
 import 'package:nikara_app/features/eco/presentation/widgets/eco_participant_avatars.dart';
@@ -54,6 +57,10 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   List<ReviewModel>? _moments;
   bool _loadingMoments = false;
   bool _postingMoment = false;
+  EcoMomentState? _momentState;
+  String? _momentError;
+  Future<void> Function()? _stopMomentChanges;
+  bool _momentRefreshPending = false;
 
   bool _savingReview = false;
 
@@ -61,6 +68,21 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   void initState() {
     super.initState();
     unawaited(_refresh());
+    void refreshMoments() {
+      if (mounted && _tab == 2) unawaited(_loadMoments(force: true));
+    }
+
+    _stopMomentChanges = EcoMomentService().subscribeToChanges(
+      _activity.id,
+      refreshMoments,
+    );
+  }
+
+  @override
+  void dispose() {
+    final stopMoments = _stopMomentChanges;
+    if (stopMoments != null) unawaited(stopMoments());
+    super.dispose();
   }
 
   bool get _canReview => PermissionService().can(Permission.reviewSubmissions);
@@ -212,19 +234,69 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   }
 
   Future<void> _loadMoments({bool force = false}) async {
-    if ((_moments != null && !force) || _loadingMoments) return;
-    setState(() => _loadingMoments = true);
+    if (_loadingMoments) {
+      if (force) _momentRefreshPending = true;
+      return;
+    }
+    if (_moments != null && !force) return;
+    setState(() {
+      _loadingMoments = true;
+      _momentError = null;
+      _momentState = null;
+    });
     try {
-      final moments = await ReviewService().getForEcoActivity(_activity.id);
+      final results = await Future.wait<dynamic>([
+        ReviewService().getForEcoActivity(_activity.id),
+        EcoMomentService().getState(_activity.id),
+      ]);
       if (!mounted) return;
       setState(() {
-        _moments = moments;
+        _moments = results[0] as List<ReviewModel>;
+        _momentState = results[1] as EcoMomentState?;
         _loadingMoments = false;
       });
-    } on ReviewServiceException {
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingMoments = false);
+      setState(() {
+        _loadingMoments = false;
+        _momentError = 'No se pudieron cargar los mensajes y sus permisos.';
+      });
+    } finally {
+      if (mounted && _momentRefreshPending) {
+        _momentRefreshPending = false;
+        unawaited(_loadMoments(force: true));
+      }
     }
+  }
+
+  Future<void> _manageMoments() async {
+    final state = _momentState;
+    if (state == null || !state.canManage) return;
+    final saved = await showModalBottomSheet<EcoMomentState>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface100,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppSpacing.xxl),
+        ),
+      ),
+      builder: (_) => EcoMomentPolicySheet(
+        state: state,
+        onSave: ({required enabled, maxMessages, maxAccounts, maxPerAccount}) =>
+            EcoMomentService().savePolicy(
+              _activity.id,
+              enabled: enabled,
+              maxMessages: maxMessages,
+              maxAccounts: maxAccounts,
+              maxPerAccount: maxPerAccount,
+            ),
+      ),
+    );
+    if (saved == null || !mounted) return;
+    setState(() => _momentState = saved);
+    AppSnackbar.showSuccess(context, 'Configuración de Momentos guardada.');
+    await _loadMoments(force: true);
   }
 
   /// "Comparte tu experiencia": comentario + fotos de quien ya está
@@ -232,6 +304,21 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
   /// cierre). Reusa `ReviewService`/`reviews` con `targetType:
   /// 'eco_activity'` — ver la nota de esa clase.
   Future<void> _openShareMoment() async {
+    try {
+      final state = await EcoMomentService().getState(_activity.id);
+      if (!mounted) return;
+      if (state == null || !state.canPost) {
+        AppSnackbar.showError(
+          context,
+          state?.blockedReason ?? 'Inicia sesión para compartir.',
+        );
+        await _loadMoments(force: true);
+        return;
+      }
+    } on EcoMomentException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
+      return;
+    }
     if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
     if (!mounted) return;
     final draft = await showModalBottomSheet<_MomentDraft>(
@@ -263,6 +350,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
     } on ReviewServiceException catch (e) {
       if (!mounted) return;
       AppSnackbar.showError(context, e.message);
+      await _loadMoments(force: true);
     } finally {
       if (mounted) setState(() => _postingMoment = false);
     }
@@ -353,7 +441,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
               ],
             ),
             Transform.translate(
-              offset: const Offset(0, -18),
+              offset: const Offset(0, -kDetailQuickInfoOverlap),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                 child: DetailQuickInfoCard(
@@ -394,7 +482,7 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                     onChanged: (tab) {
                       setState(() => _tab = tab);
                       if (tab == 1) unawaited(_loadParticipants());
-                      if (tab == 2) unawaited(_loadMoments());
+                      if (tab == 2) unawaited(_loadMoments(force: true));
                     },
                   ),
                   const SizedBox(height: 18),
@@ -418,9 +506,14 @@ class _EcoDetailScreenState extends State<EcoDetailScreen> {
                       _ => _MomentsTab(
                         moments: _moments,
                         isLoading: _loadingMoments,
-                        canShare: activity.isJoinedByCurrentUser,
+                        canShare:
+                            !_loadingMoments && _momentState?.canPost == true,
                         isPosting: _postingMoment,
                         onShare: _openShareMoment,
+                        state: _momentState,
+                        error: _momentError,
+                        onManage: _manageMoments,
+                        onRefresh: () => unawaited(_loadMoments(force: true)),
                       ),
                     },
                   ),
@@ -896,6 +989,10 @@ class _MomentsTab extends StatelessWidget {
     required this.canShare,
     required this.isPosting,
     required this.onShare,
+    required this.state,
+    required this.error,
+    required this.onManage,
+    required this.onRefresh,
   });
 
   final List<ReviewModel>? moments;
@@ -903,6 +1000,48 @@ class _MomentsTab extends StatelessWidget {
   final bool canShare;
   final bool isPosting;
   final VoidCallback onShare;
+  final EcoMomentState? state;
+  final String? error;
+  final VoidCallback onManage;
+  final VoidCallback onRefresh;
+
+  Widget _controls() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (state?.canManage == true) ...[
+        OutlinedButton.icon(
+          onPressed: onManage,
+          icon: const Icon(Icons.tune_rounded),
+          label: const Text('Administrar Momentos'),
+        ),
+        Text(
+          '${state!.messageCount}${state!.maxMessages == null ? "" : "/${state!.maxMessages}"} mensajes · ${state!.accountCount}${state!.maxAccounts == null ? "" : "/${state!.maxAccounts}"} cuentas de participantes',
+          style: AppTextStyles.settingsSubtitle,
+        ),
+      ],
+      if (error != null) ...[
+        Text(error!, style: AppTextStyles.settingsSubtitle),
+        TextButton(onPressed: onRefresh, child: const Text('Reintentar')),
+      ] else if (!isLoading && !canShare)
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          child: Text(
+            state?.blockedReason ??
+                'Inicia sesión y únete a la actividad para compartir.',
+            style: AppTextStyles.settingsSubtitle,
+          ),
+        ),
+      if (state?.canManage == true && state?.enabled == false)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+          child: Text(
+            'Mensajes de participantes cerrados. Puedes seguir publicando como administrador.',
+            style: AppTextStyles.settingsSubtitle,
+          ),
+        ),
+      if (canShare) _composer(),
+    ],
+  );
 
   Widget _composer() {
     return Padding(
@@ -937,7 +1076,7 @@ class _MomentsTab extends StatelessWidget {
     if (isLoading) {
       return Column(
         children: [
-          if (canShare) _composer(),
+          _controls(),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
             child: Center(
@@ -951,7 +1090,7 @@ class _MomentsTab extends StatelessWidget {
     if (list.isEmpty) {
       return Column(
         children: [
-          if (canShare) _composer(),
+          _controls(),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
             child: Text(
@@ -966,7 +1105,7 @@ class _MomentsTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (canShare) _composer(),
+        _controls(),
         for (final moment in list) ...[
           _MomentCard(moment: moment),
           if (moment != list.last) const SizedBox(height: 10),

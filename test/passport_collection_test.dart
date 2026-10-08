@@ -41,7 +41,7 @@ void main() {
       'business-3',
     );
     expect(
-      searchPostcards(postcards, category: 'Tour').single.id,
+      searchPostcards(postcards, category: 'Tours').single.id,
       'business-4',
     );
     expect(
