@@ -5,14 +5,13 @@ import 'package:nikara_app/features/profile/presentation/widgets/profile_header.
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Cabecera del Perfil de turista tal como la arma `ProfileScreen`: cambiar de
-/// cuenta, edición del perfil público, Ajustes, compartir y vista pública.
-Widget _header({required List<VoidCallback> taps, int buttons = 5}) {
+/// cuenta, vista del perfil público, Ajustes y compartir.
+Widget _header({required List<VoidCallback> taps, int buttons = 4}) {
   const icons = [
     (Icons.switch_account_outlined, 'Cambiar de cuenta'),
-    (Icons.edit_outlined, 'Editar perfil'),
+    (Icons.visibility_outlined, 'Ver mi perfil público'),
     (Icons.settings_outlined, 'Ajustes'),
     (Icons.ios_share, 'Compartir perfil'),
-    (Icons.visibility_outlined, 'Ver como lo ven los viajeros'),
   ];
   return MaterialApp(
     theme: AppTheme.lightTheme,
@@ -69,29 +68,30 @@ void main() {
       }
     });
 
-    testWidgets('Editar perfil y Ajustes tienen acciones independientes', (
-      tester,
-    ) async {
-      var editTaps = 0;
-      var settingsTaps = 0;
-      await pumpAt(
-        tester,
-        const Size(390, 800),
-        _header(
-          taps: [() {}, () => editTaps++, () => settingsTaps++, () {}, () {}],
-        ),
-      );
+    testWidgets(
+      'Ver mi perfil público y Ajustes tienen acciones independientes',
+      (tester) async {
+        var editTaps = 0;
+        var settingsTaps = 0;
+        await pumpAt(
+          tester,
+          const Size(390, 800),
+          _header(
+            taps: [() {}, () => editTaps++, () => settingsTaps++, () {}, () {}],
+          ),
+        );
 
-      expect(find.byTooltip('Ajustes'), findsOneWidget);
-      expect(find.byTooltip('Editar perfil'), findsOneWidget);
-      await tester.tap(find.byTooltip('Editar perfil'));
-      expect(editTaps, 1);
-      expect(settingsTaps, 0);
+        expect(find.byTooltip('Ajustes'), findsOneWidget);
+        expect(find.byTooltip('Ver mi perfil público'), findsOneWidget);
+        await tester.tap(find.byTooltip('Ver mi perfil público'));
+        expect(editTaps, 1);
+        expect(settingsTaps, 0);
 
-      await tester.tap(find.byTooltip('Ajustes'));
-      expect(settingsTaps, 1);
-      expect(editTaps, 1);
-    });
+        await tester.tap(find.byTooltip('Ajustes'));
+        expect(settingsTaps, 1);
+        expect(editTaps, 1);
+      },
+    );
 
     testWidgets('tienen etiqueta para lectores de pantalla en español', (
       tester,
@@ -113,10 +113,9 @@ void main() {
       final rects = [
         for (final label in [
           'Cambiar de cuenta',
-          'Editar perfil',
+          'Ver mi perfil público',
           'Ajustes',
           'Compartir perfil',
-          'Ver como lo ven los viajeros',
         ])
           tester.getRect(find.byTooltip(label)),
       ];
@@ -146,7 +145,7 @@ void main() {
       expect(button.bottom - shellTop, 56);
     });
 
-    testWidgets('no desborda con los cinco botones en 360dp', (tester) async {
+    testWidgets('no desborda con los cuatro botones en 360dp', (tester) async {
       await pumpAt(tester, const Size(360, 800), _header(taps: noop));
 
       expect(tester.takeException(), isNull);
@@ -156,17 +155,15 @@ void main() {
       );
     });
 
-    testWidgets('los cinco botones caben en el ancho disponible', (
+    testWidgets('los cuatro botones caben en el ancho disponible', (
       tester,
     ) async {
       await pumpAt(tester, const Size(390, 800), _header(taps: noop));
 
       final first = tester.getRect(find.byTooltip('Cambiar de cuenta'));
-      final last = tester.getRect(
-        find.byTooltip('Ver como lo ven los viajeros'),
-      );
+      final last = tester.getRect(find.byTooltip('Compartir perfil'));
       final width = last.right - first.left;
-      expect(width, 5 * ProfileHeaderIconButton.touchTarget);
+      expect(width, 4 * ProfileHeaderIconButton.touchTarget);
       expect(width, lessThanOrEqualTo(390 - 36 - 80));
     });
   });

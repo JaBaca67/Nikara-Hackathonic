@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:nikara_app/features/profile/presentation/screens/edit_public_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/public_user_profile_screen.dart';
 import 'package:nikara_app/shared/widgets/origin_badge.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -243,13 +242,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _openSettings() {
     pushSharedAxis(context, const SettingsScreen());
-  }
-
-  Future<void> _editPublicProfile() async {
-    final profile = _profile;
-    if (profile == null) return;
-    await pushSharedAxis(context, EditPublicProfileScreen(profile: profile));
-    if (mounted) await _loadAll();
   }
 
   Future<void> _viewPublicProfile() async {
@@ -519,9 +511,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onTap: _openAccountSwitcher,
                         ),
                         ProfileHeaderIconButton(
-                          label: 'Editar perfil',
-                          icon: Icons.edit_outlined,
-                          onTap: _editPublicProfile,
+                          label: 'Ver mi perfil público',
+                          icon: Icons.visibility_outlined,
+                          onTap: _viewPublicProfile,
                         ),
                         ProfileHeaderIconButton(
                           label: 'Ajustes',
@@ -541,10 +533,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         isSaving: _isSavingAvatar,
                         onTap: _pickAvatar,
                       ),
-                      faceControl: FaceSelectorControl(
-                        name: activeFace?.name ?? fullName,
-                        kindLabel: activeFace?.kind.label,
-                        onTap: _openFaceSheet,
+                      faceControl: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FaceSelectorControl(
+                            name: activeFace?.name ?? fullName,
+                            kindLabel: activeFace?.kind.label,
+                            onTap: _openFaceSheet,
+                          ),
+                          if (_profile?.publicOrigin.hasCountry == true)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: AppSpacing.xs,
+                              ),
+                              child: OriginBadge(
+                                origin: _profile!.publicOrigin,
+                              ),
+                            ),
+                        ],
                       ),
                       stats: [
                         ProfileStat(
@@ -568,19 +575,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         activeTab: _activeTab,
                         onChanged: (tab) => setState(() => _activeTab = tab),
                       ),
-                    ),
-                    if (_profile != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: OriginBadge(origin: _profile!.publicOrigin),
-                      ),
-                    TextButton.icon(
-                      onPressed: _viewPublicProfile,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.neutral1100,
-                      ),
-                      icon: const Icon(Icons.visibility_outlined),
-                      label: const Text('Ver mi perfil público'),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
