@@ -4,8 +4,19 @@
 > `model_2nf.json`. **No editar a mano**: cambiá el modelo y volvé a generar.
 
 El esquema físico de Supabase tiene **18 tablas**. Llevarlo a
-2FN agrega **9** entidades (descomposición de atributos multivaluados),
-para un total de **27** entidades y **47** relaciones.
+2FN agrega **9** entidades (descomposición de atributos multivaluados).
+Se incluye también **1 entidad externa** de Supabase (`auth.users`, solo su clave),
+para un total de **28** entidades y **50** relaciones.
+
+El esquema se reconstruye desde las migraciones locales, no desde una consulta
+al servidor. `profiles` y `businesses` tienen definiciones base documentadas
+porque se crearon desde el dashboard. Las tablas derivadas son propuestas
+académicas; no se ha aplicado una migración de normalización a Supabase.
+
+Archivos editables y guía: [diagramacion_bd/README.md](diagramacion_bd/README.md).
+
+`reviews_backup` figura en el inventario físico y se excluye del modelo normalizado porque es un respaldo sin clave primaria: Copia de respaldo sin clave primaria ni UNIQUE, fuera del ciclo de la aplicación; incluida solo en el esquema físico.
+
 
 ## 1FN — atributos multivaluados descompuestos
 
@@ -27,7 +38,7 @@ primaria compuesta.
 
 ## 2FN — dependencias parciales
 
-Única PK compuesta heredada: eco_participants(activity_id, user_id); joined_at depende de la clave completa. Las tablas creadas para 1FN no tienen atributos no clave (salvo `position`, que depende de la PK entera), así que cumplen 2FN por construcción.
+PK compuestas heredadas: eco_participants(activity_id, user_id), notification_event_receipts(user_id, event_key) y notification_completed_trips(user_id, trip_id). Se considera la inscripción, el evento por usuario y el viaje por usuario como unidad de identificación. Sus atributos no clave dependen de la clave completa bajo esas reglas de negocio. En fotos y medios, la URL depende de (entidad_id, position); en las otras tablas nuevas todos los atributos integran la PK. Las claves alternativas UNIQUE con columnas NOT NULL se revisan también; un identificador simple no elimina por sí solo las posibles dependencias parciales de claves alternativas.
 
 ## Fuera de alcance: dependencias transitivas (3FN)
 
@@ -58,9 +69,12 @@ erDiagram
         text table_name
         timestamptz timestamp
     }
+    AUTH_USERS {
+        uuid id PK
+    }
     LEGAL_IDENTITIES {
         uuid id PK
-        uuid user_id FK "-> users.id"
+        uuid user_id FK "-> auth_users.id"
         text kind
         text document_number
         text document_photo_url
@@ -70,7 +84,7 @@ erDiagram
         text document_photo_back_url
     }
     ORIGIN_PLACE_ALIASES {
-        text municipality_code PK "-> origin_places.municipality_code"
+        text municipality_code PK, FK "-> origin_places.municipality_code"
         text alias PK
     }
     ORIGIN_PLACES {
@@ -80,17 +94,18 @@ erDiagram
         text municipality
     }
     PROFILES {
-        uuid id PK "-> users.id"
+        uuid id PK, FK "-> auth_users.id"
         text full_name
         text email
         text phone
         user_role role
         integer points
+        timestamptz created_at
         text avatar_url
         text residence_type
         text origin_country_code
-        text origin_city
-        text origin_municipality
+        text origin_city FK
+        text origin_municipality FK
         text public_display_name
         text bio
         boolean show_origin
@@ -98,26 +113,26 @@ erDiagram
     }
     %% ---- Negocios ----
     BUSINESS_ACTIVITIES {
-        uuid business_id PK "-> businesses.id"
+        uuid business_id PK, FK "-> businesses.id"
         text activity PK
     }
     BUSINESS_AMENITIES {
-        uuid business_id PK "-> businesses.id"
+        uuid business_id PK, FK "-> businesses.id"
         text amenity PK
     }
     BUSINESS_ECO_PRACTICES {
-        uuid business_id PK "-> businesses.id"
+        uuid business_id PK, FK "-> businesses.id"
         text practice PK
     }
     BUSINESS_PHOTOS {
-        uuid business_id PK "-> businesses.id"
+        uuid business_id PK, FK "-> businesses.id"
         integer position PK
         text photo_url
     }
     BUSINESS_POSTS {
         uuid id PK
         uuid business_id FK "-> businesses.id"
-        uuid owner_id FK "-> users.id"
+        uuid owner_id FK "-> auth_users.id"
         text body
         text image_url
         timestamptz created_at
@@ -157,7 +172,7 @@ erDiagram
         text municipality_code FK "-> origin_places.municipality_code"
     }
     DAY_PASS_ITEMS {
-        uuid business_id PK "-> businesses.id"
+        uuid business_id PK, FK "-> businesses.id"
         text item PK
     }
     %% ---- Módulo ECO ----
@@ -171,7 +186,7 @@ erDiagram
         float8 longitude
         timestamptz start_time
         integer max_capacity
-        uuid organizer_id FK "-> users.id"
+        uuid organizer_id FK "-> profiles.id"
         text organizer_name "3FN: dependencia transitiva"
         boolean organizer_verified "3FN: dependencia transitiva"
         timestamptz created_at
@@ -191,12 +206,12 @@ erDiagram
         text facebook_link
     }
     ECO_ACTIVITY_REQUIREMENTS {
-        uuid activity_id PK "-> eco_activities.id"
+        uuid activity_id PK, FK "-> eco_activities.id"
         text requirement PK
     }
     ECO_PARTICIPANTS {
-        uuid activity_id PK "-> eco_activities.id"
-        uuid user_id PK "-> users.id"
+        uuid activity_id PK, FK "-> eco_activities.id"
+        uuid user_id PK, FK "-> profiles.id"
         timestamptz joined_at
     }
     ORGANIZATIONS {
@@ -217,7 +232,7 @@ erDiagram
     }
     %% ---- Rutas y viajes ----
     ROUTE_IMAGES {
-        uuid route_id PK "-> routes.id"
+        uuid route_id PK, FK "-> routes.id"
         integer position PK
         text image_url
     }
@@ -248,10 +263,13 @@ erDiagram
         uuid cloned_from_route_id FK "-> routes.id"
         timestamptz created_at
         timestamptz updated_at
+        text description
+        text source_url
+        text catalog_name
     }
     %% ---- Interacción social ----
     REVIEW_MEDIA {
-        uuid review_id PK "-> reviews.id"
+        uuid review_id PK, FK "-> reviews.id"
         integer position PK
         text media_url
     }
@@ -281,20 +299,20 @@ erDiagram
         timestamptz last_seen_at
     }
     NOTIFICATION_AUTOMATION_SETTINGS {
-        uuid user_id PK "-> profiles.id"
+        uuid user_id PK, FK "-> profiles.id"
         boolean enabled
         timestamptz next_business_at
         uuid last_business_id FK "-> businesses.id"
     }
     NOTIFICATION_COMPLETED_TRIPS {
-        uuid user_id PK "-> profiles.id"
+        uuid user_id PK, FK "-> profiles.id"
         text trip_id PK
         uuid business_id FK "-> businesses.id"
         timestamptz started_at
         timestamptz completed_at
     }
     NOTIFICATION_EVENT_RECEIPTS {
-        uuid user_id PK "-> profiles.id"
+        uuid user_id PK, FK "-> profiles.id"
         text event_key PK
         timestamptz created_at
     }
@@ -310,51 +328,54 @@ erDiagram
     }
 
     %% ---- Relaciones ----
+    AUTH_USERS ||--o{ BUSINESS_POSTS : "owner_id"
+    AUTH_USERS ||--o| LEGAL_IDENTITIES : "user_id"
+    AUTH_USERS ||--o| PROFILES : "id"
     BUSINESSES ||--o{ BUSINESS_ACTIVITIES : "business_id"
     BUSINESSES ||--o{ BUSINESS_AMENITIES : "business_id"
     BUSINESSES ||--o{ BUSINESS_ECO_PRACTICES : "business_id"
     BUSINESSES ||--o{ BUSINESS_PHOTOS : "business_id"
     BUSINESSES ||--o{ BUSINESS_POSTS : "business_id"
     BUSINESSES ||--o{ DAY_PASS_ITEMS : "business_id"
-    BUSINESSES ||--o{ NOTIFICATION_AUTOMATION_SETTINGS : "last_business_id"
+    BUSINESSES o|--o{ NOTIFICATION_AUTOMATION_SETTINGS : "last_business_id"
     BUSINESSES ||--o{ NOTIFICATION_COMPLETED_TRIPS : "business_id"
-    BUSINESSES ||--o{ NOTIFICATIONS : "reference_id (type) *"
-    BUSINESSES ||--o{ REVIEWS : "target_id (target_type) *"
-    BUSINESSES ||--o{ ROUTE_STOPS : "business_id"
-    BUSINESSES ||--o{ USER_FAVORITES : "item_id (item_type) *"
+    BUSINESSES o|--o{ NOTIFICATIONS : "reference_id (type) *"
+    BUSINESSES o|--o{ REVIEWS : "target_id (target_type) *"
+    BUSINESSES o|--o{ ROUTE_STOPS : "business_id"
+    BUSINESSES o|--o{ USER_FAVORITES : "item_id (item_type) *"
     ECO_ACTIVITIES ||--o{ ECO_ACTIVITY_REQUIREMENTS : "activity_id"
     ECO_ACTIVITIES ||--o{ ECO_PARTICIPANTS : "activity_id"
-    ECO_ACTIVITIES ||--o{ NOTIFICATIONS : "reference_id (type) *"
-    ECO_ACTIVITIES ||--o{ REVIEWS : "target_id (target_type) *"
-    ECO_ACTIVITIES ||--o{ ROUTE_STOPS : "eco_activity_id"
-    ECO_ACTIVITIES ||--o{ USER_FAVORITES : "item_id (item_type) *"
-    ORGANIZATIONS ||--o{ ECO_ACTIVITIES : "organization_id"
-    ORGANIZATIONS ||--o{ NOTIFICATIONS : "reference_id (type) *"
-    ORIGIN_PLACES ||--o{ BUSINESSES : "municipality_code"
-    ORIGIN_PLACES ||--o{ ECO_ACTIVITIES : "municipality_code"
-    ORIGIN_PLACES ||--o{ ORGANIZATIONS : "municipality_code"
+    ECO_ACTIVITIES o|--o{ NOTIFICATIONS : "reference_id (type) *"
+    ECO_ACTIVITIES o|--o{ REVIEWS : "target_id (target_type) *"
+    ECO_ACTIVITIES o|--o{ ROUTE_STOPS : "eco_activity_id"
+    ECO_ACTIVITIES o|--o{ USER_FAVORITES : "item_id (item_type) *"
+    ORGANIZATIONS o|--o{ ECO_ACTIVITIES : "organization_id"
+    ORGANIZATIONS o|--o{ NOTIFICATIONS : "reference_id (type) *"
+    ORIGIN_PLACES o|--o{ BUSINESSES : "municipality_code"
+    ORIGIN_PLACES o|--o{ ECO_ACTIVITIES : "municipality_code"
+    ORIGIN_PLACES o|--o{ ORGANIZATIONS : "municipality_code"
     ORIGIN_PLACES ||--o{ ORIGIN_PLACE_ALIASES : "municipality_code"
-    PROFILES ||--o{ AUDIT_LOGS : "user_id"
-    PROFILES ||--o{ BUSINESS_POSTS : "owner_id"
-    PROFILES ||--o{ BUSINESSES : "owner_id"
-    PROFILES ||--o{ BUSINESSES : "reviewed_by"
+    ORIGIN_PLACES o|--o{ PROFILES : "origin_city, origin_municipality"
+    PROFILES o|--o{ AUDIT_LOGS : "user_id"
+    PROFILES o|--o{ BUSINESSES : "owner_id"
+    PROFILES o|--o{ BUSINESSES : "reviewed_by"
     PROFILES ||--o{ DEVICE_PUSH_TOKENS : "user_id"
-    PROFILES ||--o{ ECO_ACTIVITIES : "organizer_id"
-    PROFILES ||--o{ ECO_ACTIVITIES : "reviewed_by"
+    PROFILES o|--o{ ECO_ACTIVITIES : "organizer_id"
+    PROFILES o|--o{ ECO_ACTIVITIES : "reviewed_by"
     PROFILES ||--o{ ECO_PARTICIPANTS : "user_id"
-    PROFILES ||--|| LEGAL_IDENTITIES : "user_id"
-    PROFILES ||--o{ LEGAL_IDENTITIES : "verified_by"
+    PROFILES o|--o{ LEGAL_IDENTITIES : "verified_by"
     PROFILES ||--o| NOTIFICATION_AUTOMATION_SETTINGS : "user_id"
     PROFILES ||--o{ NOTIFICATION_COMPLETED_TRIPS : "user_id"
     PROFILES ||--o{ NOTIFICATION_EVENT_RECEIPTS : "user_id"
     PROFILES ||--o{ NOTIFICATIONS : "user_id"
     PROFILES ||--o{ ORGANIZATIONS : "owner_id"
-    PROFILES ||--o{ ORGANIZATIONS : "reviewed_by"
+    PROFILES o|--o{ ORGANIZATIONS : "reviewed_by"
     PROFILES ||--o{ REVIEWS : "user_id"
-    PROFILES ||--o{ ROUTES : "owner_id"
+    PROFILES o|--o{ ROUTES : "owner_id"
     PROFILES ||--o{ USER_FAVORITES : "user_id"
     REVIEWS ||--o{ REVIEW_MEDIA : "review_id"
     ROUTES ||--o{ ROUTE_IMAGES : "route_id"
     ROUTES ||--o{ ROUTE_STOPS : "route_id"
-    ROUTES ||--o{ USER_FAVORITES : "item_id (item_type) *"
+    ROUTES o|--o{ ROUTES : "cloned_from_route_id"
+    ROUTES o|--o{ USER_FAVORITES : "item_id (item_type) *"
 ```

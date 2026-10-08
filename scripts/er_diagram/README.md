@@ -1,4 +1,13 @@
-# Modelo ER (2FN) → Miro
+# Modelo ER (2FN) → editores web
+
+La alternativa a Miro está preparada en
+[`docs/diagramacion_bd/README.md`](../../docs/diagramacion_bd/README.md):
+archivos nativos para **drawDB**, **diagrams.net** y **dbdiagram.io**, tanto del
+esquema físico como de la propuesta 2FN. Generar con
+`python scripts/er_diagram/export_web.py` después de actualizar el esquema y
+el modelo. El modelo actual incluye 18 tablas físicas, 9 tablas propuestas y
+la entidad externa `auth.users`: **28 entidades y 50 relaciones**. La siguiente
+sección conserva el flujo anterior de Miro y sus notas históricas.
 
 Genera el modelo entidad-relación de Níkara normalizado hasta la **2FN** y lo
 publica en un board de Miro como items nativos (frames, shapes y connectors),
@@ -18,6 +27,8 @@ schema_physical.json              lo que hay HOY en Postgres (con los text[])
 model_2nf.json                    27 entidades · 47 relaciones
         ├─ export_mermaid.py  →   docs/er_2fn.md   (versionado, GitHub lo renderiza)
         └─ export_miro.py     →   board de Miro
+              ├─ layout.py        dónde va cada tabla (minimiza cruces)
+              └─ render.py        cómo se dibuja cada tabla
 ```
 
 ```bash
@@ -95,13 +106,13 @@ python scripts/er_diagram/export_miro.py             # publicar
 
 | Flag | Qué hace |
 |---|---|
-| `--dry-run` | Imprime el plan completo (frames, tablas, posiciones, cantidad de llamadas) y dos payloads de ejemplo. **No toca Miro ni necesita token.** |
+| `--dry-run` | Imprime el plan completo: métrica de cruces, columnas, posiciones, solapamientos (debe dar 0) y los items de una tabla de muestra. **No toca Miro ni necesita token.** |
 | `--replace` | Borra los items de la corrida anterior (según `.miro_state.json`) antes de publicar. Para iterar sin ensuciar el board. |
-| `--parent-frames` | Cuelga cada tabla del frame de su módulo. Agrupa de verdad, pero Miro interpreta la posición como relativa al frame; si el resultado queda corrido, volvé a correr sin el flag. |
+| `--create-board NOMBRE` | Crea un board en el team de la app y guarda su id en `.miro_board`. Para cuando el team es nuevo y está vacío. |
 | `--list-boards` | Lista los boards que el token alcanza, con id y team. Útil para confirmar que la app quedó instalada donde está el board. |
 | `--token` / `--board` | Alternativa a los archivos y a las variables de entorno, para una corrida puntual. Queda en el historial del shell. |
 
-Son ~80 llamadas a la API. El script reintenta solo ante `429` y `5xx`
+Son ~190 llamadas a la API (5 items por tabla, más la leyenda y las relaciones). El script reintenta solo ante `429` y `5xx`
 respetando `Retry-After`.
 
 **El token nunca se versiona.** `.miro_token`, `.miro_board` y `.miro_state.json`
@@ -109,26 +120,62 @@ están los tres en `.gitignore`.
 
 ## Qué dibuja
 
-27 entidades agrupadas en 6 frames por módulo, con los colores de marca:
+Cada tabla se compone de **5 shapes**: el marco exterior (al que se enganchan
+las relaciones), la cabecera con el color de su módulo, y las tres columnas
+—marcador PK/FK, nombre del atributo y tipo—. Miro no tiene tablas en su REST
+API v2, así que se arma por partes:
 
-| Módulo | Relleno | Entidades |
+```
+┌────────────────────────────────┐
+│          BUSINESSES            │  cabecera, color del módulo
+├──────┬────────────┬────────────┤
+│  PK  │     id     │    Uuid    │  el texto va DENTRO del shape de su
+│  FK  │  owner_id  │    Uuid    │  columna, así nada puede taparlo
+└──────┴────────────┴────────────┘
+```
+
+El color del texto de cada cabecera no se elige a mano: `render.contrast_text`
+lo decide por luminancia, de modo que nunca se repite el bug de texto blanco
+sobre un Fill claro (el badge ECO llegó a medir 1.74:1 contra el mínimo AA de
+4.5).
+
+| Módulo | Cabecera | Token |
 |---|---|---|
-| Identidad y cuentas | Gold `#FDBE02` | 5 |
-| Negocios | Blanco | 7 |
-| Módulo ECO | Olive `#C2CA5B` | 4 |
-| Rutas y viajes | Orange `#FF8243` | 3 |
-| Interacción social | Beige `#F7F3EC` | 3 |
-| Avisos y automatización | Surface `#FDFDFD` | 5 |
+| Identidad y cuentas | `#FDBE02` | `goldFill` |
+| Negocios | `#C2CA5B` | `oliveFill` |
+| Módulo ECO | `#3A7D3A` | `success` |
+| Rutas y viajes | `#FF8243` | `orangeFill` |
+| Interacción social | `#6B7033` | `oliveText` |
+| Avisos y automatización | `#CC5510` | `destructive` |
 
-- **PK** y *FK* marcados en cada atributo, con su tipo.
 - Cada relación lleva su cardinalidad (`1:N` / `1:1`) y el nombre de la FK.
 - Las **relaciones polimórficas** van punteadas en naranja: salen de una
   columna que apunta a varias tablas según un discriminador
-  (`reviews.target_type`, `user_favorites.item_type`,
-  `notifications.type`), así que la integridad referencial la valida la
-  aplicación, no la base.
+  (`reviews.target_type`, `user_favorites.item_type`, `notifications.type`),
+  así que la integridad referencial la valida la aplicación, no la base.
 - El rombo `◇` marca atributos con **dependencia transitiva** (3FN), fuera del
   alcance del entregable pero señalados para no fingir que no existen.
+
+## Cómo se ordena (y por qué importa)
+
+La primera versión ponía una columna por módulo temático. Se lee como índice,
+pero deja el board lleno de flechas cruzadas: `profiles` es un hub al que
+apuntan 12 tablas repartidas por todos los módulos, así que sus relaciones
+cruzaban el diagrama entero. `layout.py` invierte el criterio — manda el grafo,
+y el módulo se comunica por color:
+
+1. **Columnas por dependencia**: una tabla va una columna a la derecha de la
+   más profunda a la que referencia, así toda FK apunta hacia la derecha y las
+   tablas hija quedan pegadas a su padre.
+2. **Orden dentro de cada columna** por búsqueda local con dos movimientos
+   (reinsertar una tabla, intercambiar dos), midiendo los cruces reales entre
+   segmentos y usando la longitud total como desempate.
+3. **Multi-arranque** con semilla fija: la búsqueda local llega a mínimos
+   distintos según de dónde parta, así que se corre 13 veces y gana la mejor.
+
+Resultado medido sobre el modelo actual: **115 → 32 cruces** (−72%). El
+`--dry-run` imprime esa métrica y la lista de solapamientos entre tablas, que
+debe ser **0** — un solapamiento es texto tapado.
 
 El análisis de normalización completo —qué se descompuso y por qué— está en
 [`docs/er_2fn.md`](../../docs/er_2fn.md).

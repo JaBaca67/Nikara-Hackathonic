@@ -15,12 +15,12 @@ atributo multivaluado rompe 1FN: la celda deja de ser atómica. El esquema tiene
 
 **2FN — dependencias parciales.** Solo pueden darse en tablas con clave
 primaria compuesta: un atributo no clave que dependa de *parte* de la clave.
-En el esquema físico la única PK compuesta es `eco_participants(activity_id,
-user_id)`, y su único atributo no clave (`joined_at`) depende de la clave
-entera — la inscripción, no la jornada ni la persona por separado. Ya cumple.
-Las 9 tablas hijas nuevas se diseñan con PK compuesta y **cero** atributos no
-clave (o solo `position`, que depende de la clave completa), así que nacen en
-2FN.
+Se revisan eco_participants, notification_event_receipts y
+notification_completed_trips, además de las claves alternativas UNIQUE.
+Las fotos y medios se identifican por (entidad_id, position); la URL depende
+de ambas columnas. Las demás tablas hijas no tienen atributos fuera de la PK.
+La evaluación depende de las reglas de negocio detalladas en
+docs/diagramacion_bd/README.md, no únicamente de la sintaxis SQL.
 
 FUERA DE ALCANCE (y por qué se declara en vez de callarse)
 ----------------------------------------------------------
@@ -148,6 +148,7 @@ FIRST_NF_DECOMPOSITIONS = [
 # para que un board con 24 tablas se pueda leer.
 MODULES = {
     "Identidad y cuentas": [
+        "auth_users",
         "profiles",
         "legal_identities",
         "audit_logs",
@@ -180,9 +181,9 @@ MODULES = {
     ],
 }
 
-# `auth.users` no se dibuja: `profiles.id` es el mismo uuid 1:1, y 013 redirige
-# hacia `profiles` todas las FK de identidad que apuntaban a `auth.users`.
-REFERENCE_REWRITES = {"users.id": "profiles.id"}
+# Mantener auth.users como entidad externa: 013 redirige tres FK a profiles,
+# pero 023 y 037 crean otras FK directas hacia auth.users.
+REFERENCE_REWRITES = {"users.id": "auth_users.id"}
 
 # Relaciones que no se pueden derivar de una FK porque la columna es
 # polimórfica (una sola columna que apunta a dos tablas según un
@@ -233,7 +234,15 @@ def load_physical() -> dict:
 
 def build() -> dict:
     physical = load_physical()
-    tables = {t["name"]: json.loads(json.dumps(t)) for t in physical["tables"]}
+    archive_tables = {"reviews_backup"}
+    tables = {t["name"]: json.loads(json.dumps(t)) for t in physical["tables"]
+              if t["name"] not in archive_tables}
+    tables["auth_users"] = {
+        "name": "auth_users", "schema": "auth", "physical_name": "users",
+        "columns": [{"name": "id", "type": "uuid", "pk": True, "not_null": True}],
+        "source": "Supabase Auth (entidad externa; solo clave referenciada)",
+        "external": True,
+    }
 
     # --- 1FN: sacar los arrays a tablas hijas -------------------------------
     created = []
@@ -295,23 +304,33 @@ def build() -> dict:
             if not ref:
                 continue
             ref = REFERENCE_REWRITES.get(ref, ref)
+            column["references"] = ref
             target = ref.split(".")[0]
             if target not in tables:
                 continue
-            if target == table["name"]:
-                continue
-            # 1:1 cuando la FK es la PK entera de la tabla hija (profiles->users
-            # ya se reescribió, así que acá cae legal_identities.user_id).
+            # 1:1 cuando la FK es toda la PK o tiene restricción UNIQUE.
             one_to_one = pk_names == {column["name"]} or column.get("unique")
             relations.append(
                 {
                     "from": target,
                     "to": table["name"],
                     "fk": column["name"],
+                    "from_columns": [ref.split(".")[1]],
+                    "to_columns": [column["name"]],
                     "kind": "1:1" if one_to_one else "1:N",
                     "optional": not column.get("not_null", False),
                 }
             )
+        for fk in table.get("foreign_keys", []):
+            target = fk["references_table"]
+            if target not in tables:
+                continue
+            relations.append({
+                "from": target, "to": table["name"], "fk": ", ".join(fk["columns"]),
+                "from_columns": fk["references_columns"], "to_columns": fk["columns"],
+                "kind": "1:N", "optional": any(not c.get("not_null") for c in table["columns"] if c["name"] in fk["columns"]),
+                "not_valid": fk.get("not_valid", False), "composite": True,
+            })
 
     # `legal_identities.user_id` es unique en la base (una identidad por
     # cuenta); el extractor no lee los `unique (...)` de nivel de tabla.
@@ -352,7 +371,11 @@ def build() -> dict:
 
     payload = {
         "normal_form": "2FN",
-        "source_tables": len(physical["tables"]),
+        "source_tables": len(physical["tables"]) - len(archive_tables),
+        "excluded_archive_tables": [
+            {"name": name, "reason": "Copia de respaldo sin clave primaria ni UNIQUE, fuera del ciclo de la aplicación; incluida solo en el esquema físico."}
+            for name in sorted(archive_tables) if name in {t["name"] for t in physical["tables"]}
+        ],
         "tables_created_for_1nf": created,
         "total_tables": len(tables),
         "modules": list(MODULES),
@@ -362,10 +385,16 @@ def build() -> dict:
         ),
         "notes": {
             "2nf": (
-                "Única PK compuesta heredada: eco_participants(activity_id, user_id); "
-                "joined_at depende de la clave completa. Las tablas creadas para 1FN "
-                "no tienen atributos no clave (salvo `position`, que depende de la PK "
-                "entera), así que cumplen 2FN por construcción."
+                "PK compuestas heredadas: eco_participants(activity_id, user_id), "
+                "notification_event_receipts(user_id, event_key) y "
+                "notification_completed_trips(user_id, trip_id). Se considera la "
+                "inscripción, el evento por usuario y el viaje por usuario como unidad "
+                "de identificación. Sus atributos no clave dependen de la clave completa "
+                "bajo esas reglas de negocio. En fotos y medios, la URL depende de "
+                "(entidad_id, position); en las otras tablas nuevas todos los atributos "
+                "integran la PK. Las claves alternativas UNIQUE con columnas NOT NULL "
+                "se revisan también; un identificador simple no elimina por sí solo "
+                "las posibles dependencias parciales de claves alternativas."
             ),
             "out_of_scope_3nf": TRANSITIVE_DEBT,
         },
@@ -382,8 +411,11 @@ def main() -> int:
     print(
         f"  {payload['source_tables']} tablas físicas "
         f"+ {len(payload['tables_created_for_1nf'])} creadas por 1FN "
+        f"+ 1 entidad externa (auth.users) "
         f"= {payload['total_tables']} entidades"
     )
+    for archive in payload["excluded_archive_tables"]:
+        print(f"  Archivo del esquema físico fuera del ER normalizado: {archive['name']} (sin PK)")
     print(f"  {len(payload['relations'])} relaciones "
           f"({sum(1 for r in payload['relations'] if r.get('polymorphic'))} polimórficas)")
     for name in payload["tables_created_for_1nf"]:

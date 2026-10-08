@@ -1,0 +1,382 @@
+// Documentación del esquema; no es una migración ejecutable.
+// Las relaciones polimórficas son lógicas y se documentan en notas.
+Project nikara {
+  database_type: 'PostgreSQL'
+  Note: 'Tablas y nombres de columna verificados contra la API y el inventario Supabase; ver docs/diagramacion_bd/README.md para limitaciones de la consulta y una FK no resuelta.'
+}
+
+Table audit_logs [headercolor: #D6A100, note: '035_audit_logs.sql'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid
+  "action" text [not null]
+  "table_name" text [not null]
+  "timestamp" timestamptz
+}
+
+Table auth.users [headercolor: #D6A100, note: 'Supabase Auth (entidad externa; solo clave referenciada)'] {
+  "id" uuid [pk, not null]
+}
+
+Table business_activities [headercolor: #82902D, note: '1FN: descompone businesses.activities; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "business_id" uuid [not null]
+  "activity" text [not null]
+  indexes {
+    (business_id, activity) [pk]
+  }
+}
+
+Table business_amenities [headercolor: #82902D, note: '1FN: descompone businesses.amenities; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "business_id" uuid [not null]
+  "amenity" text [not null]
+  indexes {
+    (business_id, amenity) [pk]
+  }
+}
+
+Table business_eco_practices [headercolor: #82902D, note: '1FN: descompone businesses.eco_practices; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "business_id" uuid [not null]
+  "practice" text [not null]
+  indexes {
+    (business_id, practice) [pk]
+  }
+}
+
+Table business_photos [headercolor: #82902D, note: '1FN: descompone businesses.photos; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "business_id" uuid [not null]
+  "position" integer [not null]
+  "photo_url" text [not null]
+  indexes {
+    (business_id, position) [pk]
+  }
+}
+
+Table business_posts [headercolor: #82902D, note: '037_business_subcategory_day_pass_posts.sql'] {
+  "id" uuid [pk, not null]
+  "business_id" uuid [not null]
+  "owner_id" uuid [not null]
+  "body" text [not null]
+  "image_url" text
+  "created_at" timestamptz [not null]
+}
+
+Table businesses [headercolor: #82902D, note: 'dashboard (sin DDL)'] {
+  "id" uuid [pk, not null]
+  "owner_id" uuid
+  "name" text
+  "category" text
+  "description" text
+  "city" text
+  "address_text" text
+  "location" geography(Point,4326)
+  "phone" text
+  "instagram_handle" text
+  "is_verified" boolean
+  "created_at" timestamptz
+  "schedules" text
+  "facebook_handle" text
+  "status" text [not null]
+  "rejection_reason" text
+  "reviewed_at" timestamptz
+  "reviewed_by" uuid
+  "logo_url" text
+  "show_host" boolean [not null]
+  "eco_seal_requested" boolean [not null]
+  "access_details" text [not null]
+  "other_notes" text [not null]
+  "tiktok_handle" text [not null]
+  "secondary_phone" text
+  "manual_open_override" boolean
+  "subcategory" text [not null]
+  "day_pass_enabled" boolean [not null]
+  "day_pass_price" numeric
+  "day_pass_schedule" text [not null]
+  "day_pass_notes" text [not null]
+  "municipality_code" text
+}
+
+Table day_pass_items [headercolor: #82902D, note: '1FN: descompone businesses.day_pass_includes; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "business_id" uuid [not null]
+  "item" text [not null]
+  indexes {
+    (business_id, item) [pk]
+  }
+}
+
+Table device_push_tokens [headercolor: #B45535, note: '025_push_tokens.sql'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "token" text [not null, unique]
+  "platform" text [not null]
+  "created_at" timestamptz [not null]
+  "last_seen_at" timestamptz [not null]
+}
+
+Table eco_activities [headercolor: #3A7D3A, note: '009_eco_activities.sql'] {
+  "id" uuid [pk, not null]
+  "title" text [not null]
+  "description" text [not null]
+  "category" text [not null]
+  "location" text [not null]
+  "latitude" "double precision"
+  "longitude" "double precision"
+  "start_time" timestamptz [not null]
+  "max_capacity" integer
+  "organizer_id" uuid
+  "organizer_name" text
+  "organizer_verified" boolean [not null]
+  "created_at" timestamptz [not null]
+  "organization_id" uuid
+  "image_url" text
+  "status" text [not null]
+  "rejection_reason" text
+  "reviewed_at" timestamptz
+  "reviewed_by" uuid
+  "municipality_code" text
+  "moments_enabled" boolean [not null]
+  "moments_max_messages" integer
+  "moments_max_accounts" integer
+  "moments_max_per_account" integer
+  "contact_phone" text
+  "instagram_link" text
+  "facebook_link" text
+}
+
+Table eco_activity_requirements [headercolor: #3A7D3A, note: '1FN: descompone eco_activities.requirements; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "activity_id" uuid [not null]
+  "requirement" text [not null]
+  indexes {
+    (activity_id, requirement) [pk]
+  }
+}
+
+Table eco_participants [headercolor: #3A7D3A, note: '009_eco_activities.sql'] {
+  "activity_id" uuid [not null]
+  "user_id" uuid [not null]
+  "joined_at" timestamptz [not null]
+  indexes {
+    (activity_id, user_id) [pk]
+  }
+}
+
+Table legal_identities [headercolor: #D6A100, note: '023_legal_identities.sql'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid [not null, unique]
+  "kind" text [not null]
+  "document_number" text [not null]
+  "document_photo_url" text [not null]
+  "verified_at" timestamptz
+  "verified_by" uuid
+  "created_at" timestamptz [not null]
+  "document_photo_back_url" text
+}
+
+Table notification_automation_settings [headercolor: #B45535, note: '045_action_notification_automations.sql'] {
+  "user_id" uuid [pk, not null]
+  "enabled" boolean [not null]
+  "next_business_at" timestamptz [not null]
+  "last_business_id" uuid
+}
+
+Table notification_completed_trips [headercolor: #B45535, note: '045_action_notification_automations.sql'] {
+  "user_id" uuid [not null]
+  "trip_id" text [not null]
+  "business_id" uuid [not null]
+  "started_at" timestamptz [not null]
+  "completed_at" timestamptz [not null]
+  indexes {
+    (user_id, trip_id) [pk]
+  }
+}
+
+Table notification_event_receipts [headercolor: #B45535, note: '045_action_notification_automations.sql'] {
+  "user_id" uuid [not null]
+  "event_key" text [not null]
+  "created_at" timestamptz [not null]
+  indexes {
+    (user_id, event_key) [pk]
+  }
+}
+
+Table notifications [headercolor: #B45535, note: '013_final_schema_additions.sql; RELACIÓN LÓGICA: reference_id (type) -> businesses.id (sin FK SQL); RELACIÓN LÓGICA: reference_id (type) -> eco_activities.id (sin FK SQL); RELACIÓN LÓGICA: reference_id (type) -> organizations.id (sin FK SQL)'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "title" text [not null]
+  "body" text [not null]
+  "type" text [not null]
+  "reference_id" uuid
+  "is_read" boolean [not null]
+  "created_at" timestamptz [not null]
+}
+
+Table organizations [headercolor: #3A7D3A, note: '010_organizations.sql'] {
+  "id" uuid [pk, not null]
+  "name" text [not null]
+  "handle" text [not null, unique]
+  "description" text [not null]
+  "logo_url" text
+  "banner_url" text
+  "owner_id" uuid [not null]
+  "is_verified" boolean [not null]
+  "created_at" timestamptz [not null]
+  "status" text [not null]
+  "rejection_reason" text
+  "reviewed_at" timestamptz
+  "reviewed_by" uuid
+  "municipality_code" text
+}
+
+Table origin_place_aliases [headercolor: #D6A100, note: '1FN: descompone origin_places.aliases; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "municipality_code" text [not null]
+  "alias" text [not null]
+  indexes {
+    (municipality_code, alias) [pk]
+  }
+}
+
+Table origin_places [headercolor: #D6A100, note: '041_origin_place_catalog.sql'] {
+  "municipality_code" text [pk, not null]
+  "department" text [not null]
+  "city" text [not null]
+  "municipality" text [not null]
+  indexes {
+    (city, municipality) [unique]
+  }
+}
+
+Table profiles [headercolor: #D6A100, note: 'dashboard (sin DDL)'] {
+  "id" uuid [pk, not null]
+  "full_name" text [not null]
+  "email" text [not null]
+  "phone" text
+  "role" user_role
+  "points" integer
+  "created_at" timestamptz
+  "avatar_url" text
+  "residence_type" text
+  "origin_country_code" text
+  "origin_city" text
+  "origin_municipality" text
+  "public_display_name" text [not null]
+  "bio" text [not null]
+  "show_origin" boolean [not null]
+  "show_origin_details" boolean [not null]
+}
+
+Table review_media [headercolor: #656B99, note: '1FN: descompone reviews.media_urls; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "review_id" uuid [not null]
+  "position" integer [not null]
+  "media_url" text [not null]
+  indexes {
+    (review_id, position) [pk]
+  }
+}
+
+Table reviews [headercolor: #656B99, note: '013_final_schema_additions.sql; RELACIÓN LÓGICA: target_id (target_type) -> businesses.id (sin FK SQL); RELACIÓN LÓGICA: target_id (target_type) -> eco_activities.id (sin FK SQL)'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "target_type" text [not null]
+  "target_id" uuid [not null]
+  "rating" integer [not null]
+  "comment" text [not null]
+  "created_at" timestamptz [not null]
+}
+
+Table route_images [headercolor: #E97532, note: '1FN: descompone routes.image_urls; PROPUESTA 1FN/2FN: no existe todavía en el esquema físico'] {
+  "route_id" uuid [not null]
+  "position" integer [not null]
+  "image_url" text [not null]
+  indexes {
+    (route_id, position) [pk]
+  }
+}
+
+Table route_stops [headercolor: #E97532, note: '011_routes.sql'] {
+  "id" uuid [pk, not null]
+  "route_id" uuid [not null]
+  "day_number" integer [not null]
+  "position" integer [not null]
+  "kind" text [not null]
+  "business_id" uuid
+  "eco_activity_id" uuid
+  "destination_id" text
+  "title" text [not null]
+  "subtitle" text [not null]
+  "category" text [not null]
+  "image_path" text
+  "latitude" "double precision"
+  "longitude" "double precision"
+  "created_at" timestamptz [not null]
+  indexes {
+    (route_id, day_number, kind, business_id, eco_activity_id, destination_id) [unique]
+  }
+}
+
+Table routes [headercolor: #E97532, note: '011_routes.sql; cloned_from_route_id figura en una migración; PostgREST no pudo resolver esta relación y requiere confirmar pg_catalog'] {
+  "id" uuid [pk, not null]
+  "owner_id" uuid
+  "title" text [not null]
+  "days" integer [not null]
+  "is_public" boolean [not null]
+  "status" text [not null]
+  "cloned_from_route_id" uuid
+  "created_at" timestamptz [not null]
+  "updated_at" timestamptz [not null]
+  "description" text [not null]
+  "source_url" text
+  "catalog_name" text
+}
+
+Table user_favorites [headercolor: #656B99, note: '013_final_schema_additions.sql; RELACIÓN LÓGICA: item_id (item_type) -> businesses.id (sin FK SQL); RELACIÓN LÓGICA: item_id (item_type) -> eco_activities.id (sin FK SQL); RELACIÓN LÓGICA: item_id (item_type) -> routes.id (sin FK SQL)'] {
+  "id" uuid [pk, not null]
+  "user_id" uuid [not null]
+  "item_type" text [not null]
+  "item_id" uuid [not null]
+  "created_at" timestamptz [not null]
+  indexes {
+    (user_id, item_type, item_id) [unique]
+  }
+}
+
+Ref fk_0: auth.users.id < business_posts.owner_id
+Ref fk_1: auth.users.id - legal_identities.user_id
+Ref fk_2: auth.users.id - profiles.id
+Ref fk_3: businesses.id < business_activities.business_id
+Ref fk_4: businesses.id < business_amenities.business_id
+Ref fk_5: businesses.id < business_eco_practices.business_id
+Ref fk_6: businesses.id < business_photos.business_id
+Ref fk_7: businesses.id < business_posts.business_id
+Ref fk_8: businesses.id < day_pass_items.business_id
+Ref fk_9: businesses.id < notification_automation_settings.last_business_id
+Ref fk_10: businesses.id < notification_completed_trips.business_id
+Ref fk_13: businesses.id < route_stops.business_id
+Ref fk_15: eco_activities.id < eco_activity_requirements.activity_id
+Ref fk_16: eco_activities.id < eco_participants.activity_id
+Ref fk_19: eco_activities.id < route_stops.eco_activity_id
+Ref fk_21: organizations.id < eco_activities.organization_id
+Ref fk_23: origin_places.municipality_code < businesses.municipality_code
+Ref fk_24: origin_places.municipality_code < eco_activities.municipality_code
+Ref fk_25: origin_places.municipality_code < organizations.municipality_code
+Ref fk_26: origin_places.municipality_code < origin_place_aliases.municipality_code
+Ref fk_27: origin_places.(city, municipality) < profiles.(origin_city, origin_municipality)
+// FK anterior declarada NOT VALID: registros históricos pueden no cumplirla.
+Ref fk_28: profiles.id < audit_logs.user_id
+Ref fk_29: profiles.id < businesses.owner_id
+Ref fk_30: profiles.id < businesses.reviewed_by
+Ref fk_31: profiles.id < device_push_tokens.user_id
+Ref fk_32: profiles.id < eco_activities.organizer_id
+Ref fk_33: profiles.id < eco_activities.reviewed_by
+Ref fk_34: profiles.id < eco_participants.user_id
+Ref fk_35: profiles.id < legal_identities.verified_by
+Ref fk_36: profiles.id - notification_automation_settings.user_id
+Ref fk_37: profiles.id < notification_completed_trips.user_id
+Ref fk_38: profiles.id < notification_event_receipts.user_id
+Ref fk_39: profiles.id < notifications.user_id
+Ref fk_40: profiles.id < organizations.owner_id
+Ref fk_41: profiles.id < organizations.reviewed_by
+Ref fk_42: profiles.id < reviews.user_id
+Ref fk_43: profiles.id < routes.owner_id
+Ref fk_44: profiles.id < user_favorites.user_id
+Ref fk_45: reviews.id < review_media.review_id
+Ref fk_46: routes.id < route_images.route_id
+Ref fk_47: routes.id < route_stops.route_id
+Ref fk_48: routes.id < routes.cloned_from_route_id

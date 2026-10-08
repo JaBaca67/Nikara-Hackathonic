@@ -42,6 +42,12 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+# El script se corre por ruta (`python scripts/er_diagram/export_miro.py`), así
+# que su carpeta no está en el path por defecto.
+sys.path.insert(0, str(HERE))
+
+import layout as layout_engine  # noqa: E402
+import render  # noqa: E402
 MODEL = HERE / "model_2nf.json"
 STATE = HERE / ".miro_state.json"
 # Credenciales locales, nunca versionadas (ver .gitignore).
@@ -49,27 +55,19 @@ TOKEN_FILE = HERE / ".miro_token"
 BOARD_FILE = HERE / ".miro_board"
 API = "https://api.miro.com/v2"
 
-# Paleta de marca de Níkara (lib/theme/app_colors.dart). Un color de relleno
-# por módulo; el texto siempre oscuro porque ningún Fill de marca admite texto
-# blanco encima (contraste).
-MODULE_STYLE = {
-    "Identidad y cuentas": {"fill": "#fdbe02", "border": "#8f6d0a"},
-    "Negocios": {"fill": "#ffffff", "border": "#121212"},
-    "Módulo ECO": {"fill": "#c2ca5b", "border": "#6b7033"},
-    "Rutas y viajes": {"fill": "#ff8243", "border": "#c44b0e"},
-    "Interacción social": {"fill": "#f7f3ec", "border": "#6b7033"},
-    "Avisos y automatización": {"fill": "#fdfdfd", "border": "#fdbe02"},
+# Un color de cabecera por módulo, todos tomados de los tokens reales del
+# proyecto (lib/theme/app_colors.dart): los tres primitivos de marca más los
+# tokens de estado. El color del texto de cada cabecera no se elige a mano —
+# `render.contrast_text` lo decide por luminancia.
+MODULE_COLOR = {
+    "Identidad y cuentas": "#fdbe02",   # goldFill
+    "Negocios": "#c2ca5b",              # oliveFill
+    "Módulo ECO": "#3a7d3a",            # success
+    "Rutas y viajes": "#ff8243",        # orangeFill
+    "Interacción social": "#6b7033",    # oliveText
+    "Avisos y automatización": "#cc5510",  # destructive
 }
-DEFAULT_STYLE = {"fill": "#fdfdfd", "border": "#121212"}
-
-# Geometría del layout. Las tablas se apilan dentro del frame de su módulo.
-TABLE_WIDTH = 300
-ROW_HEIGHT = 16
-HEADER_HEIGHT = 44
-TABLE_GAP = 48
-FRAME_PADDING = 60
-FRAME_GAP = 140
-FRAME_TOP = 0
+DEFAULT_COLOR = "#fdfdfd"
 
 
 class MiroError(RuntimeError):
@@ -142,113 +140,25 @@ def request(
     raise MiroError("Se agotaron los reintentos.")
 
 
-def escape(text: str) -> str:
-    return (
-        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    )
+def find_overlaps(shapes: list[dict]) -> list[tuple[str, str]]:
+    """Pares de tablas cuyos rectángulos se pisan.
 
-
-def table_html(table: dict) -> str:
-    """Contenido del shape: nombre + atributos, con PK/FK marcados."""
-    lines = [f"<p><strong>{escape(table['name'].upper())}</strong></p>"]
-    for column in table["columns"]:
-        if column.get("pk"):
-            marker = "<strong>PK</strong>"
-        elif column.get("references"):
-            marker = "<em>FK</em>"
-        else:
-            marker = "&nbsp;&nbsp;&nbsp;"
-        name = escape(column["name"])
-        if column["name"] in table.get("transitive_debt", []):
-            name = f"{name} ◇"
-        lines.append(
-            f"<p>{marker} {name} <span>: {escape(column['type'])}</span></p>"
-        )
-    return "".join(lines)
-
-
-def table_height(table: dict) -> int:
-    return HEADER_HEIGHT + ROW_HEIGHT * len(table["columns"])
-
-
-def plan_layout(model: dict) -> tuple[list[dict], list[dict]]:
-    """Calcula la posición de cada frame y cada tabla. Miro usa el centro."""
-    by_module: dict[str, list[dict]] = {}
-    for table in model["tables"]:
-        by_module.setdefault(table["module"], []).append(table)
-    # Dentro de cada módulo, la tabla más grande primero: deja la "entidad
-    # fuerte" arriba y sus hijas debajo.
-    for tables in by_module.values():
-        tables.sort(key=lambda t: (-len(t["columns"]), t["name"]))
-
-    frames, shapes = [], []
-    x = 0.0
-    for module in model["modules"]:
-        tables = by_module.get(module, [])
-        if not tables:
-            continue
-        content_height = sum(table_height(t) for t in tables) + TABLE_GAP * (
-            len(tables) - 1
-        )
-        frame_width = TABLE_WIDTH + FRAME_PADDING * 2
-        frame_height = content_height + FRAME_PADDING * 2
-        frames.append(
-            {
-                "module": module,
-                "x": x + frame_width / 2,
-                "y": FRAME_TOP + frame_height / 2,
-                "width": frame_width,
-                "height": frame_height,
-            }
-        )
-        cursor = FRAME_TOP + FRAME_PADDING
-        for table in tables:
-            height = table_height(table)
-            shapes.append(
-                {
-                    "table": table,
-                    "module": module,
-                    "x": x + frame_width / 2,
-                    "y": cursor + height / 2,
-                    "frame_x": x + frame_width / 2,
-                    "frame_y": FRAME_TOP + frame_height / 2,
-                    "width": TABLE_WIDTH,
-                    "height": height,
-                }
-            )
-            cursor += height + TABLE_GAP
-        x += frame_width + FRAME_GAP
-    return frames, shapes
-
-
-def build_shape_payload(item: dict, parent_id: str | None = None) -> dict:
-    """Shape de una tabla.
-
-    Sin `parent_id` la posición es absoluta del board y el frame queda debajo
-    (en el canvas de Miro igual se comporta como contenedor al arrastrarlo).
-    Con `parent_id`, Miro trata x/y como desplazamiento respecto al **centro**
-    del frame, así que se convierte acá.
+    Un solapamiento significa texto tapado, así que se chequea antes de
+    publicar y después de publicar (contra lo que la API devuelve), en vez de
+    confiar en que el cálculo del layout salió bien.
     """
-    style = MODULE_STYLE.get(item["module"], DEFAULT_STYLE)
-    x = item["x"] - item["frame_x"] if parent_id else item["x"]
-    y = item["y"] - item["frame_y"] if parent_id else item["y"]
-    payload = {
-        "data": {"shape": "rectangle", "content": table_html(item["table"])},
-        "style": {
-            "fillColor": style["fill"],
-            "borderColor": style["border"],
-            "borderWidth": "2",
-            "color": "#121212",
-            "fontSize": "11",
-            "textAlign": "left",
-            "textAlignVertical": "top",
-        },
-        "position": {"x": x, "y": y, "origin": "center"},
-        "geometry": {"width": item["width"], "height": item["height"]},
-    }
-    if parent_id:
-        payload["parent"] = {"id": parent_id}
-    return payload
+    found = []
+    for i, a in enumerate(shapes):
+        for b in shapes[i + 1 :]:
+            same_x = (
+                abs(a["x"] - b["x"]) * 2 < a["width"] + b["width"]
+            )
+            same_y = (
+                abs(a["y"] - b["y"]) * 2 < a["height"] + b["height"]
+            )
+            if same_x and same_y:
+                found.append((a["table"]["name"], b["table"]["name"]))
+    return found
 
 
 def build_connector_payload(relation: dict, ids: dict[str, str]) -> dict | None:
@@ -263,7 +173,7 @@ def build_connector_payload(relation: dict, ids: dict[str, str]) -> dict | None:
         "startItem": {"id": start},
         "endItem": {"id": end},
         "shape": "elbowed",
-        "captions": [{"content": escape(label), "position": "50%"}],
+        "captions": [{"content": render.escape(label), "position": "50%"}],
         "style": {
             "strokeColor": "#c44b0e" if polymorphic else "#121212",
             "strokeStyle": "dashed" if polymorphic else "normal",
@@ -380,15 +290,6 @@ def main() -> int:
         help="borra los items de una corrida anterior antes de publicar",
     )
     parser.add_argument(
-        "--parent-frames",
-        action="store_true",
-        help=(
-            "cuelga cada tabla del frame de su módulo (parent.id). Agrupa de "
-            "verdad, pero Miro interpreta la posición como relativa al frame: "
-            "si el resultado queda corrido, volvé a correr sin este flag."
-        ),
-    )
-    parser.add_argument(
         "--create-board",
         metavar="NOMBRE",
         help=(
@@ -416,47 +317,60 @@ def main() -> int:
         )
         return 1
     model = json.loads(MODEL.read_text(encoding="utf-8"))
-    frames, shapes = plan_layout(model)
+    plan = layout_engine.plan(model)
+    shapes = plan["shapes"]
+    items_per_table = 5  # marco + cabecera + 3 columnas
+    total_calls = (
+        len(shapes) * items_per_table
+        + len(model["relations"])
+        + len(MODULE_COLOR)
+        + 1  # leyenda
+    )
 
     if args.dry_run:
-        print(f"Plan para {len(model['tables'])} tablas y {len(model['relations'])} relaciones\n")
-        for frame in frames:
-            print(
-                f"  FRAME  {frame['module']:28} "
-                f"{frame['width']:.0f}x{frame['height']:.0f} @ "
-                f"({frame['x']:.0f}, {frame['y']:.0f})"
-            )
-        print()
-        for shape in shapes:
-            table = shape["table"]
-            print(
-                f"  SHAPE  {table['name']:34} {len(table['columns']):2} attrs  "
-                f"h={shape['height']:.0f} @ ({shape['x']:.0f}, {shape['y']:.0f})"
-            )
-        print(f"\n  CONNECTORS  {len(model['relations'])} "
-              f"({sum(1 for r in model['relations'] if r.get('polymorphic'))} punteados)")
         print(
-            f"  Total de llamadas a la API: "
-            f"{len(frames) + len(shapes) + len(model['relations'])}"
+            f"Plan para {len(model['tables'])} tablas y "
+            f"{len(model['relations'])} relaciones"
         )
-        # Muestra lo que se enviaría: permite revisar el formato sin token.
+        print()
+        print(
+            f"  Cruces de flechas: {plan['crossings_before']} -> "
+            f"{plan['crossings_after']}  "
+            f"(longitud total {plan['length_before']:.0f} -> {plan['length_after']:.0f})"
+        )
+        print()
+        for index, names in plan["layers"].items():
+            print(f"  COLUMNA {index}: {len(names)} tablas")
+            for name in names:
+                shape = next(s for s in shapes if s["table"]["name"] == name)
+                print(
+                    f"      {name:34} {len(shape['table']['columns']):2} attrs  "
+                    f"{shape['width']:.0f}x{shape['height']:.0f} @ "
+                    f"({shape['x']:.0f}, {shape['y']:.0f})"
+                )
+        overlaps = find_overlaps(shapes)
+        print()
+        print(f"  Solapamientos entre tablas: {len(overlaps)}")
+        for a_name, b_name in overlaps:
+            print(f"      {a_name} <-> {b_name}")
+        print()
+        print(f"  Total de llamadas a la API: {total_calls}")
         sample = next(s for s in shapes if s["table"]["name"] == "eco_participants")
         print()
-        print("  Payload de ejemplo (shape):")
-        print(json.dumps(build_shape_payload(sample), ensure_ascii=False, indent=2))
-        sample_rel = next(r for r in model["relations"] if r.get("polymorphic"))
-        print()
-        print("  Payload de ejemplo (connector polimórfico):")
-        print(
-            json.dumps(
-                build_connector_payload(
-                    sample_rel,
-                    {sample_rel["from"]: "ID_A", sample_rel["to"]: "ID_B"},
-                ),
-                ensure_ascii=False,
-                indent=2,
+        print(f"  Items de una tabla ({sample['table']['name']}):")
+        for payload in render.build_items(
+            sample,
+            MODULE_COLOR.get(sample["module"], DEFAULT_COLOR),
+            layout_engine.ROW_HEIGHT,
+            layout_engine.HEADER_HEIGHT,
+        ):
+            position = payload["position"]
+            geometry = payload.get("geometry", {})
+            print(
+                f"      {payload['_kind']:6} {payload['_role']:10} "
+                f"@ ({position['x']:.0f}, {position['y']:.0f}) "
+                f"{geometry.get('width', 0):.0f}x{geometry.get('height', 0):.0f}"
             )
-        )
         return 0
 
     if not args.token:
@@ -516,39 +430,42 @@ def main() -> int:
             delete_previous(args.board, args.token)
 
         created: list[dict] = []
-        frame_ids: dict[str, str] = {}
-        print(f"\nCreando {len(frames)} frames…")
-        for frame in frames:
-            response = request(
-                "POST",
-                f"/boards/{args.board}/frames",
-                args.token,
-                {
-                    "data": {
-                        "title": frame["module"],
-                        "format": "custom",
-                        "type": "freeform",
-                    },
-                    "position": {"x": frame["x"], "y": frame["y"], "origin": "center"},
-                    "geometry": {"width": frame["width"], "height": frame["height"]},
-                    "style": {"fillColor": "#ffffff"},
-                },
-            )
-            frame_ids[frame["module"]] = response["id"]
-            created.append({"type": "frame", "id": response["id"]})
+        endpoint = {"shape": "shapes", "text": "texts"}
 
-        print(f"Creando {len(shapes)} tablas…")
+        print(f"Creando {len(shapes)} tablas ({len(shapes) * 5} items)…")
         ids: dict[str, str] = {}
         for shape in shapes:
-            parent = frame_ids.get(shape["module"]) if args.parent_frames else None
+            color = MODULE_COLOR.get(shape["module"], DEFAULT_COLOR)
+            # El orden de `build_items` es deliberado: cuerpo, separadores,
+            # cabecera y recién al final los textos, para que nada los tape.
+            for payload in render.build_items(
+                shape, color, layout_engine.ROW_HEIGHT, layout_engine.HEADER_HEIGHT
+            ):
+                kind, role = payload.pop("_kind"), payload.pop("_role")
+                response = request(
+                    "POST",
+                    f"/boards/{args.board}/{endpoint[kind]}",
+                    args.token,
+                    payload,
+                )
+                created.append({"type": kind, "id": response["id"]})
+                if role == "body":
+                    # Los connectors se enganchan al cuerpo, no a la cabecera.
+                    ids[shape["table"]["name"]] = response["id"]
+
+        print("Creando la leyenda…")
+        top_left = min(shapes, key=lambda s: (s["x"], s["y"]))
+        for payload in render.legend_items(
+            MODULE_COLOR,
+            top_left["x"] - top_left["width"] / 2,
+            min(s["y"] - s["height"] / 2 for s in shapes) - 220,
+        ):
+            kind = payload.pop("_kind")
+            payload.pop("_role")
             response = request(
-                "POST",
-                f"/boards/{args.board}/shapes",
-                args.token,
-                build_shape_payload(shape, parent),
+                "POST", f"/boards/{args.board}/{endpoint[kind]}", args.token, payload
             )
-            ids[shape["table"]["name"]] = response["id"]
-            created.append({"type": "shape", "id": response["id"]})
+            created.append({"type": kind, "id": response["id"]})
 
         print(f"Creando {len(model['relations'])} relaciones…")
         skipped = 0

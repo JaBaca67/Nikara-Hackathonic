@@ -62,3 +62,42 @@ cuenta activa en Supabase. Las políticas de acceso permanecen vigentes.
 La versión corregida quedó compilada e instalada en el teléfono. Pasaron las
 40 pruebas de notificaciones y participación; el análisis de
 `push_token_service.dart` no encontró problemas.
+
+## Lectura completa y cobertura de push
+
+Mantener presionada una tarjeta de la bandeja expande el propio widget:
+muestra el título y cuerpo sin límite de líneas, la fecha y hora completas,
+y el estado de lectura. El botón «Ver menos» o una segunda pulsación larga
+contraen la tarjeta. La pulsación larga no abre otro recurso ni marca el aviso
+como leído; el toque corto conserva su navegación habitual.
+
+Los mensajes recibidos en primer plano ahora usan `BigTextStyleInformation`
+en Android. Cada fila conserva una etiqueta propia, por lo que dos avisos del
+mismo tipo aparecen separados. Los mensajes con un tipo desconocido también
+se muestran; los mensajes de datos con título/cuerpo pueden mostrarse aunque
+no incluyan el bloque `notification`. El registro FCM se reintenta al volver a
+la app, para recuperar fallos de conexión durante el arranque.
+
+Se probaron los 17 tipos definidos mediante el canal nativo simulado de Android:
+todos invocan la presentación nativa y conservan el cuerpo completo. Pasaron
+19 pruebas de notificaciones, presentación push y actualización de la bandeja,
+y el análisis de esos archivos no encontró problemas.
+
+El webhook de inserción existente no filtra por tipo de notificación: genera
+push para cada fila nueva. FCM incluye el cuerpo completo y usa el formato
+expandible del SDK cuando Android presenta un aviso en segundo plano. El gesto
+de mantener presionado en el panel del sistema pertenece a Android y suele
+mostrar controles de notificaciones; para desplegar el texto se usa su flecha
+de expansión. La pulsación larga que expande nuestra tarjeta corresponde a la
+bandeja de Níkara.
+
+Esto verifica la configuración y la presentación de todos los tipos; no es una
+garantía de entrega del sistema operativo. Se requieren permisos habilitados,
+un token registrado y conexión. El APK quedó instalado después de reconectar
+el Samsung. El bloqueo seguro y el acceso de sesión vencido impidieron repetir
+la prueba física de todos los tipos: hace falta desbloquear y abrir la app para
+renovar la sesión. Se revisó el widget contra capturas Flutter a 384 dp con
+las fuentes Nunito y League Spartan, sin texto recortado en el estado expandido.
+La activación remota
+de las automatizaciones de 045/046 sigue pendiente como se documentó en
+`action_notifications.md`.

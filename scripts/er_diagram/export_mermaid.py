@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -29,14 +30,14 @@ TYPE_ALIASES = {
 
 
 def mermaid_type(raw: str) -> str:
-    return TYPE_ALIASES.get(raw, raw.replace("[]", "_array"))
+    return re.sub(r"[^a-zA-Z0-9_]", "_", TYPE_ALIASES.get(raw, raw.replace("[]", "_array")))
 
 
 def cardinality(relation: dict) -> str:
     """Notación crow's foot de Mermaid para el lado 'uno' y el lado 'muchos'."""
-    left = "||"
+    left = "o|" if relation["optional"] else "||"
     if relation["kind"] == "1:1":
-        right = "o|" if relation["optional"] else "||"
+        right = "o|"
     else:
         right = "o{"
     return f"{left}--{right}"
@@ -55,10 +56,9 @@ def render(model: dict) -> str:
             lines.append(f"    {table['name'].upper()} {{")
             for column in table["columns"]:
                 key = ""
-                if column.get("pk"):
-                    key = "PK"
-                elif column.get("references"):
-                    key = "FK"
+                composite_fk = any(column['name'] in fk['columns'] for fk in table.get('foreign_keys', []))
+                key = ", FK" if column.get("references") or composite_fk else ""
+                key = (("PK" if column.get("pk") else "") + key).strip(", ")
                 comment = []
                 if column.get("references"):
                     comment.append(f"-> {column['references']}")
@@ -98,14 +98,28 @@ def document(model: dict, diagram: str) -> str:
             f"| `{origin}` | `{table['name']}` | {', '.join(table['pk'])} |"
         )
 
+    archive_note = "".join(
+        f"\n`{row['name']}` figura en el inventario físico y se excluye del modelo normalizado porque es un respaldo sin clave primaria: {row['reason']}\n"
+        for row in model.get("excluded_archive_tables", [])
+    )
+
     return f"""# Modelo ER hasta la 2FN — Níkara
 
 > Generado por `scripts/er_diagram/export_mermaid.py` a partir de
 > `model_2nf.json`. **No editar a mano**: cambiá el modelo y volvé a generar.
 
 El esquema físico de Supabase tiene **{model['source_tables']} tablas**. Llevarlo a
-2FN agrega **{len(created)}** entidades (descomposición de atributos multivaluados),
+2FN agrega **{len(created)}** entidades (descomposición de atributos multivaluados).
+Se incluye también **1 entidad externa** de Supabase (`auth.users`, solo su clave),
 para un total de **{model['total_tables']}** entidades y **{len(model['relations'])}** relaciones.
+
+El esquema se reconstruye desde las migraciones locales, no desde una consulta
+al servidor. `profiles` y `businesses` tienen definiciones base documentadas
+porque se crearon desde el dashboard. Las tablas derivadas son propuestas
+académicas; no se ha aplicado una migración de normalización a Supabase.
+
+Archivos editables y guía: [diagramacion_bd/README.md](diagramacion_bd/README.md).
+{archive_note}
 
 ## 1FN — atributos multivaluados descompuestos
 

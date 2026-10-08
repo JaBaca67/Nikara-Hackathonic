@@ -1,0 +1,521 @@
+{
+  "project_ref": "taxtvsqfpmrrkvezwwpb",
+  "checked_at_utc": "2026-10-08T19:55:28.195611+00:00",
+  "method": "Supabase PostgREST API; SELECT LIMIT 0; response bodies contain zero rows",
+  "scope": "SELECT LIMIT 0 en la API PostgREST pública: confirma las tablas y los nombres de columna solicitados; el cuerpo devuelve cero filas. No enumera columnas adicionales, inspecciona tipos PostgreSQL, restricciones ni estados RLS.",
+  "table_columns": [
+    {
+      "table": "audit_logs",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "business_posts",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "businesses",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "device_push_tokens",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "eco_activities",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "eco_participants",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "legal_identities",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_automation_settings",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_completed_trips",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_event_receipts",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "notifications",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "organizations",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "origin_places",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "profiles",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "reviews",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "route_stops",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "routes",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    },
+    {
+      "table": "user_favorites",
+      "status": 200,
+      "column_names_resolve": false,
+      "returned_rows": 0
+    }
+  ],
+  "foreign_key_relationships": [
+    {
+      "from": "businesses",
+      "to": "business_posts",
+      "columns": [
+        "business_id"
+      ],
+      "constraint": "business_posts_business_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "businesses",
+      "to": "notification_automation_settings",
+      "columns": [
+        "last_business_id"
+      ],
+      "constraint": "notification_automation_settings_last_business_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "businesses",
+      "to": "notification_completed_trips",
+      "columns": [
+        "business_id"
+      ],
+      "constraint": "notification_completed_trips_business_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "businesses",
+      "to": "route_stops",
+      "columns": [
+        "business_id"
+      ],
+      "constraint": "route_stops_business_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "eco_activities",
+      "to": "eco_participants",
+      "columns": [
+        "activity_id"
+      ],
+      "constraint": "eco_participants_activity_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "eco_activities",
+      "to": "route_stops",
+      "columns": [
+        "eco_activity_id"
+      ],
+      "constraint": "route_stops_eco_activity_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "organizations",
+      "to": "eco_activities",
+      "columns": [
+        "organization_id"
+      ],
+      "constraint": "eco_activities_organization_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "origin_places",
+      "to": "businesses",
+      "columns": [
+        "municipality_code"
+      ],
+      "constraint": "businesses_municipality_code_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "origin_places",
+      "to": "eco_activities",
+      "columns": [
+        "municipality_code"
+      ],
+      "constraint": "eco_activities_municipality_code_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "origin_places",
+      "to": "organizations",
+      "columns": [
+        "municipality_code"
+      ],
+      "constraint": "organizations_municipality_code_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "origin_places",
+      "to": "profiles",
+      "columns": [
+        "origin_city",
+        "origin_municipality"
+      ],
+      "constraint": "profiles_origin_place_catalog",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "audit_logs",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "audit_logs_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "businesses",
+      "columns": [
+        "owner_id"
+      ],
+      "constraint": "businesses_owner_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "businesses",
+      "columns": [
+        "reviewed_by"
+      ],
+      "constraint": "businesses_reviewed_by_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "device_push_tokens",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "device_push_tokens_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "eco_activities",
+      "columns": [
+        "organizer_id"
+      ],
+      "constraint": "eco_activities_organizer_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "eco_activities",
+      "columns": [
+        "reviewed_by"
+      ],
+      "constraint": "eco_activities_reviewed_by_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "eco_participants",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "eco_participants_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "legal_identities",
+      "columns": [
+        "verified_by"
+      ],
+      "constraint": "legal_identities_verified_by_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "notification_automation_settings",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "notification_automation_settings_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "notification_completed_trips",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "notification_completed_trips_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "notification_event_receipts",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "notification_event_receipts_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "notifications",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "notifications_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "organizations",
+      "columns": [
+        "owner_id"
+      ],
+      "constraint": "organizations_owner_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "organizations",
+      "columns": [
+        "reviewed_by"
+      ],
+      "constraint": "organizations_reviewed_by_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "reviews",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "reviews_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "routes",
+      "columns": [
+        "owner_id"
+      ],
+      "constraint": "routes_owner_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "profiles",
+      "to": "user_favorites",
+      "columns": [
+        "user_id"
+      ],
+      "constraint": "user_favorites_user_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "routes",
+      "to": "route_stops",
+      "columns": [
+        "route_id"
+      ],
+      "constraint": "route_stops_route_id_fkey",
+      "status": 200,
+      "relationship_resolves": true,
+      "returned_rows": 0
+    },
+    {
+      "from": "routes",
+      "to": "routes",
+      "columns": [
+        "cloned_from_route_id"
+      ],
+      "constraint": "routes_cloned_from_route_id_fkey",
+      "status": 400,
+      "relationship_resolves": false,
+      "returned_rows": null,
+      "api_error": "Could not find a relationship between 'routes' and 'routes' in the schema cache"
+    }
+  ],
+  "verified_tables": 20,
+  "verified_foreign_keys": 29,
+  "additional_live_checks": [
+    {
+      "table": "profiles",
+      "columns": [
+        "created_at"
+      ],
+      "http_status": 200,
+      "returned_rows": 0,
+      "column_name_resolves": true
+    },
+    {
+      "table": "reviews_backup",
+      "columns": [
+        "id",
+        "user_id",
+        "target_type",
+        "target_id",
+        "rating",
+        "comment",
+        "created_at",
+        "media_urls"
+      ],
+      "http_status": 200,
+      "returned_rows": 0,
+      "column_names_resolve": true,
+      "primary_key": null,
+      "primary_key_source": "inventario Markdown compartido"
+    },
+    {
+      "table": "spatial_ref_sys",
+      "columns": [
+        "srid",
+        "auth_name",
+        "auth_srid",
+        "srtext",
+        "proj4text"
+      ],
+      "http_status": 200,
+      "returned_rows": 0,
+      "column_names_resolve": true,
+      "excluded_from_app_er": "tabla auxiliar de PostGIS"
+    }
+  ],
+  "known_public_tables_verified": [
+    "audit_logs",
+    "business_posts",
+    "businesses",
+    "device_push_tokens",
+    "eco_activities",
+    "eco_participants",
+    "legal_identities",
+    "notification_automation_settings",
+    "notification_completed_trips",
+    "notification_event_receipts",
+    "notifications",
+    "organizations",
+    "origin_places",
+    "profiles",
+    "reviews",
+    "route_stops",
+    "routes",
+    "user_favorites",
+    "reviews_backup",
+    "spatial_ref_sys"
+  ],
+  "excluded_postgis_extension_relation": {
+    "name": "spatial_ref_sys",
+    "reason": "relación auxiliar de la extensión PostGIS; fuera del ER de la aplicación"
+  }
+}

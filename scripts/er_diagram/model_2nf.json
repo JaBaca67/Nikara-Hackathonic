@@ -1,6 +1,12 @@
 {
   "normal_form": "2FN",
   "source_tables": 18,
+  "excluded_archive_tables": [
+    {
+      "name": "reviews_backup",
+      "reason": "Copia de respaldo sin clave primaria ni UNIQUE, fuera del ciclo de la aplicación; incluida solo en el esquema físico."
+    }
+  ],
   "tables_created_for_1nf": [
     "business_photos",
     "business_amenities",
@@ -12,7 +18,7 @@
     "route_images",
     "origin_place_aliases"
   ],
-  "total_tables": 27,
+  "total_tables": 28,
   "modules": [
     "Identidad y cuentas",
     "Negocios",
@@ -28,12 +34,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "action",
@@ -52,6 +60,25 @@
         }
       ],
       "source": "035_audit_logs.sql",
+      "module": "Identidad y cuentas",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "auth_users",
+      "schema": "auth",
+      "physical_name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "Supabase Auth (entidad externa; solo clave referenciada)",
+      "external": true,
       "module": "Identidad y cuentas",
       "pk": [
         "id"
@@ -172,18 +199,21 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "business_id",
           "type": "uuid",
           "references": "businesses.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
-          "references": "users.id",
+          "references": "auth_users.id",
+          "references_schema": "auth",
           "not_null": true
         },
         {
@@ -213,12 +243,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "name",
@@ -284,7 +316,8 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "logo_url",
@@ -350,7 +383,8 @@
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         }
       ],
       "source": "dashboard (sin DDL)",
@@ -391,17 +425,20 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
           "name": "token",
           "type": "text",
+          "unique": true,
           "not_null": true
         },
         {
@@ -432,7 +469,8 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "title",
@@ -474,7 +512,8 @@
         {
           "name": "organizer_id",
           "type": "uuid",
-          "references": "users.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "organizer_name",
@@ -493,7 +532,8 @@
         {
           "name": "organization_id",
           "type": "uuid",
-          "references": "organizations.id"
+          "references": "organizations.id",
+          "references_schema": "public"
         },
         {
           "name": "image_url",
@@ -515,12 +555,14 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         },
         {
           "name": "moments_enabled",
@@ -595,13 +637,15 @@
           "name": "activity_id",
           "type": "uuid",
           "references": "eco_activities.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
         {
           "name": "user_id",
           "type": "uuid",
-          "references": "users.id",
+          "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -624,12 +668,15 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
-          "references": "users.id",
+          "unique": true,
+          "references": "auth_users.id",
+          "references_schema": "auth",
           "not_null": true
         },
         {
@@ -654,7 +701,8 @@
         {
           "name": "verified_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "created_at",
@@ -679,7 +727,9 @@
           "name": "user_id",
           "type": "uuid",
           "pk": true,
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
         },
         {
           "name": "enabled",
@@ -694,7 +744,8 @@
         {
           "name": "last_business_id",
           "type": "uuid",
-          "references": "businesses.id"
+          "references": "businesses.id",
+          "references_schema": "public"
         }
       ],
       "source": "045_action_notification_automations.sql",
@@ -710,6 +761,7 @@
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -723,6 +775,7 @@
           "name": "business_id",
           "type": "uuid",
           "references": "businesses.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -750,6 +803,7 @@
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -778,12 +832,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -828,7 +884,8 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "name",
@@ -838,6 +895,7 @@
         {
           "name": "handle",
           "type": "text",
+          "unique": true,
           "not_null": true
         },
         {
@@ -857,6 +915,7 @@
           "name": "owner_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -885,12 +944,14 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         }
       ],
       "source": "010_organizations.sql",
@@ -931,7 +992,8 @@
         {
           "name": "municipality_code",
           "type": "text",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "department",
@@ -950,6 +1012,12 @@
         }
       ],
       "source": "041_origin_place_catalog.sql",
+      "unique_keys": [
+        [
+          "city",
+          "municipality"
+        ]
+      ],
       "module": "Identidad y cuentas",
       "pk": [
         "municipality_code"
@@ -962,15 +1030,19 @@
           "name": "id",
           "type": "uuid",
           "pk": true,
-          "references": "users.id"
+          "references": "auth_users.id",
+          "references_schema": "auth",
+          "not_null": true
         },
         {
           "name": "full_name",
-          "type": "text"
+          "type": "text",
+          "not_null": true
         },
         {
           "name": "email",
-          "type": "text"
+          "type": "text",
+          "not_null": true
         },
         {
           "name": "phone",
@@ -983,6 +1055,10 @@
         {
           "name": "points",
           "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
         },
         {
           "name": "avatar_url",
@@ -1026,6 +1102,22 @@
         }
       ],
       "source": "dashboard (sin DDL)",
+      "foreign_keys": [
+        {
+          "name": "profiles_origin_place_catalog",
+          "columns": [
+            "origin_city",
+            "origin_municipality"
+          ],
+          "references_table": "origin_places",
+          "references_schema": "public",
+          "references_columns": [
+            "city",
+            "municipality"
+          ],
+          "not_valid": true
+        }
+      ],
       "module": "Identidad y cuentas",
       "pk": [
         "id"
@@ -1068,12 +1160,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -1145,12 +1239,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "route_id",
           "type": "uuid",
           "references": "routes.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -1171,12 +1267,14 @@
         {
           "name": "business_id",
           "type": "uuid",
-          "references": "businesses.id"
+          "references": "businesses.id",
+          "references_schema": "public"
         },
         {
           "name": "eco_activity_id",
           "type": "uuid",
-          "references": "eco_activities.id"
+          "references": "eco_activities.id",
+          "references_schema": "public"
         },
         {
           "name": "destination_id",
@@ -1216,6 +1314,16 @@
         }
       ],
       "source": "011_routes.sql",
+      "unique_keys": [
+        [
+          "route_id",
+          "day_number",
+          "kind",
+          "business_id",
+          "eco_activity_id",
+          "destination_id"
+        ]
+      ],
       "module": "Rutas y viajes",
       "pk": [
         "id"
@@ -1235,13 +1343,15 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
           "references": "profiles.id",
-          "not_null": true
+          "references_schema": "public",
+          "not_null": false
         },
         {
           "name": "title",
@@ -1266,7 +1376,8 @@
         {
           "name": "cloned_from_route_id",
           "type": "uuid",
-          "references": "routes.id"
+          "references": "routes.id",
+          "references_schema": "public"
         },
         {
           "name": "created_at",
@@ -1277,6 +1388,19 @@
           "name": "updated_at",
           "type": "timestamptz",
           "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "source_url",
+          "type": "text"
+        },
+        {
+          "name": "catalog_name",
+          "type": "text"
         }
       ],
       "source": "011_routes.sql",
@@ -1291,12 +1415,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -1316,6 +1442,13 @@
         }
       ],
       "source": "013_final_schema_additions.sql",
+      "unique_keys": [
+        [
+          "user_id",
+          "item_type",
+          "item_id"
+        ]
+      ],
       "module": "Interacción social",
       "pk": [
         "id"
@@ -1324,9 +1457,54 @@
   ],
   "relations": [
     {
+      "from": "auth_users",
+      "to": "business_posts",
+      "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "auth_users",
+      "to": "legal_identities",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:1",
+      "optional": false
+    },
+    {
+      "from": "auth_users",
+      "to": "profiles",
+      "fk": "id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "id"
+      ],
+      "kind": "1:1",
+      "optional": false
+    },
+    {
       "from": "businesses",
       "to": "business_activities",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1334,6 +1512,12 @@
       "from": "businesses",
       "to": "business_amenities",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1341,6 +1525,12 @@
       "from": "businesses",
       "to": "business_eco_practices",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1348,6 +1538,12 @@
       "from": "businesses",
       "to": "business_photos",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1355,6 +1551,12 @@
       "from": "businesses",
       "to": "business_posts",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1362,6 +1564,12 @@
       "from": "businesses",
       "to": "day_pass_items",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1369,6 +1577,12 @@
       "from": "businesses",
       "to": "notification_automation_settings",
       "fk": "last_business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "last_business_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1376,6 +1590,12 @@
       "from": "businesses",
       "to": "notification_completed_trips",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1399,6 +1619,12 @@
       "from": "businesses",
       "to": "route_stops",
       "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1414,6 +1640,12 @@
       "from": "eco_activities",
       "to": "eco_activity_requirements",
       "fk": "activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "activity_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1421,6 +1653,12 @@
       "from": "eco_activities",
       "to": "eco_participants",
       "fk": "activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "activity_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1444,6 +1682,12 @@
       "from": "eco_activities",
       "to": "route_stops",
       "fk": "eco_activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "eco_activity_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1459,6 +1703,12 @@
       "from": "organizations",
       "to": "eco_activities",
       "fk": "organization_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "organization_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1474,6 +1724,12 @@
       "from": "origin_places",
       "to": "businesses",
       "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1481,6 +1737,12 @@
       "from": "origin_places",
       "to": "eco_activities",
       "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1488,6 +1750,12 @@
       "from": "origin_places",
       "to": "organizations",
       "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1495,27 +1763,55 @@
       "from": "origin_places",
       "to": "origin_place_aliases",
       "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
       "kind": "1:N",
       "optional": false
+    },
+    {
+      "from": "origin_places",
+      "to": "profiles",
+      "fk": "origin_city, origin_municipality",
+      "from_columns": [
+        "city",
+        "municipality"
+      ],
+      "to_columns": [
+        "origin_city",
+        "origin_municipality"
+      ],
+      "kind": "1:N",
+      "optional": true,
+      "not_valid": true,
+      "composite": true
     },
     {
       "from": "profiles",
       "to": "audit_logs",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
     {
       "from": "profiles",
-      "to": "business_posts",
-      "fk": "owner_id",
-      "kind": "1:N",
-      "optional": false
-    },
-    {
-      "from": "profiles",
       "to": "businesses",
       "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1523,6 +1819,12 @@
       "from": "profiles",
       "to": "businesses",
       "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1530,6 +1832,12 @@
       "from": "profiles",
       "to": "device_push_tokens",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1537,6 +1845,12 @@
       "from": "profiles",
       "to": "eco_activities",
       "fk": "organizer_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "organizer_id"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1544,6 +1858,12 @@
       "from": "profiles",
       "to": "eco_activities",
       "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1551,20 +1871,25 @@
       "from": "profiles",
       "to": "eco_participants",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
     {
       "from": "profiles",
       "to": "legal_identities",
-      "fk": "user_id",
-      "kind": "1:1",
-      "optional": false
-    },
-    {
-      "from": "profiles",
-      "to": "legal_identities",
       "fk": "verified_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "verified_by"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1572,13 +1897,25 @@
       "from": "profiles",
       "to": "notification_automation_settings",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:1",
-      "optional": true
+      "optional": false
     },
     {
       "from": "profiles",
       "to": "notification_completed_trips",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1586,6 +1923,12 @@
       "from": "profiles",
       "to": "notification_event_receipts",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1593,6 +1936,12 @@
       "from": "profiles",
       "to": "notifications",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1600,6 +1949,12 @@
       "from": "profiles",
       "to": "organizations",
       "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1607,6 +1962,12 @@
       "from": "profiles",
       "to": "organizations",
       "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
       "kind": "1:N",
       "optional": true
     },
@@ -1614,6 +1975,12 @@
       "from": "profiles",
       "to": "reviews",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1621,13 +1988,25 @@
       "from": "profiles",
       "to": "routes",
       "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
       "kind": "1:N",
-      "optional": false
+      "optional": true
     },
     {
       "from": "profiles",
       "to": "user_favorites",
       "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1635,6 +2014,12 @@
       "from": "reviews",
       "to": "review_media",
       "fk": "review_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "review_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1642,6 +2027,12 @@
       "from": "routes",
       "to": "route_images",
       "fk": "route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "route_id"
+      ],
       "kind": "1:N",
       "optional": false
     },
@@ -1649,8 +2040,27 @@
       "from": "routes",
       "to": "route_stops",
       "fk": "route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "route_id"
+      ],
       "kind": "1:N",
       "optional": false
+    },
+    {
+      "from": "routes",
+      "to": "routes",
+      "fk": "cloned_from_route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "cloned_from_route_id"
+      ],
+      "kind": "1:N",
+      "optional": true
     },
     {
       "from": "routes",
@@ -1662,7 +2072,7 @@
     }
   ],
   "notes": {
-    "2nf": "Única PK compuesta heredada: eco_participants(activity_id, user_id); joined_at depende de la clave completa. Las tablas creadas para 1FN no tienen atributos no clave (salvo `position`, que depende de la PK entera), así que cumplen 2FN por construcción.",
+    "2nf": "PK compuestas heredadas: eco_participants(activity_id, user_id), notification_event_receipts(user_id, event_key) y notification_completed_trips(user_id, trip_id). Se considera la inscripción, el evento por usuario y el viaje por usuario como unidad de identificación. Sus atributos no clave dependen de la clave completa bajo esas reglas de negocio. En fotos y medios, la URL depende de (entidad_id, position); en las otras tablas nuevas todos los atributos integran la PK. Las claves alternativas UNIQUE con columnas NOT NULL se revisan también; un identificador simple no elimina por sí solo las posibles dependencias parciales de claves alternativas.",
     "out_of_scope_3nf": {
       "route_stops": [
         "title",

@@ -1,6 +1,6 @@
 {
   "generated_from": "supabase/sql/*.sql",
-  "migrations": 47,
+  "migrations": 49,
   "tables": [
     {
       "name": "audit_logs",
@@ -8,12 +8,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "action",
@@ -39,18 +41,21 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "business_id",
           "type": "uuid",
           "references": "businesses.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
           "references": "users.id",
+          "references_schema": "auth",
           "not_null": true
         },
         {
@@ -76,12 +81,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "name",
@@ -151,7 +158,8 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "logo_url",
@@ -237,7 +245,8 @@
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         }
       ],
       "source": "dashboard (sin DDL)"
@@ -248,17 +257,20 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
           "name": "token",
           "type": "text",
+          "unique": true,
           "not_null": true
         },
         {
@@ -285,7 +297,8 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "title",
@@ -327,7 +340,8 @@
         {
           "name": "organizer_id",
           "type": "uuid",
-          "references": "users.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "organizer_name",
@@ -351,7 +365,8 @@
         {
           "name": "organization_id",
           "type": "uuid",
-          "references": "organizations.id"
+          "references": "organizations.id",
+          "references_schema": "public"
         },
         {
           "name": "image_url",
@@ -373,12 +388,14 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         },
         {
           "name": "moments_enabled",
@@ -419,13 +436,15 @@
           "name": "activity_id",
           "type": "uuid",
           "references": "eco_activities.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
         {
           "name": "user_id",
           "type": "uuid",
-          "references": "users.id",
+          "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -443,12 +462,15 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
+          "unique": true,
           "references": "users.id",
+          "references_schema": "auth",
           "not_null": true
         },
         {
@@ -473,7 +495,8 @@
         {
           "name": "verified_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "created_at",
@@ -494,7 +517,9 @@
           "name": "user_id",
           "type": "uuid",
           "pk": true,
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
         },
         {
           "name": "enabled",
@@ -509,7 +534,8 @@
         {
           "name": "last_business_id",
           "type": "uuid",
-          "references": "businesses.id"
+          "references": "businesses.id",
+          "references_schema": "public"
         }
       ],
       "source": "045_action_notification_automations.sql"
@@ -521,6 +547,7 @@
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -534,6 +561,7 @@
           "name": "business_id",
           "type": "uuid",
           "references": "businesses.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -556,6 +584,7 @@
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true,
           "pk": true
         },
@@ -579,12 +608,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -625,7 +656,8 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "name",
@@ -635,6 +667,7 @@
         {
           "name": "handle",
           "type": "text",
+          "unique": true,
           "not_null": true
         },
         {
@@ -654,6 +687,7 @@
           "name": "owner_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -682,12 +716,14 @@
         {
           "name": "reviewed_by",
           "type": "uuid",
-          "references": "profiles.id"
+          "references": "profiles.id",
+          "references_schema": "public"
         },
         {
           "name": "municipality_code",
           "type": "text",
-          "references": "origin_places.municipality_code"
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
         }
       ],
       "source": "010_organizations.sql"
@@ -698,7 +734,8 @@
         {
           "name": "municipality_code",
           "type": "text",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "department",
@@ -721,7 +758,13 @@
           "not_null": true
         }
       ],
-      "source": "041_origin_place_catalog.sql"
+      "source": "041_origin_place_catalog.sql",
+      "unique_keys": [
+        [
+          "city",
+          "municipality"
+        ]
+      ]
     },
     {
       "name": "profiles",
@@ -730,15 +773,19 @@
           "name": "id",
           "type": "uuid",
           "pk": true,
-          "references": "users.id"
+          "references": "users.id",
+          "references_schema": "auth",
+          "not_null": true
         },
         {
           "name": "full_name",
-          "type": "text"
+          "type": "text",
+          "not_null": true
         },
         {
           "name": "email",
-          "type": "text"
+          "type": "text",
+          "not_null": true
         },
         {
           "name": "phone",
@@ -751,6 +798,10 @@
         {
           "name": "points",
           "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
         },
         {
           "name": "avatar_url",
@@ -793,7 +844,23 @@
           "not_null": true
         }
       ],
-      "source": "dashboard (sin DDL)"
+      "source": "dashboard (sin DDL)",
+      "foreign_keys": [
+        {
+          "name": "profiles_origin_place_catalog",
+          "columns": [
+            "origin_city",
+            "origin_municipality"
+          ],
+          "references_table": "origin_places",
+          "references_schema": "public",
+          "references_columns": [
+            "city",
+            "municipality"
+          ],
+          "not_valid": true
+        }
+      ]
     },
     {
       "name": "reviews",
@@ -801,12 +868,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -843,17 +912,57 @@
       "source": "013_final_schema_additions.sql"
     },
     {
+      "name": "reviews_backup",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid"
+        },
+        {
+          "name": "target_type",
+          "type": "text"
+        },
+        {
+          "name": "target_id",
+          "type": "uuid"
+        },
+        {
+          "name": "rating",
+          "type": "integer"
+        },
+        {
+          "name": "comment",
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "media_urls",
+          "type": "text[]"
+        }
+      ],
+      "source": "inventario Supabase del usuario + verificación REST LIMIT 0"
+    },
+    {
       "name": "route_stops",
       "columns": [
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "route_id",
           "type": "uuid",
           "references": "routes.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -874,12 +983,14 @@
         {
           "name": "business_id",
           "type": "uuid",
-          "references": "businesses.id"
+          "references": "businesses.id",
+          "references_schema": "public"
         },
         {
           "name": "eco_activity_id",
           "type": "uuid",
-          "references": "eco_activities.id"
+          "references": "eco_activities.id",
+          "references_schema": "public"
         },
         {
           "name": "destination_id",
@@ -918,7 +1029,17 @@
           "not_null": true
         }
       ],
-      "source": "011_routes.sql"
+      "source": "011_routes.sql",
+      "unique_keys": [
+        [
+          "route_id",
+          "day_number",
+          "kind",
+          "business_id",
+          "eco_activity_id",
+          "destination_id"
+        ]
+      ]
     },
     {
       "name": "routes",
@@ -926,13 +1047,15 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "owner_id",
           "type": "uuid",
           "references": "profiles.id",
-          "not_null": true
+          "references_schema": "public",
+          "not_null": false
         },
         {
           "name": "title",
@@ -957,7 +1080,8 @@
         {
           "name": "cloned_from_route_id",
           "type": "uuid",
-          "references": "routes.id"
+          "references": "routes.id",
+          "references_schema": "public"
         },
         {
           "name": "created_at",
@@ -973,6 +1097,19 @@
           "name": "image_urls",
           "type": "text[]",
           "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "source_url",
+          "type": "text"
+        },
+        {
+          "name": "catalog_name",
+          "type": "text"
         }
       ],
       "source": "011_routes.sql"
@@ -983,12 +1120,14 @@
         {
           "name": "id",
           "type": "uuid",
-          "pk": true
+          "pk": true,
+          "not_null": true
         },
         {
           "name": "user_id",
           "type": "uuid",
           "references": "profiles.id",
+          "references_schema": "public",
           "not_null": true
         },
         {
@@ -1007,7 +1146,14 @@
           "not_null": true
         }
       ],
-      "source": "013_final_schema_additions.sql"
+      "source": "013_final_schema_additions.sql",
+      "unique_keys": [
+        [
+          "user_id",
+          "item_type",
+          "item_id"
+        ]
+      ]
     }
   ]
 }

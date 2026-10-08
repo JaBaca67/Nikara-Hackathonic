@@ -140,6 +140,9 @@ class _NotificationTileState extends State<NotificationTile> {
                           alignment: Alignment.centerLeft,
                           child: TextButton(
                             onPressed: _toggleExpanded,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.settingsTextDark,
+                            ),
                             child: const Text('Ver menos'),
                           ),
                         ),

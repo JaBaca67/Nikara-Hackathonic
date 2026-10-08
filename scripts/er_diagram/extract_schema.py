@@ -58,11 +58,24 @@ TABLES_WITHOUT_DDL: dict[str, list[dict]] = {
     # perfil público por `alter table`.
     "profiles": [
         {"name": "id", "type": "uuid", "pk": True, "references": "users.id"},
-        {"name": "full_name", "type": "text"},
-        {"name": "email", "type": "text"},
+        {"name": "full_name", "type": "text", "not_null": True},
+        {"name": "email", "type": "text", "not_null": True},
         {"name": "phone", "type": "text"},
         {"name": "role", "type": "user_role"},
         {"name": "points", "type": "integer"},
+        {"name": "created_at", "type": "timestamptz"},
+    ],
+    # Copia histórica confirmada por la API y por el inventario proporcionado.
+    # Sin PK ni referencias; se documenta aparte del ER operativo normalizado.
+    "reviews_backup": [
+        {"name": "id", "type": "uuid"},
+        {"name": "user_id", "type": "uuid"},
+        {"name": "target_type", "type": "text"},
+        {"name": "target_id", "type": "uuid"},
+        {"name": "rating", "type": "integer"},
+        {"name": "comment", "type": "text"},
+        {"name": "created_at", "type": "timestamptz"},
+        {"name": "media_urls", "type": "text[]"},
     ],
 }
 
@@ -136,7 +149,7 @@ def split_columns(body: str) -> list[str]:
 
 def normalize_type(raw: str) -> str:
     raw = " ".join(raw.split())
-    match = TYPE_RE.match(raw)
+    match = re.match(r"^([a-z_]+(?:\s+precision|\s+varying|\s+with(?:out)?\s+time\s+zone)?(?:\s*\([^)]*\))?(?:\s*\[\s*\])?)", raw, re.I)
     kind = match.group(1).strip() if match else raw.split(" ")[0]
     # `text []` -> `text[]`, `double precision` se conserva entero.
     if raw.lower().startswith("double precision"):
@@ -163,9 +176,12 @@ def parse_column(clause: str) -> dict | None:
         column["quoted"] = True
     if PK_INLINE_RE.search(rest):
         column["pk"] = True
+    if re.search(r"\bunique\b", rest, re.IGNORECASE):
+        column["unique"] = True
     ref = REFERENCES_RE.search(rest)
     if ref:
         column["references"] = f"{ref.group(1)}.{ref.group(2)}"
+        column["references_schema"] = "auth" if re.search(r"references\s+auth\.", rest, re.I) else "public"
     if "not null" in rest.lower():
         column["not_null"] = True
     return column
@@ -182,7 +198,10 @@ def main() -> int:
         return 1
 
     tables: dict[str, dict] = {
-        name: {"name": name, "columns": list(cols), "source": "dashboard (sin DDL)"}
+        name: {"name": name, "columns": list(cols), "source": (
+            "inventario Supabase del usuario + verificación REST LIMIT 0" if name == "reviews_backup"
+            else "dashboard (sin DDL)"
+        )}
         for name, cols in TABLES_WITHOUT_DDL.items()
     }
 
@@ -197,6 +216,9 @@ def main() -> int:
             )
             existing = {c["name"] for c in table["columns"]}
             for clause in split_columns(body):
+                unique = re.search(r"\bunique\s*\(([^)]+)\)", clause, re.I)
+                if unique:
+                    table.setdefault("unique_keys", []).append([c.strip() for c in unique.group(1).split(",")])
                 pk_table = PK_TABLE_RE.match(clause.strip())
                 if pk_table:
                     for col in (c.strip() for c in pk_table.group(1).split(",")):
@@ -224,6 +246,7 @@ def main() -> int:
                 ref = REFERENCES_RE.search(definition)
                 if ref:
                     column["references"] = f"{ref.group(1)}.{ref.group(2)}"
+                    column["references_schema"] = "auth" if re.search(r"references\s+auth\.", definition, re.I) else "public"
                 if "not null" in definition.lower():
                     column["not_null"] = True
                 table["columns"].append(column)
@@ -232,6 +255,43 @@ def main() -> int:
                 table["columns"] = [
                     c for c in table["columns"] if c["name"] != col_name
                 ]
+            for col_name, change in re.findall(r"alter\s+column\s+(\w+)\s+(set|drop)\s+not\s+null", action, re.I):
+                for column in table["columns"]:
+                    if column["name"] == col_name:
+                        column["not_null"] = change.lower() == "set"
+            for cols, schema, target, target_cols in re.findall(
+                r"foreign\s+key\s*\(([^)]+)\)\s+references\s+(?:(public|auth)\.)?(\w+)\s*\(([^)]+)\)", action, re.I
+            ):
+                if len(cols.split(",")) == 1:
+                    for column in table["columns"]:
+                        if column["name"] == cols.strip():
+                            column["references"] = f"{target}.{target_cols.strip()}"
+                            column["references_schema"] = schema or "public"
+                    continue
+                constraint_name = re.search(r"\badd\s+constraint\s+([\w\"]+)", action, re.I)
+                table.setdefault("foreign_keys", []).append({
+                    "name": constraint_name.group(1).strip('"') if constraint_name else None,
+                    "columns": [c.strip() for c in cols.split(",")],
+                    "references_table": target,
+                    "references_schema": schema or "public",
+                    "references_columns": [c.strip() for c in target_cols.split(",")],
+                    "not_valid": bool(re.search(r"\bnot\s+valid\b", action, re.I)),
+                })
+
+        # Migration 013 constructs these ALTERs by concatenating SQL strings;
+        # they cannot be captured by ALTER_RE. Preserve only its three rewrites.
+        if path.name == "013_final_schema_additions.sql":
+            for table_name, col_name in [("businesses", "owner_id"), ("eco_activities", "organizer_id"), ("eco_participants", "user_id")]:
+                for column in tables[table_name]["columns"]:
+                    if column["name"] == col_name:
+                        column["references"] = "profiles.id"
+                        column["references_schema"] = "public"
+
+    tables["profiles"]["columns"][0]["references_schema"] = "auth"
+    for table in tables.values():
+        for column in table["columns"]:
+            if column.get("pk"):
+                column["not_null"] = True
 
     payload = {
         "generated_from": "supabase/sql/*.sql",

@@ -33,11 +33,11 @@ from itertools import combinations
 
 # Geometría. Las columnas son anchas a propósito: los connectors de Miro son
 # "elbowed" y necesitan espacio para doblar sin pisar una tabla.
-TABLE_WIDTH = 300
-ROW_HEIGHT = 16
-HEADER_HEIGHT = 44
-COLUMN_GAP = 260
-ROW_GAP = 56
+TABLE_WIDTH = 560
+ROW_HEIGHT = 20
+HEADER_HEIGHT = 52
+COLUMN_GAP = 300
+ROW_GAP = 64
 
 
 def table_height(table: dict) -> int:
