@@ -386,12 +386,23 @@ class BusinessStorageService {
   /// una reseña" se adjuntan como rutas locales de `image_picker`, no como
   /// `XFile` (ver [ReviewService.addReview]) — subirlas de verdad queda fuera
   /// de este cambio, igual que antes de la migración 040.
-  Future<void> addReview(BusinessModel business, ReviewModel review) async {
-    await ReviewService().addReview(
+  Future<ReviewWriteOutcome> addReview(
+    BusinessModel business,
+    ReviewModel review,
+  ) async {
+    final outcome = await ReviewService().addReview(
       targetId: business.id,
       rating: review.rating,
       comment: review.comment,
     );
+    revision.value++;
+    return outcome;
+  }
+
+  /// Elimina la reseña de la sesión activa sobre [business]; delega en
+  /// [ReviewService.deleteOwnReview] igual que [addReview].
+  Future<void> deleteReview(BusinessModel business) async {
+    await ReviewService().deleteOwnReview(business.id);
     revision.value++;
   }
 

@@ -143,10 +143,17 @@ class BusinessModel {
   /// al dueño.
   final String? reviewedBy;
 
+  /// Las reseñas que cuentan: una por persona (la más reciente). Todo lo que
+  /// se muestra o se promedia sale de aquí, no de [reviews] a secas.
+  List<ReviewModel> get countedReviews => onePerAuthor(reviews);
+
+  int get reviewCount => countedReviews.length;
+
   double get averageRating {
-    if (reviews.isEmpty) return 0;
-    final total = reviews.fold<double>(0, (sum, r) => sum + r.rating);
-    return total / reviews.length;
+    final counted = countedReviews;
+    if (counted.isEmpty) return 0;
+    final total = counted.fold<double>(0, (sum, r) => sum + r.rating);
+    return total / counted.length;
   }
 
   BusinessModel copyWith({

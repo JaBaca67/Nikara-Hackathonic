@@ -28,7 +28,7 @@ class UserStatsService {
     final myReviewsCount = userId == null
         ? 0
         : (await _businessStorageService.getBusinesses())
-              .expand((b) => b.reviews)
+              .expand((b) => b.countedReviews)
               .where((r) => r.authorId == userId)
               .length;
 
