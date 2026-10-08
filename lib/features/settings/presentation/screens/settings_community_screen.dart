@@ -6,17 +6,30 @@ import 'package:nikara_app/features/settings/presentation/widgets/settings_widge
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Categoría "Comunidad ECO".
-class SettingsEcoScreen extends StatelessWidget {
-  const SettingsEcoScreen({super.key});
+/// Grupo "Comunidad": registro de negocios turísticos y herramientas ECO.
+class SettingsCommunityScreen extends StatelessWidget {
+  const SettingsCommunityScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return SettingsPage(
-      title: 'Comunidad ECO',
-      subtitle: 'Actividades y fundaciones',
+      title: 'Comunidad',
+      subtitle: 'Negocios, actividades y fundaciones',
       children: [
         SettingsSection(
+          label: 'Para negocios turísticos',
+          children: [
+            SettingsRow(
+              icon: Icons.storefront_outlined,
+              iconTint: AppColors.oliveText,
+              title: 'Registrar mi negocio',
+              caption: 'Llega a más viajeros en Nicaragua',
+              onTap: () => openBusinessRegistrationFlow(context),
+            ),
+          ],
+        ),
+        SettingsSection(
+          label: 'Comunidad ECO',
           children: [
             SettingsRow(
               icon: Icons.eco_outlined,

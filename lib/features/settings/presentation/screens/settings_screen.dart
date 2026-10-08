@@ -6,14 +6,11 @@ import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/features/auth/presentation/screens/login_screen.dart';
 import 'package:nikara_app/features/settings/data/settings_controller.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_account_screen.dart';
-import 'package:nikara_app/features/settings/presentation/screens/settings_business_screen.dart';
-import 'package:nikara_app/features/settings/presentation/screens/settings_eco_screen.dart';
-import 'package:nikara_app/features/settings/presentation/screens/settings_notifications_screen.dart';
-import 'package:nikara_app/features/settings/presentation/screens/settings_privacy_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_community_screen.dart';
+import 'package:nikara_app/features/settings/presentation/screens/settings_preferences_screen.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_support_screen.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_team_screen.dart';
 import 'package:nikara_app/features/settings/presentation/widgets/settings_widgets.dart';
-import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
@@ -37,41 +34,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _authService = AuthService();
   final _controller = SettingsController();
 
-  /// Cuentas guardadas además de la activa; alimenta la descripción del botón
-  /// "Cambiar de cuenta".
-  int _otherAccountsCount = 0;
-
   @override
   void initState() {
     super.initState();
     _controller.loadProfile();
-    _loadSavedAccounts();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadSavedAccounts() async {
-    final accounts = await _authService.getSavedAccounts();
-    if (!mounted) return;
-    setState(() => _otherAccountsCount = accounts.length);
-  }
-
-  String get _savedAccountsCaption => switch (_otherAccountsCount) {
-    0 => 'Agrega otra cuenta y alterna sin volver a iniciar sesión',
-    1 => '1 cuenta más guardada en este dispositivo',
-    final n => '$n cuentas más guardadas en este dispositivo',
-  };
-
-  Future<void> _openAccountSwitcher() async {
-    await showAccountSwitcherSheet(context);
-    if (!mounted) return;
-    // La hoja puede haber quitado una cuenta guardada (o haber guardado la
-    // activa por primera vez), así que el contador se recalcula al cerrarla.
-    await _loadSavedAccounts();
   }
 
   void _open(Widget page) => pushSharedAxis(context, page);
@@ -176,64 +148,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   SettingsMenuButton(
                     icon: Icons.person_outline,
-                    title: 'Mi cuenta',
-                    description: 'Tu perfil, contraseña y datos de contacto',
+                    title: 'Cuenta',
                     onTap: () =>
                         _open(SettingsAccountScreen(controller: _controller)),
+                  ),
+                  SettingsMenuButton(
+                    icon: Icons.tune,
+                    title: 'Preferencias',
+                    onTap: () => _open(
+                      SettingsPreferencesScreen(controller: _controller),
+                    ),
+                  ),
+                  SettingsMenuButton(
+                    icon: Icons.groups_outlined,
+                    title: 'Comunidad',
+                    onTap: () => _open(const SettingsCommunityScreen()),
                   ),
                   if (_controller.role.canAccessAdminPanel)
                     SettingsMenuButton(
                       icon: Icons.shield_outlined,
                       tint: AppColors.oliveText,
                       title: 'Equipo Níkara',
-                      description: 'Herramientas para el equipo',
                       onTap: () =>
                           _open(SettingsTeamScreen(controller: _controller)),
                     ),
                   SettingsMenuButton(
-                    icon: Icons.notifications_none,
-                    title: 'Notificaciones',
-                    description: 'Elige qué avisos quieres recibir',
-                    onTap: () => _open(
-                      SettingsNotificationsScreen(controller: _controller),
-                    ),
-                  ),
-                  SettingsMenuButton(
-                    icon: Icons.privacy_tip_outlined,
-                    title: 'Privacidad',
-                    description: 'Controla qué compartes de tu perfil',
-                    onTap: () =>
-                        _open(SettingsPrivacyScreen(controller: _controller)),
-                  ),
-                  SettingsMenuButton(
-                    icon: Icons.storefront_outlined,
-                    title: 'Para negocios turísticos',
-                    description: 'Registra tu negocio y llega a más viajeros',
-                    onTap: () => _open(const SettingsBusinessScreen()),
-                  ),
-                  SettingsMenuButton(
-                    icon: Icons.eco_outlined,
-                    tint: AppColors.oliveText,
-                    title: 'Comunidad ECO',
-                    description: 'Organiza actividades y gestiona tu fundación',
-                    onTap: () => _open(const SettingsEcoScreen()),
-                  ),
-                  SettingsMenuButton(
                     icon: Icons.help_outline,
-                    title: 'Soporte',
-                    description: 'Ayuda, términos e información de la app',
+                    title: 'Ayuda y soporte',
                     onTap: () => _open(const SettingsSupportScreen()),
-                  ),
-                  SettingsMenuButton(
-                    icon: Icons.switch_account_outlined,
-                    title: 'Cambiar de cuenta',
-                    description: _savedAccountsCaption,
-                    onTap: _openAccountSwitcher,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: AppSpacing.xxl),
             SettingsSection(
               label: 'Sesión',
               children: [

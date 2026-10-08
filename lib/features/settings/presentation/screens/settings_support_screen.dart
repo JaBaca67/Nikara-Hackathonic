@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/features/settings/presentation/widgets/settings_widgets.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 
-/// Categoría "Soporte".
+/// Grupo "Ayuda y soporte".
 class SettingsSupportScreen extends StatelessWidget {
   const SettingsSupportScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return SettingsPage(
-      title: 'Soporte',
+      title: 'Ayuda y soporte',
       subtitle: 'Ayuda e información de la app',
       children: [
         SettingsSection(

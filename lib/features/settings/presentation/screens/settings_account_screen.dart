@@ -1,30 +1,72 @@
 import 'package:flutter/material.dart';
 
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/features/settings/data/settings_controller.dart';
 import 'package:nikara_app/features/settings/presentation/widgets/settings_widgets.dart';
+import 'package:nikara_app/shared/widgets/account_switcher_sheet.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Categoría "Mi cuenta". Editar perfil y cambiar contraseña son estado mock
-/// local — no se persiste nada (ver [SettingsController]).
-class SettingsAccountScreen extends StatelessWidget {
+/// Grupo "Cuenta": los datos de la persona y, aparte, el cambio de cuenta.
+/// Editar perfil y cambiar contraseña son estado mock local — no se persiste
+/// nada (ver [SettingsController]).
+class SettingsAccountScreen extends StatefulWidget {
   const SettingsAccountScreen({super.key, required this.controller});
 
   final SettingsController controller;
 
-  Future<void> _openEditProfile(BuildContext context) async {
+  @override
+  State<SettingsAccountScreen> createState() => _SettingsAccountScreenState();
+}
+
+class _SettingsAccountScreenState extends State<SettingsAccountScreen> {
+  final _authService = AuthService();
+
+  SettingsController get _controller => widget.controller;
+
+  /// Cuentas guardadas además de la activa; alimenta el subtítulo de la fila
+  /// "Cambiar de cuenta".
+  int _otherAccountsCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedAccounts();
+  }
+
+  Future<void> _loadSavedAccounts() async {
+    final accounts = await _authService.getSavedAccounts();
+    if (!mounted) return;
+    setState(() => _otherAccountsCount = accounts.length);
+  }
+
+  String get _savedAccountsCaption => switch (_otherAccountsCount) {
+    0 => 'Agrega otra cuenta y alterna sin volver a iniciar sesión',
+    1 => '1 cuenta más guardada en este dispositivo',
+    final n => '$n cuentas más guardadas en este dispositivo',
+  };
+
+  Future<void> _openAccountSwitcher() async {
+    await showAccountSwitcherSheet(context);
+    if (!mounted) return;
+    // La hoja puede haber quitado una cuenta guardada (o haber guardado la
+    // activa por primera vez), así que el contador se recalcula al cerrarla.
+    await _loadSavedAccounts();
+  }
+
+  Future<void> _openEditProfile() async {
     final result = await showDialog<(String, String, String)>(
       context: context,
       builder: (_) => _EditProfileDialog(
-        name: controller.name,
-        email: controller.email,
-        phone: controller.phone,
+        name: _controller.name,
+        email: _controller.email,
+        phone: _controller.phone,
       ),
     );
-    if (result == null || !context.mounted) return;
-    controller.updateProfile(
+    if (result == null || !mounted) return;
+    _controller.updateProfile(
       name: result.$1,
       email: result.$2,
       phone: result.$3,
@@ -32,12 +74,12 @@ class SettingsAccountScreen extends StatelessWidget {
     AppSnackbar.showSuccess(context, 'Perfil actualizado');
   }
 
-  Future<void> _openChangePassword(BuildContext context) async {
+  Future<void> _openChangePassword() async {
     final changed = await showDialog<bool>(
       context: context,
       builder: (_) => const _ChangePasswordDialog(),
     );
-    if (changed == true && context.mounted) {
+    if (changed == true && mounted) {
       AppSnackbar.showSuccess(context, 'Contraseña actualizada');
     }
   }
@@ -45,34 +87,45 @@ class SettingsAccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: _controller,
       builder: (context, _) => SettingsPage(
-        title: 'Mi cuenta',
-        subtitle: 'Tu perfil y datos de contacto',
+        title: 'Cuenta',
+        subtitle: 'Tu perfil y tus sesiones',
         children: [
           SettingsSection(
             children: [
               SettingsRow(
                 icon: Icons.person_outline,
                 title: 'Editar perfil',
-                onTap: () => _openEditProfile(context),
+                onTap: _openEditProfile,
               ),
               SettingsRow(
                 icon: Icons.lock_outline,
                 title: 'Cambiar contraseña',
-                onTap: () => _openChangePassword(context),
+                onTap: _openChangePassword,
               ),
               SettingsRow(
                 icon: Icons.mail_outline,
                 title: 'Correo electrónico',
-                value: controller.email,
+                value: _controller.email,
                 onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
               ),
               SettingsRow(
                 icon: Icons.call_outlined,
                 title: 'Teléfono',
-                value: controller.phone,
+                value: _controller.phone,
                 onTap: () => AppSnackbar.showInfo(context, 'Próximamente'),
+              ),
+            ],
+          ),
+          SettingsSection(
+            children: [
+              SettingsRow(
+                icon: Icons.switch_account_outlined,
+                iconTint: AppColors.oliveText,
+                title: 'Cambiar de cuenta',
+                caption: _savedAccountsCaption,
+                onTap: _openAccountSwitcher,
               ),
             ],
           ),

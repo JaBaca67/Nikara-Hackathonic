@@ -385,7 +385,7 @@ class SettingsMenuButton extends StatelessWidget {
     super.key,
     required this.icon,
     required this.title,
-    required this.description,
+    this.description,
     required this.onTap,
     this.tint = AppColors.settingsAccent,
     this.titleColor = AppColors.settingsTextDark,
@@ -393,7 +393,7 @@ class SettingsMenuButton extends StatelessWidget {
 
   final IconData icon;
   final String title;
-  final String description;
+  final String? description;
   final VoidCallback onTap;
   final Color tint;
   final Color titleColor;
@@ -402,13 +402,13 @@ class SettingsMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      label: '$title. $description',
+      label: description == null ? title : '$title. $description',
       excludeSemantics: true,
       onTap: onTap,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 64),
+          constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
@@ -428,12 +428,13 @@ class SettingsMenuButton extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        description,
-                        style: AppTextStyles.settingsRowCaption,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      if (description != null)
+                        Text(
+                          description!,
+                          style: AppTextStyles.settingsRowCaption,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
