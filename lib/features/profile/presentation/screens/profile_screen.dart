@@ -23,6 +23,7 @@ import 'package:nikara_app/features/home/domain/models/destination.dart';
 import 'package:nikara_app/features/profile/presentation/screens/face_profile_screen.dart';
 import 'package:nikara_app/features/profile/presentation/screens/passport_collection_screen.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/profile_header.dart';
+import 'package:nikara_app/features/profile/presentation/widgets/explorer_announcement_banner.dart';
 import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.dart';
 import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
 import 'package:nikara_app/features/settings/presentation/screens/settings_screen.dart';
@@ -46,7 +47,14 @@ import 'package:nikara_app/theme/app_theme.dart';
 /// para cambiar la foto de perfil, que es justo por qué el cambio de cara
 /// necesitaba un control propio y no podía colgarse de él.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, this.onExploreRequested});
+  const ProfileScreen({
+    super.key,
+    this.onExploreRequested,
+    this.isActive = true,
+  });
+
+  /// La pestaña puede permanecer montada mientras se visita otra pantalla.
+  final bool isActive;
 
   /// Null cuando esta pantalla no vive dentro de [MainLayout] (ej. tests); el botón simplemente se oculta.
   final VoidCallback? onExploreRequested;
@@ -563,6 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ProfileStat(value: '$points', label: 'Puntos'),
                       ],
                     ),
+                    ExplorerAnnouncementBanner(isActive: widget.isActive),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       child: _LevelProgressCard(levelInfo: levelInfo),

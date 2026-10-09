@@ -183,7 +183,10 @@ class _MainLayoutState extends State<MainLayout> with WidgetsBindingObserver {
     KeepAliveTab(
       child: _isGuest
           ? const _GuestLockedTab(feature: GuestFeature.perfil)
-          : ProfileScreen(onExploreRequested: () => _goToTab(0)),
+          : ProfileScreen(
+              onExploreRequested: () => _goToTab(0),
+              isActive: _currentIndex == 4,
+            ),
     ),
   ];
 

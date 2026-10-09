@@ -121,6 +121,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Tipografía de la landing, empaquetada para la pantalla de membresías.
+  fonts:
+    - family: NikaraMembership
+      fonts:
+        - asset: assets/fonts/membership/Philosopher-Regular.ttf
+        - asset: assets/fonts/membership/Philosopher-Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
@@ -132,7 +140,7 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # Sin fuentes empaquetadas: toda la tipografía sale de `google_fonts`
+  # La tipografía general sale de `google_fonts`
   # (League Spartan + Nunito, ver lib/theme/app_theme.dart). La familia
   # Leelawadee se removió junto con assets/fonts/ — no la usaba ninguna
   # pantalla, solo dos etiquetas numéricas de pines de mapa.

@@ -33,6 +33,7 @@ import 'package:nikara_app/features/profile/presentation/widgets/passport_tab.da
 import 'package:nikara_app/shared/services/main_tab_controller.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_style.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_bottom_dock.dart';
+import 'package:nikara_app/features/map/presentation/widgets/map_carousel.dart';
 import 'package:nikara_app/features/map/presentation/widgets/map_business_rating.dart';
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
@@ -542,14 +543,6 @@ class _MapScreenState extends State<MapScreen>
     }
     return null;
   }
-
-  /// Altura objetivo del carrusel — expandida (Estado 19b) con card
-  /// seleccionada, compacta (Estado 19a) si no. El dock coloca los controles
-  /// encima de esa altura sin calcular offsets por separado.
-  double get _carouselHeight => _selectedBusinessId == null
-      ? _kCarouselCompactHeight +
-            (_filteredBusinesses.any(_hasEcoBadge) ? 32 : 0)
-      : _kCarouselExpandedHeight;
 
   /// Con el chip de jornadas activo el mapa muestra solo esas: los negocios
   /// se ocultan para que el filtro signifique lo mismo que los demás chips.
@@ -2446,48 +2439,29 @@ class _MapScreenState extends State<MapScreen>
   }
 
   Widget _buildRecommendationsCarousel(List<BusinessModel> filtered) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return MapCarousel(
+      controller: _carouselController,
       children: [
-        AnimatedContainer(
-          // Al expandir hay que reservar toda la altura antes de mostrar los
-          // botones de la tarjeta. Al colapsar sí puede animarse el espacio.
-          duration: _selectedBusinessId == null
-              ? AppMotion.respect(context, AppMotion.standardDuration)
-              : Duration.zero,
-          curve: AppMotion.decelerate,
-          height: _carouselHeight,
-          child: PageView.builder(
-            controller: _carouselController,
-            padEnds: false,
-            itemCount: filtered.length,
-            itemBuilder: (context, index) {
-              final business = filtered[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: _BusinessCarouselCard(
-                    business: business,
-                    expanded: business.id == _selectedBusinessId,
-                    distanceKm: LocationService.distanceKm(
-                      _userPosition,
-                      business.latitude,
-                      business.longitude,
-                    ),
-                    onTap: () => _onCarouselCardTapped(business),
-                    onNavigate: () => _startTripPreview(business),
-                    onViewProfile: () => pushSharedAxis(
-                      context,
-                      BusinessDetailScreen(business: business),
-                    ),
-                  ),
-                ),
-              );
-            },
+        for (final business in filtered)
+          Padding(
+            key: ValueKey(business.id),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _BusinessCarouselCard(
+              business: business,
+              expanded: business.id == _selectedBusinessId,
+              distanceKm: LocationService.distanceKm(
+                _userPosition,
+                business.latitude,
+                business.longitude,
+              ),
+              onTap: () => _onCarouselCardTapped(business),
+              onNavigate: () => _startTripPreview(business),
+              onViewProfile: () => pushSharedAxis(
+                context,
+                BusinessDetailScreen(business: business),
+              ),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -2872,14 +2846,6 @@ class _MapScreenState extends State<MapScreen>
     if (!_voiceGuidanceEnabled) unawaited(TtsService().stop());
   }
 }
-
-/// Altura del carrusel sin card seleccionada (Estado 19a) — con margen
-/// extra para redondeo de fuente, evita overflow de `RenderFlex`.
-const double _kCarouselCompactHeight = 112;
-
-/// Altura del carrusel con card expandida y "Cómo llegar"/"Ver perfil"
-/// (Estado 19b), Pantalla 2a.
-const double _kCarouselExpandedHeight = 196;
 
 /// Mapea el `maneuver` de Directions al ícono correspondiente; `null`
 /// (paso sin maniobra especial, típicamente el primero de la ruta) cae a
