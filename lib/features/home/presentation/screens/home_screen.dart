@@ -323,7 +323,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onBusinessesChanged);
       if (!GuestSessionService().isGuest) {
-        unawaited(NotificationService().ensureDemoNotifications(businesses));
         unawaited(_initializeNotificationAutomations());
       }
     } on BusinessServiceException catch (e) {

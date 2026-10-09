@@ -1,0 +1,22 @@
+Crea un formulario clásico en español para solicitar acceso a la demo Android de Nikara, una aplicación de ecoturismo. Usa un diseño sencillo, accesible y adaptable a móviles, con verde oscuro como color principal.
+
+Título: Solicitud de acceso a la demo de Nikara
+Descripción: Descubre nuestra propuesta de ecoturismo. Completa tus datos; revisaremos tu solicitud y te responderemos por correo. La demo es un prototipo disponible para Android. Enviar esta solicitud no habilita la descarga automáticamente.
+
+Campos en este orden:
+1. Nombre completo. Texto corto, obligatorio.
+2. Correo para recibir el acceso. Campo de tipo correo electrónico con validación, obligatorio. Ayuda: Si usamos Drive privado, utiliza un correo vinculado a tu cuenta de Google.
+3. Organización o institución. Texto corto, opcional.
+4. ¿Con qué perfil te gustaría probar Nikara? Lista desplegable obligatoria sin una respuesta seleccionada por defecto. Opciones: Viajero/a; Guía turístico/a; Emprendimiento turístico; Institución / evaluador/a; Otro.
+5. Modelo del teléfono y versión de Android. Texto corto, opcional.
+6. ¿Qué te gustaría explorar o evaluar en la demo? Texto largo, obligatorio, máximo 1000 caracteres.
+7. Casilla individual obligatoria, desmarcada por defecto: Confirmo que dispongo de un teléfono Android para instalar la APK.
+8. Casilla individual obligatoria, desmarcada por defecto: Entiendo que esta es una versión de prototipo para pruebas y puede contener errores.
+9. Casilla individual obligatoria, desmarcada por defecto: Autorizo utilizar mi nombre y correo para gestionar esta solicitud y enviarme instrucciones de acceso a la demo.
+
+Botón: Enviar solicitud.
+Página de agradecimiento: ¡Recibimos tu solicitud! El equipo de Nikara revisará tus datos. Si tu solicitud es aprobada, recibirás por correo las instrucciones para descargar e instalar la demo en Android.
+
+No solicites documentos, pagos, contraseñas ni archivos. No incluyas la URL de la APK ni campos editables de aprobación, estado, secreto o token. No envíes el acceso al descargar tras la simple recepción del formulario.
+
+La revisión será manual mediante Jotform Workflows, con un aprobador del equipo que debe iniciar sesión. La rama aprobada se configurará después para entregar acceso; la rechazada no incluirá enlaces de descarga. No inventes correos del equipo ni URLs de descarga. Si no puedes configurar el workflow, crea solo el formulario y deja esa configuración pendiente.

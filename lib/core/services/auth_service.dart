@@ -15,8 +15,10 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/core/services/account_switcher_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/features/routes/data/route_travel_service.dart';
 import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/utils/image_upload.dart';
+import 'package:nikara_app/core/utils/validators.dart';
 import 'package:nikara_app/core/supabase/supabase_config.dart';
 
 /// Enum simple a propósito (sin Bloc/Cubit): el proyecto usa servicios singleton + estado local (ver CLAUDE.md). [invalid] es solo del Form de la pantalla; [AuthService] nunca lo devuelve.
@@ -110,7 +112,7 @@ class AuthService {
     required String fullName,
     required String email,
     required String password,
-    required String phone,
+    required String username,
     required UserOrigin origin,
   }) async {
     if (!origin.isComplete) {
@@ -118,11 +120,28 @@ class AuthService {
         'Completa tu procedencia para crear la cuenta.',
       );
     }
+    final usernameError = validateUsername(username);
+    if (usernameError != null) return AuthResult.failure(usernameError);
     try {
+      if (username.isNotEmpty) {
+        final available = await _client.rpc(
+          'username_available',
+          params: {'p_username': username.trim().toLowerCase()},
+        );
+        if (available != true) {
+          return const AuthResult.failure(
+            'Ese nombre de usuario no está disponible. Elige otro.',
+          );
+        }
+      }
       final response = await _client.auth.signUp(
         email: email,
         password: password,
-        data: {'full_name': fullName, 'phone': phone, ...origin.toRow()},
+        data: {
+          'full_name': fullName,
+          if (username.isNotEmpty) 'username': username.trim().toLowerCase(),
+          ...origin.toRow(),
+        },
       );
       if (response.user == null) {
         return const AuthResult.failure(
@@ -290,6 +309,7 @@ class AuthService {
     }
     await _client.auth.signOut();
     FavoritesService().invalidate();
+    RouteTravelService().invalidate();
     ProfileFaceService().invalidate();
   }
 
@@ -303,7 +323,24 @@ class AuthService {
   Future<List<SavedAccount>> getSavedAccounts() async {
     final accounts = await _accounts.getAccounts();
     final currentId = currentAuthUser?.id;
-    return accounts.where((a) => a.userId != currentId).toList(growable: false);
+    return Future.wait(
+      accounts.where((a) => a.userId != currentId).map((account) async {
+        try {
+          final profile = await getProfileById(account.userId);
+          return SavedAccount(
+            userId: account.userId,
+            email: account.email,
+            fullName: profile?.fullName ?? '',
+            role: profile?.role ?? UserRole.turista,
+            refreshToken: account.refreshToken,
+            savedAt: account.savedAt,
+            avatarUrl: profile?.avatarUrl,
+          );
+        } on AuthServiceException {
+          return account;
+        }
+      }),
+    );
   }
 
   Future<void> forgetAccount(String userId) => _accounts.remove(userId);
@@ -391,6 +428,7 @@ class AuthService {
       // cuenta nueva heredaría los favoritos de la anterior, porque el
       // pushAndRemoveUntil del selector recrea la UI pero no el proceso.
       FavoritesService().invalidate();
+      RouteTravelService().invalidate();
       ProfileFaceService().invalidate();
       await rememberCurrentAccount();
       return const AuthResult.success();
@@ -403,6 +441,109 @@ class AuthService {
     } catch (_) {
       return const AuthResult.failure(
         'Ocurrió un error de conexión. Verifica tu internet e intenta de nuevo.',
+      );
+    }
+  }
+
+  Future<UserModel> updateAccountProfile({
+    required String fullName,
+    required String phone,
+    String? username,
+  }) async {
+    final id = currentAuthUser?.id;
+    if (id == null) {
+      throw const AuthServiceException('Inicia sesión para editar tu cuenta.');
+    }
+    final normalizedUsername = username?.trim().toLowerCase();
+    if (normalizedUsername != null && normalizedUsername.isNotEmpty) {
+      final error = validateUsername(normalizedUsername);
+      if (error != null) throw AuthServiceException(error);
+    }
+    try {
+      final row = await _client
+          .from('profiles')
+          .update({
+            'full_name': fullName.trim(),
+            'phone': phone.trim(),
+            if (normalizedUsername != null && normalizedUsername.isNotEmpty)
+              'username': normalizedUsername,
+          })
+          .eq('id', id)
+          .select()
+          .single();
+      if (currentAuthUser?.id != id) {
+        throw const AuthServiceException('La cuenta cambió. Intenta de nuevo.');
+      }
+      ProfileFaceService().invalidate();
+      return UserModel.fromRow(row);
+    } on PostgrestException catch (e) {
+      throw AuthServiceException(
+        e.code == '23505'
+            ? 'Ese nombre de usuario ya está ocupado. Elige otro.'
+            : 'No se pudo guardar el perfil. Verifica tu conexión.',
+      );
+    } catch (_) {
+      throw const AuthServiceException(
+        'No se pudo guardar el perfil. Verifica tu conexión.',
+      );
+    }
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = currentAuthUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw const AuthServiceException(
+        'Inicia sesión para cambiar tu contraseña.',
+      );
+    }
+    try {
+      await _client.auth.signInWithPassword(
+        email: email,
+        password: currentPassword,
+      );
+      if (currentAuthUser?.id != user.id) {
+        throw const AuthServiceException('La cuenta cambió. Intenta de nuevo.');
+      }
+      await _client.auth.updateUser(UserAttributes(password: newPassword));
+    } on AuthException catch (e) {
+      throw AuthServiceException(_friendlyAuthError(e));
+    } catch (_) {
+      throw const AuthServiceException(
+        'No se pudo cambiar tu contraseña. Verifica tu conexión.',
+      );
+    }
+  }
+
+  Future<void> updatePreferences(Map<String, bool> values) async {
+    final id = currentAuthUser?.id;
+    if (id == null) {
+      throw const AuthServiceException(
+        'Inicia sesión para guardar tus preferencias.',
+      );
+    }
+    const allowed = {
+      'trip_alerts',
+      'eco_campaigns',
+      'offers',
+      'public_profile',
+    };
+    if (values.keys.any((key) => !allowed.contains(key))) {
+      throw const AuthServiceException('Preferencia no válida.');
+    }
+    try {
+      await _client
+          .from('profiles')
+          .update(values)
+          .eq('id', id)
+          .select('id')
+          .single();
+    } catch (_) {
+      throw const AuthServiceException(
+        'No se pudo guardar la preferencia. Verifica tu conexión.',
       );
     }
   }

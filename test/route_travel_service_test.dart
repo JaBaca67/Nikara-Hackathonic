@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'support/account_data_server.dart';
 import 'package:nikara_app/features/routes/data/route_travel_service.dart';
 import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
@@ -30,10 +32,22 @@ RouteModel route(List<RouteStopModel> stops, {String id = 'route'}) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late RouteTravelService service;
+  late AccountDataServer server;
+  late SupabaseClient client;
+  String currentUser = "owner";
+  RouteTravelService makeService() => RouteTravelService.forTesting(
+    client: client,
+    currentUserId: () => currentUser,
+  );
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    service = RouteTravelService.forTesting();
+    server = AccountDataServer();
+    client = server.newClient();
+    currentUser = "owner";
+    service = makeService();
   });
+
+  tearDown(() => client.dispose());
 
   test(
     'reiniciar la app recupera visitas sin confundir el mismo lugar en otro día',
@@ -47,7 +61,7 @@ void main() {
         visitKey: first.visitKey,
         status: StopVisitStatus.visited,
       );
-      final restarted = RouteTravelService.forTesting();
+      final restarted = makeService();
       await restarted.open(
         route([first.copyWith(id: 'new'), second]),
         accountId: 'owner',
@@ -68,8 +82,10 @@ void main() {
       visitKey: a.visitKey,
       status: StopVisitStatus.visited,
     );
+    currentUser = 'other';
     await service.open(route([a]), accountId: 'other');
     expect(service.active.value!.progress, isEmpty);
+    currentUser = 'owner';
     await service.open(route([a], id: 'different'), accountId: 'owner');
     expect(service.active.value!.progress, isEmpty);
   });
@@ -152,4 +168,27 @@ void main() {
       expect(service.active.value!.visitedCount, 1);
     },
   );
+  test('un fallo de escritura no marca la parada como visitada', () async {
+    final a = stop('a');
+    await service.open(route([a]), accountId: 'owner');
+    server.failWrites = true;
+    await expectLater(
+      service.setStatus(
+        accountId: 'owner',
+        routeId: 'route',
+        visitKey: a.visitKey,
+        status: StopVisitStatus.visited,
+      ),
+      throwsA(isA<PostgrestException>()),
+    );
+    expect(service.active.value!.visitedCount, 0);
+    server.failWrites = false;
+    await service.setStatus(
+      accountId: 'owner',
+      routeId: 'route',
+      visitKey: a.visitKey,
+      status: StopVisitStatus.visited,
+    );
+    expect(service.active.value!.visitedCount, 1);
+  });
 }

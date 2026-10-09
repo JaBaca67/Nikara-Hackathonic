@@ -1,14 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
 
 import 'package:nikara_app/core/models/review_status.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
 import 'package:nikara_app/features/profile/domain/models/travel_postcard.dart';
-import 'package:nikara_app/features/notifications/data/notification_service.dart';
 
 class PassportServiceException implements Exception {
   const PassportServiceException(this.message);
@@ -74,34 +73,48 @@ class PassportCollection {
   }
 }
 
-/// Completed GPS trips, stored on this device in a separate key per account.
-/// Snapshots preserve the postcard and its original seal after business edits.
+/// Completed trips and postcard snapshots are private rows in Supabase.
 class PassportService {
   factory PassportService() => instance;
   PassportService._internal()
-    : _currentUserId = (() => AuthService().currentAuthUser?.id),
-      _onProgress = ((ownerId, collection) =>
-          NotificationService().syncPassportProgress(
-            ownerId: ownerId,
-            trips: collection.notificationTrips,
-          ));
+    : _remote = RemoteUserDataService(),
+      _currentUserId = (() => AuthService().currentAuthUser?.id),
+      _onProgress = null;
   @visibleForTesting
-  PassportService.forTesting(this._currentUserId, [this._onProgress]);
+  PassportService.forTesting(
+    this._currentUserId, [
+    this._onProgress,
+    SupabaseClient? client,
+  ]) : _remote = RemoteUserDataService(client: client);
 
   static final instance = PassportService._internal();
   static final revision = ValueNotifier<int>(0);
   static final openRequested = ValueNotifier<bool>(false);
   final String? Function() _currentUserId;
+  final RemoteUserDataService _remote;
   final Future<void> Function(String, PassportCollection)? _onProgress;
   Future<void> _writeQueue = Future.value();
-  static String _key(String ownerId) => 'completed_business_trips_v1_$ownerId';
 
   Future<PassportCollection> getCollection() async {
     final ownerId = _currentUserId();
     if (ownerId == null) return const PassportCollection([]);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final collection = _read(prefs, ownerId);
+      final rows = await _remote.client
+          .from('passport_trips')
+          .select('trip_id,started_at,postcard')
+          .eq('user_id', ownerId)
+          .order('completed_at');
+      final collection = PassportCollection(
+        List.unmodifiable(
+          rows.map(
+            (row) => CompletedPassportTrip.fromJson({
+              'id': row['trip_id'],
+              'started_at': row['started_at'],
+              'postcard': row['postcard'],
+            }),
+          ),
+        ),
+      );
       // An account switch during the read must not expose the prior collection.
       return _currentUserId() == ownerId
           ? collection
@@ -111,19 +124,6 @@ class PassportService {
         'No se pudo leer tu pasaporte. Intenta de nuevo.',
       );
     }
-  }
-
-  PassportCollection _read(SharedPreferences prefs, String ownerId) {
-    final raw = prefs.getString(_key(ownerId));
-    if (raw == null) return const PassportCollection([]);
-    final rows = jsonDecode(raw) as List<dynamic>;
-    return PassportCollection(
-      List.unmodifiable(
-        rows.map(
-          (row) => CompletedPassportTrip.fromJson(row as Map<String, dynamic>),
-        ),
-      ),
-    );
   }
 
   Future<TravelPostcard> recordCompletedTrip({
@@ -172,36 +172,21 @@ class PassportService {
       );
     }
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final inserted = await _remote.client.rpc(
+        'record_passport_trip',
+        params: {
+          'p_trip_id': tripId,
+          'p_business_id': business.id,
+          'p_started_at': startedAt.toUtc().toIso8601String(),
+          'p_completed_at': completedAt.toUtc().toIso8601String(),
+        },
+      );
       if (_currentUserId() != ownerId) {
         throw const PassportServiceException('La cuenta del viaje cambió.');
       }
-      final current = _read(prefs, ownerId);
-      final previous = current.trips
-          .where((trip) => trip.id == tripId)
-          .firstOrNull;
-      if (previous != null) {
-        return current.postcards.firstWhere(
-          (card) => card.id == previous.postcard.id,
-        );
-      }
-      final trip = CompletedPassportTrip(
-        id: tripId,
-        startedAt: startedAt,
-        postcard: TravelPostcard.fromBusiness(business, sealedAt: completedAt),
-      );
-      final updated = PassportCollection([...current.trips, trip]);
-      final saved = await prefs.setString(
-        _key(ownerId),
-        jsonEncode(updated.trips.map((t) => t.toJson()).toList()),
-      );
-      if (!saved) {
-        throw const PassportServiceException(
-          'No se pudo guardar la postal. Intenta de nuevo.',
-        );
-      }
+      final updated = await getCollection();
       revision.value++;
-      unawaited(_publishProgress(ownerId, updated));
+      if (inserted == true) unawaited(_publishProgress(ownerId, updated));
       return updated.postcards.firstWhere((card) => card.id == business.id);
     } on PassportServiceException {
       rethrow;

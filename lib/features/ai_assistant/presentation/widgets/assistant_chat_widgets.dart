@@ -341,6 +341,18 @@ class _HistorySheet extends StatefulWidget {
 class _HistorySheetState extends State<_HistorySheet> {
   late Future<List<AssistantConversation>> _future = widget.store.load();
 
+  @override
+  void initState() {
+    super.initState();
+    widget.store.revision.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    widget.store.revision.removeListener(_reload);
+    super.dispose();
+  }
+
   void _reload() => setState(() => _future = widget.store.load());
 
   @override
@@ -387,6 +399,16 @@ class _HistorySheetState extends State<_HistorySheet> {
                     ),
                   );
                 }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: TextButton(
+                      onPressed: _reload,
+                      child: const Text(
+                        'No se pudo cargar el historial. Reintentar',
+                      ),
+                    ),
+                  );
+                }
                 final conversations = snapshot.data ?? const [];
                 if (conversations.isEmpty) {
                   return Padding(
@@ -394,7 +416,7 @@ class _HistorySheetState extends State<_HistorySheet> {
                     child: Center(
                       child: Text(
                         'Todavía no tenés conversaciones guardadas. Las que '
-                        'tengas se guardan solas en este teléfono.',
+                        'tengas se guardan en tu cuenta.',
                         textAlign: TextAlign.center,
                         style: AppTextStyles.body.copyWith(
                           color: AppColors.settingsTextMuted,
@@ -430,8 +452,20 @@ class _HistorySheetState extends State<_HistorySheet> {
                       ),
                       trailing: IconButton(
                         onPressed: () async {
-                          await widget.store.delete(conversation.id);
-                          _reload();
+                          try {
+                            await widget.store.delete(conversation.id);
+                            if (mounted) _reload();
+                          } catch (_) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'No se pudo borrar la conversación.',
+                                  ),
+                                ),
+                              );
+                            }
+                          }
                         },
                         icon: const Icon(Icons.delete_outline),
                         color: AppColors.destructive,

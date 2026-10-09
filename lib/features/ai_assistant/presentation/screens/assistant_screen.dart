@@ -18,6 +18,7 @@ import 'package:nikara_app/features/routes/presentation/screens/route_detail_scr
 import 'package:nikara_app/shared/services/map_focus_controller.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/circle_back_button.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
@@ -109,12 +110,19 @@ class _AssistantScreenState extends State<AssistantScreen> {
     } finally {
       if (mounted) setState(() => _isSending = false);
       _scrollToEnd();
-      // Se guarda después de cada turno, no al salir: si la app se cierra de
-      // golpe, la conversación ya está en disco.
-      _conversationId = await _store.save(
-        id: _conversationId,
-        messages: _messages,
-      );
+      try {
+        _conversationId = await _store.save(
+          id: _conversationId,
+          messages: _messages,
+        );
+      } catch (_) {
+        if (mounted) {
+          AppSnackbar.showError(
+            context,
+            'No se pudo guardar la conversación. Verifica tu conexión.',
+          );
+        }
+      }
     }
   }
 

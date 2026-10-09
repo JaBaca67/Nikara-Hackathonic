@@ -176,10 +176,10 @@ void main() {
     expect(rows, hasLength(5));
     expect(requests.where((r) => r.method == 'POST'), hasLength(1));
 
-    // Borrar los avisos no los vuelve a generar en este dispositivo.
+    // Without local receipts, the database is the source of existing notices.
     rows.clear();
     await NotificationService().ensureDemoNotifications(businesses);
-    expect(rows, isEmpty);
+    expect(rows, hasLength(5));
   });
 
   test(

@@ -77,6 +77,23 @@ class ReviewService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  Future<int> countForUser(String userId) async {
+    if (_client.auth.currentUser?.id != userId) {
+      throw const ReviewServiceException('La cuenta cambió. Intenta de nuevo.');
+    }
+    try {
+      return await _client
+          .from(_table)
+          .count(CountOption.exact)
+          .eq('user_id', userId)
+          .eq('target_type', businessTargetType);
+    } catch (_) {
+      throw const ReviewServiceException(
+        'No se pudieron consultar tus reseñas.',
+      );
+    }
+  }
+
   /// Complementa `revision` con reseñas escritas en otros dispositivos.
   Future<void> Function() subscribeToChanges(VoidCallback onChange) {
     final channel = _client

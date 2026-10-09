@@ -1,7 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
 
 import 'package:nikara_app/features/ai_assistant/domain/models/assistant_models.dart';
 
@@ -25,128 +25,86 @@ class AssistantConversation {
   final List<AssistantMessage> messages;
 }
 
-/// Guarda los hilos del asistente en el teléfono.
-///
-/// ## Por qué `SharedPreferences` y no Supabase
-///
-/// Un historial de chat es texto y se consulta solo desde el aparato donde se
-/// escribió, así que no justifica una tabla con sus policies. Es además el
-/// mismo criterio que ya usa la app para la sesión de invitado y los extras de
-/// perfil. Consecuencia aceptada: no sincroniza entre dispositivos y se pierde
-/// al desinstalar — a cambio funciona también sin cuenta.
-///
-/// ## Qué se guarda y qué no
-///
-/// De cada recomendación se persiste **solo el id**, no el nombre ni la foto.
-/// Al reabrir el hilo las tarjetas se vuelven a hidratar desde Supabase, así
-/// que muestran los datos de hoy y no los de la semana pasada. Si un negocio
-/// se dio de baja, su tarjeta simplemente no aparece — mejor eso que una ficha
-/// fantasma.
+/// Conversations belong to the authenticated account in Supabase.
+/// Guest conversations remain in screen memory and are never saved to disk.
 class AssistantConversationStore {
   factory AssistantConversationStore() => instance;
 
-  AssistantConversationStore._internal();
+  AssistantConversationStore._internal() : _remote = RemoteUserDataService();
+  AssistantConversationStore.forTesting(SupabaseClient client)
+    : _remote = RemoteUserDataService(client: client);
+  final RemoteUserDataService _remote;
 
   static final AssistantConversationStore instance =
       AssistantConversationStore._internal();
-
-  static const _key = 'assistant_conversations_v1';
-
-  /// Tope de hilos guardados. Las preferencias no son una base de datos: con
-  /// un historial sin límite, cada arranque pagaría el costo de leer y
-  /// deserializar todo.
-  static const _maxConversations = 20;
 
   /// Avisa a la UI que la lista cambió, sin que la pantalla tenga que
   /// recargarla a mano — mismo patrón que `FavoritesService.idsNotifier`.
   final ValueNotifier<int> revision = ValueNotifier(0);
 
   Future<List<AssistantConversation>> load() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_key);
-      if (raw == null || raw.isEmpty) return const [];
-
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
-
-      final conversations = decoded
-          .whereType<Map<String, dynamic>>()
-          .map(_decodeConversation)
-          .whereType<AssistantConversation>()
-          .toList();
-
-      conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      return conversations;
-    } catch (e) {
-      // Un historial corrupto no puede impedir abrir el asistente: se reporta
-      // y se sigue con la lista vacía.
-      debugPrint('[AssistantConversationStore] no se pudo leer: $e');
-      return const [];
-    }
+    final userId = _remote.client.auth.currentUser?.id;
+    if (userId == null) return [];
+    final rows = await _remote.client
+        .from('assistant_conversations')
+        .select()
+        .eq('user_id', userId)
+        .order('updated_at', ascending: false)
+        .limit(20);
+    _remote.requireSameUser(userId);
+    return rows
+        .map(
+          (row) =>
+              _decodeConversation({...row, 'updatedAt': row['updated_at']}),
+        )
+        .whereType<AssistantConversation>()
+        .toList();
   }
 
-  /// Crea o actualiza un hilo. Devuelve el id con el que quedó guardado.
   Future<String> save({
     String? id,
     required List<AssistantMessage> messages,
   }) async {
+    final userId = _remote.client.auth.currentUser?.id;
+    if (userId == null) return '';
     final usable = messages.where((m) => !m.isError).toList();
-    // Un hilo con solo el saludo del asistente no es una conversación.
     if (!usable.any((m) => m.isUser)) return id ?? '';
-
-    final conversationId =
-        id ?? DateTime.now().microsecondsSinceEpoch.toString();
-
-    try {
-      final current = await load();
-      final others = current.where((c) => c.id != conversationId).toList();
-
-      others.insert(
-        0,
-        AssistantConversation(
-          id: conversationId,
-          title: _titleFrom(usable),
-          updatedAt: DateTime.now(),
-          messages: messages,
-        ),
-      );
-
-      final trimmed = others.take(_maxConversations).toList();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _key,
-        jsonEncode(trimmed.map(_encodeConversation).toList()),
-      );
-      revision.value++;
-    } catch (e) {
-      debugPrint('[AssistantConversationStore] no se pudo guardar: $e');
-    }
-    return conversationId;
+    final conversationId = id == null || id.isEmpty ? const Uuid().v4() : id;
+    final saved = await _remote.client
+        .from('assistant_conversations')
+        .upsert({
+          'id': conversationId,
+          'user_id': userId,
+          'title': _titleFrom(usable),
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+          'messages': usable.map(_encodeMessage).toList(),
+        }, onConflict: 'id')
+        .select('id')
+        .single();
+    _remote.requireSameUser(userId);
+    revision.value++;
+    return saved['id'] as String;
   }
 
   Future<void> delete(String id) async {
-    try {
-      final remaining = (await load()).where((c) => c.id != id).toList();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _key,
-        jsonEncode(remaining.map(_encodeConversation).toList()),
-      );
-      revision.value++;
-    } catch (e) {
-      debugPrint('[AssistantConversationStore] no se pudo borrar: $e');
-    }
+    final userId = _remote.requireUser();
+    await _remote.client
+        .from('assistant_conversations')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+    _remote.requireSameUser(userId);
+    revision.value++;
   }
 
   Future<void> clear() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_key);
-      revision.value++;
-    } catch (e) {
-      debugPrint('[AssistantConversationStore] no se pudo limpiar: $e');
-    }
+    final userId = _remote.requireUser();
+    await _remote.client
+        .from('assistant_conversations')
+        .delete()
+        .eq('user_id', userId);
+    _remote.requireSameUser(userId);
+    revision.value++;
   }
 
   String _titleFrom(List<AssistantMessage> messages) {
@@ -163,16 +121,6 @@ class AssistantConversationStore {
   // Deliberadamente separada de la de los modelos: lo que viaja a la Edge
   // Function y lo que se guarda en el teléfono son dos contratos distintos y
   // cambian por motivos distintos.
-
-  Map<String, dynamic> _encodeConversation(AssistantConversation c) => {
-    'id': c.id,
-    'title': c.title,
-    'updatedAt': c.updatedAt.toIso8601String(),
-    'messages': c.messages
-        .where((m) => !m.isError)
-        .map(_encodeMessage)
-        .toList(),
-  };
 
   Map<String, dynamic> _encodeMessage(AssistantMessage m) => {
     'author': m.isUser ? 'user' : 'assistant',

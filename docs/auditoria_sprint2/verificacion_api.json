@@ -1,0 +1,414 @@
+{
+  "checked_at_utc": "2026-10-09T00:25:44.476564+00:00",
+  "project_host": "taxtvsqfpmrrkvezwwpb.supabase.co",
+  "method": "GET; PostgREST explicit SELECT columns LIMIT 0, Auth public settings, OpenAPI metadata",
+  "limits": "Does not verify writes, RLS behavior, triggers, FK, storage uploads, deployed Edge Functions, or realtime events. OpenAPI RPC absence with anon is inconclusive.",
+  "tables": [
+    {
+      "table": "audit_logs",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "action",
+        "table_name",
+        "timestamp"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "business_posts",
+      "requested_columns": [
+        "id",
+        "business_id",
+        "owner_id",
+        "body",
+        "image_url",
+        "created_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "businesses",
+      "requested_columns": [
+        "id",
+        "owner_id",
+        "name",
+        "category",
+        "description",
+        "city",
+        "address_text",
+        "location",
+        "phone",
+        "instagram_handle",
+        "photos",
+        "is_verified",
+        "created_at",
+        "schedules",
+        "facebook_handle",
+        "status",
+        "rejection_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "logo_url",
+        "show_host",
+        "amenities",
+        "activities",
+        "eco_seal_requested",
+        "eco_practices",
+        "access_details",
+        "other_notes",
+        "tiktok_handle",
+        "secondary_phone",
+        "manual_open_override",
+        "subcategory",
+        "day_pass_enabled",
+        "day_pass_price",
+        "day_pass_includes",
+        "day_pass_schedule",
+        "day_pass_notes",
+        "municipality_code"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "device_push_tokens",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "token",
+        "platform",
+        "created_at",
+        "last_seen_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "eco_activities",
+      "requested_columns": [
+        "id",
+        "title",
+        "description",
+        "category",
+        "location",
+        "latitude",
+        "longitude",
+        "start_time",
+        "max_capacity",
+        "organizer_id",
+        "organizer_name",
+        "organizer_verified",
+        "requirements",
+        "created_at",
+        "organization_id",
+        "image_url",
+        "status",
+        "rejection_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "municipality_code",
+        "moments_enabled",
+        "moments_max_messages",
+        "moments_max_accounts",
+        "moments_max_per_account",
+        "contact_phone",
+        "instagram_link",
+        "facebook_link"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "eco_participants",
+      "requested_columns": [
+        "activity_id",
+        "user_id",
+        "joined_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "legal_identities",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "kind",
+        "document_number",
+        "document_photo_url",
+        "verified_at",
+        "verified_by",
+        "created_at",
+        "document_photo_back_url"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_automation_settings",
+      "requested_columns": [
+        "user_id",
+        "enabled",
+        "next_business_at",
+        "last_business_id"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_completed_trips",
+      "requested_columns": [
+        "user_id",
+        "trip_id",
+        "business_id",
+        "started_at",
+        "completed_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "notification_event_receipts",
+      "requested_columns": [
+        "user_id",
+        "event_key",
+        "created_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "notifications",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "title",
+        "body",
+        "type",
+        "reference_id",
+        "is_read",
+        "created_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "organizations",
+      "requested_columns": [
+        "id",
+        "name",
+        "handle",
+        "description",
+        "logo_url",
+        "banner_url",
+        "owner_id",
+        "is_verified",
+        "created_at",
+        "status",
+        "rejection_reason",
+        "reviewed_at",
+        "reviewed_by",
+        "municipality_code"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "origin_places",
+      "requested_columns": [
+        "municipality_code",
+        "department",
+        "city",
+        "municipality",
+        "aliases"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "profiles",
+      "requested_columns": [
+        "id",
+        "full_name",
+        "email",
+        "phone",
+        "role",
+        "points",
+        "created_at",
+        "avatar_url",
+        "residence_type",
+        "origin_country_code",
+        "origin_city",
+        "origin_municipality",
+        "public_display_name",
+        "bio",
+        "show_origin",
+        "show_origin_details"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "reviews",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "target_type",
+        "target_id",
+        "rating",
+        "comment",
+        "created_at",
+        "media_urls"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "reviews_backup",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "target_type",
+        "target_id",
+        "rating",
+        "comment",
+        "created_at",
+        "media_urls"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "route_stops",
+      "requested_columns": [
+        "id",
+        "route_id",
+        "day_number",
+        "position",
+        "kind",
+        "business_id",
+        "eco_activity_id",
+        "destination_id",
+        "title",
+        "subtitle",
+        "category",
+        "image_path",
+        "latitude",
+        "longitude",
+        "created_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "routes",
+      "requested_columns": [
+        "id",
+        "owner_id",
+        "title",
+        "days",
+        "is_public",
+        "status",
+        "cloned_from_route_id",
+        "created_at",
+        "updated_at",
+        "image_urls",
+        "description",
+        "source_url",
+        "catalog_name"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "user_favorites",
+      "requested_columns": [
+        "id",
+        "user_id",
+        "item_type",
+        "item_id",
+        "created_at"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    },
+    {
+      "table": "public_profiles",
+      "requested_columns": [
+        "id",
+        "full_name",
+        "avatar_url",
+        "role",
+        "points",
+        "residence_type",
+        "origin_country_code",
+        "origin_city",
+        "origin_municipality",
+        "bio"
+      ],
+      "http_status": 200,
+      "column_names_resolve": true,
+      "returned_rows": 0
+    }
+  ],
+  "auth_public_settings": {
+    "http_status": 200,
+    "disable_signup": false,
+    "mailer_autoconfirm": true,
+    "phone_autoconfirm": false,
+    "external": {
+      "anonymous_users": false,
+      "apple": false,
+      "azure": false,
+      "bitbucket": false,
+      "discord": false,
+      "facebook": true,
+      "snapchat": false,
+      "figma": false,
+      "fly": false,
+      "github": false,
+      "gitlab": false,
+      "google": true,
+      "keycloak": false,
+      "kakao": false,
+      "linkedin": false,
+      "linkedin_oidc": false,
+      "notion": false,
+      "spotify": false,
+      "slack": false,
+      "slack_oidc": false,
+      "workos": false,
+      "twitch": false,
+      "twitter": false,
+      "email": true,
+      "phone": false,
+      "zoom": false
+    }
+  },
+  "openapi": {
+    "http_status": 401,
+    "rpc_names_visible_to_anon": []
+  }
+}

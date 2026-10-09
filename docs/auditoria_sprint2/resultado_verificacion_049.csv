@@ -1,0 +1,15 @@
+control,estado,detalle
+01 Columnas del perfil,OK,5/5 columnas encontradas
+02 Columna del contador,OK,1/1 columna encontrada
+03 Tablas privadas nuevas,OK,3/3 tablas con RLS
+04 RLS de perfiles y favoritos,OK,2/2 tablas con RLS
+05 Políticas privadas nuevas,OK,3/3 políticas propias encontradas
+06 Unicidad del username,OK,1/1 índice único encontrado
+07 Permisos de RPC de clientes,OK,4/4 funciones con permisos esperados
+08 Función interna de puntos protegida,OK,1/1 función sin acceso de clientes
+09 Triggers de 049,OK,9/9 triggers habilitados
+10 Publicación Realtime,OK,14/14 tablas publicadas
+11 Contador de favoritos coherente,OK,0 negocios con discrepancias
+12 Puntos coherentes,OK,0 perfiles con discrepancias
+13 Vista pública con username,OK,1/1 columna encontrada
+14 Sin edición directa de rol o puntos,OK,0 permisos de edición indebidos

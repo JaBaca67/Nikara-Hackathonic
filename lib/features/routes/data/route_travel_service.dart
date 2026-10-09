@@ -1,6 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
 import '../domain/models/route_model.dart';
 import '../domain/models/route_stop_model.dart';
 
@@ -25,41 +25,57 @@ class RouteTravelSession {
       route.stopsForDay(day).where(isPending).firstOrNull;
 }
 
-/// Personal progress on this device, separate from the shared itinerary.
+/// Private progress stored in Supabase, separate from the shared itinerary.
 /// Keys include the account and stable source identity (editing recreates row IDs).
 class RouteTravelService {
   factory RouteTravelService() => instance;
-  RouteTravelService._internal();
+  RouteTravelService._internal()
+    : _remote = RemoteUserDataService(),
+      currentUserId = null;
   @visibleForTesting
-  RouteTravelService.forTesting();
+  RouteTravelService.forTesting({SupabaseClient? client, this.currentUserId})
+    : _remote = RemoteUserDataService(client: client);
+  final RemoteUserDataService _remote;
+  final String? Function()? currentUserId;
+  void _requireAccount(String id) {
+    final actual = currentUserId == null
+        ? _remote.client.auth.currentUser?.id
+        : currentUserId!();
+    if (actual == null || actual != id) {
+      throw StateError('Inicia sesión con la cuenta del recorrido.');
+    }
+  }
+
   static final instance = RouteTravelService._internal();
   final active = ValueNotifier<RouteTravelSession?>(null);
   Future<void> _writes = Future.value();
 
-  String _key(String accountId, String routeId) =>
-      'route_travel_v1:$accountId:$routeId';
+  Future<void> refresh() async {
+    final session = active.value;
+    if (session != null) {
+      await open(session.route, accountId: session.accountId);
+    }
+  }
+
+  void invalidate() => active.value = null;
 
   Future<void> open(RouteModel route, {required String accountId}) async {
     await _writes;
-    final preferences = await SharedPreferences.getInstance();
-    final raw = preferences.getString(_key(accountId, route.id));
+    _requireAccount(accountId);
+    final rows = await _remote.client
+        .from('route_visit_progress')
+        .select('visit_key,status')
+        .eq('user_id', accountId)
+        .eq('route_id', route.id);
+    _requireAccount(accountId);
+    final valid = route.stops.map((s) => s.visitKey).toSet();
     final progress = <String, StopVisitStatus>{};
-    if (raw != null) {
-      try {
-        final decoded = jsonDecode(raw) as Map<String, dynamic>;
-        for (final stop in route.stops) {
-          final value = decoded[stop.visitKey];
-          if (value == 'visited') {
-            progress[stop.visitKey] = StopVisitStatus.visited;
-          }
-          if (value == 'skipped') {
-            progress[stop.visitKey] = StopVisitStatus.skipped;
-          }
-        }
-      } on FormatException {
-        // An invalid local cache does not prevent starting a new journey.
-      } on TypeError {
-        // Older/invalid cache shape.
+    for (final row in rows) {
+      final key = row['visit_key'] as String;
+      if (valid.contains(key)) {
+        progress[key] = row['status'] == 'visited'
+            ? StopVisitStatus.visited
+            : StopVisitStatus.skipped;
       }
     }
     active.value = RouteTravelSession(
@@ -101,12 +117,28 @@ class RouteTravelService {
       } else {
         progress[visitKey] = status;
       }
-      final preferences = await SharedPreferences.getInstance();
-      final saved = await preferences.setString(
-        _key(accountId, routeId),
-        jsonEncode(progress.map((key, value) => MapEntry(key, value.name))),
-      );
-      if (!saved) throw StateError('No se pudo guardar el progreso.');
+      _requireAccount(accountId);
+      if (status == null) {
+        await _remote.client
+            .from('route_visit_progress')
+            .delete()
+            .eq('user_id', accountId)
+            .eq('route_id', routeId)
+            .eq('visit_key', visitKey);
+      } else {
+        await _remote.client
+            .from('route_visit_progress')
+            .upsert({
+              'user_id': accountId,
+              'route_id': routeId,
+              'visit_key': visitKey,
+              'status': status.name,
+              'updated_at': DateTime.now().toUtc().toIso8601String(),
+            }, onConflict: 'user_id,route_id,visit_key')
+            .select('visit_key')
+            .single();
+      }
+      _requireAccount(accountId);
       if (active.value == session) {
         active.value = RouteTravelSession(
           route: session.route,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nikara_app/core/services/favorites_service.dart';
 
 import 'package:nikara_app/core/models/profile_face.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
@@ -105,6 +106,7 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
     super.initState();
     _load();
     BusinessStorageService.revision.addListener(_onDataChanged);
+    FavoritesService.businessCountsRevision.addListener(_onDataChanged);
     EcoService.revision.addListener(_onDataChanged);
   }
 
@@ -135,6 +137,7 @@ class _FaceProfileScreenState extends State<FaceProfileScreen> {
   @override
   void dispose() {
     BusinessStorageService.revision.removeListener(_onDataChanged);
+    FavoritesService.businessCountsRevision.removeListener(_onDataChanged);
     EcoService.revision.removeListener(_onDataChanged);
     super.dispose();
   }

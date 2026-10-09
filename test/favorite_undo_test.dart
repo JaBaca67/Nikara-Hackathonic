@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
 import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -46,6 +49,22 @@ class _FakeServer {
 
   http.Client get client => MockClient((request) async {
     final isRead = request.method == 'GET';
+    if (request.url.path.endsWith('/rpc/set_business_favorite')) {
+      if (!up) throw http.ClientException('Offline');
+      writes++;
+      final params = jsonDecode(request.body);
+      if (params['p_favorite'] == true) {
+        favorites.add(params['p_business_id']);
+      } else {
+        favorites.remove(params['p_business_id']);
+      }
+      return http.Response(
+        jsonEncode(params['p_favorite']),
+        200,
+        request: request,
+        headers: {'content-type': 'application/json'},
+      );
+    }
     if (!request.url.path.endsWith('/user_favorites') || !up) {
       if (!isRead && request.url.path.endsWith('/user_favorites')) {
         throw http.ClientException('Sin conexión (simulada)');
@@ -81,6 +100,13 @@ void main() {
   final server = _FakeServer();
 
   setUpAll(() async {
+    GoogleFonts.config.allowRuntimeFetching = false;
+    RemoteUserDataService.realtimeEnabled = false;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel("com.llfbandit.app_links/events"),
+          (_) async => null,
+        );
     SharedPreferences.setMockInitialValues({
       'sb-example-auth-token': _sessionJson(),
     });
@@ -98,7 +124,7 @@ void main() {
       ..writes = 0;
     SharedPreferences.setMockInitialValues({});
     await Supabase.instance.client.auth.recoverSession(_sessionJson());
-    FavoritesService().invalidate();
+    FavoritesService().resetForTesting();
   });
 
   tearDown(() => FavoritesService().invalidate());
@@ -202,10 +228,7 @@ void main() {
       await tapAndSettle(tester, find.text(_undo));
 
       expect(isFavorite(), isFalse);
-      expect(
-        find.text('Sin conexión. No se pudo actualizar tu favorito.'),
-        findsOneWidget,
-      );
+      expect(find.text(FavoritesService.offlineToggleMessage), findsOneWidget);
       expect(find.text(_removed), findsNothing);
     },
   );
@@ -221,10 +244,7 @@ void main() {
     await tapAndSettle(tester, find.text('corazón'));
 
     expect(isFavorite(), isTrue, reason: 'el corazón se queda como estaba');
-    expect(
-      find.text('Sin conexión. No se pudo actualizar tu favorito.'),
-      findsOneWidget,
-    );
+    expect(find.text(FavoritesService.loadFailedMessage), findsOneWidget);
     expect(find.text(_removed), findsNothing);
     expect(find.text(_undo), findsNothing);
   });

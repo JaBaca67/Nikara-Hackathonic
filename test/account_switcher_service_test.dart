@@ -36,7 +36,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('guarda y recupera una cuenta con todos sus campos', () async {
+  test('guarda solo la sesi?n y obtiene el perfil remotamente', () async {
     final service = AccountSwitcherService();
     await service.upsert(
       _account('a', role: UserRole.emprendedor, refreshToken: 'rt-a'),
@@ -45,9 +45,9 @@ void main() {
     final saved = await service.getAccount('a');
     expect(saved, isNotNull);
     expect(saved!.email, 'a@nikara.test');
-    expect(saved.fullName, 'Cuenta a');
-    expect(saved.role, UserRole.emprendedor);
-    expect(saved.roleLabel, 'Emprendedor');
+    expect(saved.fullName, isEmpty);
+    expect(saved.role, UserRole.turista);
+    expect(saved.roleLabel, 'Turista');
     expect(saved.refreshToken, 'rt-a');
   });
 

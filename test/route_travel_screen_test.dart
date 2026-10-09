@@ -8,9 +8,11 @@ import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/features/routes/domain/models/route_stop_model.dart';
 import 'package:nikara_app/features/routes/presentation/screens/route_travel_screen.dart';
 import 'package:nikara_app/theme/app_theme.dart';
+import 'support/account_data_server.dart';
 
 void main() {
   late RouteTravelService service;
+  late SupabaseClient dataClient;
   setUpAll(() async {
     GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({});
@@ -21,8 +23,13 @@ void main() {
   });
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    service = RouteTravelService.forTesting();
+    dataClient = AccountDataServer().newClient();
+    service = RouteTravelService.forTesting(
+      client: dataClient,
+      currentUserId: () => "guest",
+    );
   });
+  tearDown(() => dataClient.dispose());
   final route = RouteModel(
     id: 'travel-ui',
     ownerId: 'owner',

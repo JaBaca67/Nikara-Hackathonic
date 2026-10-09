@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
 
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -30,20 +32,38 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
+  Future<void> Function()? _stopRemoteChanges;
   final _authService = AuthService();
   final _controller = SettingsController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_authService.isLoggedIn) {
+      _stopRemoteChanges = RemoteUserDataService().subscribe(['profiles'], () {
+        unawaited(_controller.loadProfile());
+      });
+    }
     _controller.loadProfile();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    final stop = _stopRemoteChanges;
+    if (stop != null) unawaited(stop());
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_controller.loadProfile());
+    }
   }
 
   void _open(Widget page) => pushSharedAxis(context, page);

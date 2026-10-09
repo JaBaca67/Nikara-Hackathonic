@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 
 /// Marca o quita el favorito [id] y avisa lo que corresponde, igual en todas
@@ -23,6 +24,7 @@ Future<bool?> toggleFavoriteWithFeedback(
   BuildContext context,
   String id,
 ) async {
+  final ownerId = AuthService().currentAuthUser?.id;
   final bool nowFavorite;
   try {
     nowFavorite = await FavoritesService().toggleFavorite(id);
@@ -35,7 +37,7 @@ Future<bool?> toggleFavoriteWithFeedback(
       context,
       'Quitado de favoritos',
       actionLabel: 'Deshacer',
-      onAction: () => unawaited(_undoRemoval(context, id)),
+      onAction: () => unawaited(_undoRemoval(context, id, ownerId)),
     );
   }
   return nowFavorite;
@@ -43,13 +45,18 @@ Future<bool?> toggleFavoriteWithFeedback(
 
 /// "Deshacer": vuelve a marcar [id]. Si falla, el corazón sigue como estaba
 /// (quitado) y se avisa con el mensaje del servicio, ya en español.
-Future<void> _undoRemoval(BuildContext context, String id) async {
+Future<void> _undoRemoval(
+  BuildContext context,
+  String id,
+  String? ownerId,
+) async {
+  if (ownerId == null || AuthService().currentAuthUser?.id != ownerId) return;
   final service = FavoritesService();
   // Si mientras tanto la persona ya lo volvió a marcar, no hay nada que
   // deshacer; alternar otra vez lo quitaría de nuevo.
   if (service.idsNotifier.value.contains(id)) return;
   try {
-    await service.toggleFavorite(id);
+    await service.setFavorite(id, true);
   } on FavoritesServiceException catch (e) {
     if (context.mounted) AppSnackbar.showError(context, e.message);
   }

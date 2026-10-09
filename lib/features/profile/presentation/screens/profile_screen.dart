@@ -11,6 +11,7 @@ import 'package:nikara_app/core/gamification/gamification_engine.dart';
 import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/features/business/data/review_service.dart';
 import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/core/services/profile_face_service.dart';
 import 'package:nikara_app/core/services/user_stats_service.dart';
@@ -167,6 +168,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoading = false;
       });
     } on BusinessServiceException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _isLoading = false;
+      });
+    } on ReviewServiceException catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = e.message;

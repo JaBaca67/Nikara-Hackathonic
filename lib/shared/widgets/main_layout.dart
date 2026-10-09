@@ -5,6 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/auth/presentation/widgets/origin_completion_gate.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'package:nikara_app/core/services/remote_user_data_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
+import 'package:nikara_app/core/services/local_profile_extras_service.dart';
+import 'package:nikara_app/shared/widgets/app_snackbar.dart';
+import 'package:nikara_app/features/business/data/business_storage_service.dart';
+import 'package:nikara_app/features/eco/data/eco_service.dart';
+import 'package:nikara_app/features/routes/data/route_travel_service.dart';
+import 'package:nikara_app/features/ai_assistant/data/assistant_conversation_store.dart';
 import 'package:nikara_app/features/ai_assistant/presentation/widgets/assistant_fab.dart';
 import 'package:nikara_app/features/eco/presentation/screens/eco_main_screen.dart';
 import 'package:nikara_app/features/home/presentation/screens/home_screen.dart';
@@ -45,7 +53,9 @@ class MainLayout extends StatefulWidget {
   State<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> {
+class _MainLayoutState extends State<MainLayout> with WidgetsBindingObserver {
+  Future<void> Function()? _stopRemoteChanges;
+  Timer? _refreshTimer;
   static const _mapTabIndex = 1;
 
   late int _currentIndex = widget.initialIndex;
@@ -55,6 +65,20 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (AuthService().isLoggedIn) {
+      _stopRemoteChanges = RemoteUserDataService().subscribe([
+        'passport_trips',
+        'profiles',
+        'businesses',
+        'reviews',
+        'eco_activities',
+        'eco_participants',
+        'organizations',
+        'assistant_conversations',
+        'route_visit_progress',
+      ], _scheduleRefresh);
+    }
     _tabController.requestedTab.addListener(_onTabRequested);
     // Inicio y Mapa solo escuchan `FavoritesService.idsNotifier`, que nace
     // vacío: sin esta carga los corazones salían vacíos hasta que se abría
@@ -65,14 +89,60 @@ class _MainLayoutState extends State<MainLayout> {
     // Sin aviso si falla: sin red, Inicio, Mapa y Perfil ya muestran su propio
     // estado de error, y su "Reintentar" vuelve a llamar a `preload()`. Un
     // snackbar encima sería el mismo mensaje dos veces.
-    unawaited(FavoritesService().preload());
+    unawaited(_loadAccountData());
+  }
+
+  Future<void> _loadAccountData() async {
+    try {
+      await LocalProfileExtrasService().migrateAccountData();
+    } catch (_) {
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            AppSnackbar.showError(
+              context,
+              'No se pudieron recuperar algunos viajes anteriores. Reintenta con conexión.',
+            );
+          }
+        });
+      }
+    }
+    await FavoritesService().preload();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _refreshTimer?.cancel();
+    final stop = _stopRemoteChanges;
+    if (stop != null) unawaited(stop());
     _tabController.requestedTab.removeListener(_onTabRequested);
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _scheduleRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(
+      const Duration(milliseconds: 200),
+      _refreshRemoteData,
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scheduleRefresh();
+  }
+
+  void _refreshRemoteData() {
+    if (!mounted || !AuthService().isLoggedIn) return;
+    unawaited(FavoritesService().preload());
+    PassportService.revision.value++;
+    BusinessStorageService.revision.value++;
+    FavoritesService.businessCountsRevision.value++;
+    EcoService.revision.value++;
+    AssistantConversationStore().revision.value++;
+    unawaited(RouteTravelService().refresh().catchError((Object _) {}));
   }
 
   void _onTabRequested() {

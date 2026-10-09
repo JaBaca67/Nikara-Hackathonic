@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -137,10 +136,7 @@ class NotificationService {
   }
 
   Future<void> _seedDemo(String userId, List<BusinessModel> businesses) async {
-    final receiptKey = 'notifications_demo_v1_$userId';
     try {
-      final preferences = await SharedPreferences.getInstance();
-      if (preferences.getBool(receiptKey) == true) return;
       final existing = await _client
           .from(_table)
           .select('type')
@@ -168,11 +164,6 @@ class NotificationService {
             .insert([for (final message in messages) message.toRow(userId)])
             .timeout(_deliveryTimeout);
         revision.value++;
-      }
-      // Si el catálogo estaba vacío, se permite completar las recomendaciones
-      // en la siguiente carga, conservando la bienvenida que ya se guardó.
-      if (hasRecommendations || recommendations.isNotEmpty) {
-        await preferences.setBool(receiptKey, true);
       }
     } catch (e) {
       debugPrint('[NotificationService] No se pudo cargar la demostración: $e');

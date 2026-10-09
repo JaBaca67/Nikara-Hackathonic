@@ -59,11 +59,8 @@ class SavedAccount {
   Map<String, dynamic> toJson() => {
     'user_id': userId,
     'email': email,
-    'full_name': fullName,
-    'role': role.name,
     'refresh_token': refreshToken,
     'saved_at': savedAt.toIso8601String(),
-    'avatar_url': avatarUrl,
   };
 
   /// Devuelve null si el JSON está incompleto (versión anterior del formato o
@@ -78,16 +75,12 @@ class SavedAccount {
     return SavedAccount(
       userId: userId,
       email: json['email'] as String? ?? '',
-      fullName: json['full_name'] as String? ?? '',
-      role: UserRole.values.firstWhere(
-        (r) => r.name == json['role'],
-        orElse: () => UserRole.turista,
-      ),
+      fullName: '',
+      role: UserRole.turista,
       refreshToken: refreshToken,
       savedAt:
           DateTime.tryParse(json['saved_at'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      avatarUrl: json['avatar_url'] as String?,
     );
   }
 }

@@ -57,21 +57,27 @@ class _SettingsAccountScreenState extends State<SettingsAccountScreen> {
   }
 
   Future<void> _openEditProfile() async {
-    final result = await showDialog<(String, String, String)>(
+    final result = await showDialog<(String, String, String, String)>(
       context: context,
       builder: (_) => _EditProfileDialog(
         name: _controller.name,
         email: _controller.email,
         phone: _controller.phone,
+        username: _controller.username,
       ),
     );
     if (result == null || !mounted) return;
-    _controller.updateProfile(
-      name: result.$1,
-      email: result.$2,
-      phone: result.$3,
-    );
-    AppSnackbar.showSuccess(context, 'Perfil actualizado');
+    try {
+      await _controller.updateProfile(
+        name: result.$1,
+        email: result.$2,
+        phone: result.$3,
+        username: result.$4,
+      );
+      if (mounted) AppSnackbar.showSuccess(context, 'Perfil actualizado');
+    } on AuthServiceException catch (e) {
+      if (mounted) AppSnackbar.showError(context, e.message);
+    }
   }
 
   Future<void> _openChangePassword() async {
@@ -94,6 +100,12 @@ class _SettingsAccountScreenState extends State<SettingsAccountScreen> {
         children: [
           SettingsSection(
             children: [
+              SettingsRow(
+                icon: Icons.alternate_email,
+                title: 'Nombre de usuario',
+                value: _controller.username,
+                onTap: _openEditProfile,
+              ),
               SettingsRow(
                 icon: Icons.person_outline,
                 title: 'Editar perfil',
@@ -140,11 +152,13 @@ class _EditProfileDialog extends StatefulWidget {
     required this.name,
     required this.email,
     required this.phone,
+    required this.username,
   });
 
   final String name;
   final String email;
   final String phone;
+  final String username;
 
   @override
   State<_EditProfileDialog> createState() => _EditProfileDialogState();
@@ -155,12 +169,14 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
   late final _nameController = TextEditingController(text: widget.name);
   late final _emailController = TextEditingController(text: widget.email);
   late final _phoneController = TextEditingController(text: widget.phone);
+  late final _usernameController = TextEditingController(text: widget.username);
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _usernameController.dispose();
     super.dispose();
   }
 
@@ -170,6 +186,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
       _nameController.text.trim(),
       _emailController.text.trim(),
       _phoneController.text.trim(),
+      _usernameController.text.trim(),
     ));
   }
 
@@ -184,31 +201,43 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
         'Editar perfil',
         style: AppTextStyles.settingsTitle.copyWith(fontSize: 18),
       ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Nombre'),
-              validator: validateFullName,
-            ),
-            TextFormField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Correo'),
-              validator: validateEmail,
-            ),
-            TextFormField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Teléfono'),
-              // Antes solo exigía que no estuviera vacío: un teléfono de 3
-              // dígitos pasaba y quedaba guardado en el perfil.
-              validator: validatePhone,
-            ),
-          ],
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Nombre'),
+                validator: validateFullName,
+              ),
+              TextFormField(
+                controller: _usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de usuario',
+                ),
+                validator: (value) => (value?.trim().isEmpty ?? true)
+                    ? null
+                    : validateUsername(value),
+              ),
+              TextFormField(
+                controller: _emailController,
+                readOnly: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo'),
+                validator: validateEmail,
+              ),
+              TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Teléfono'),
+                // Antes solo exigía que no estuviera vacío: un teléfono de 3
+                // dígitos pasaba y quedaba guardado en el perfil.
+                validator: (v) => validatePhone(v, required: false),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -236,6 +265,8 @@ class _ChangePasswordDialog extends StatefulWidget {
 }
 
 class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  bool _saving = false;
+  String? _error;
   final _formKey = GlobalKey<FormState>();
   final _currentController = TextEditingController();
   final _newController = TextEditingController();
@@ -249,9 +280,23 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     super.dispose();
   }
 
-  void _save() {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    Navigator.of(context).pop(true);
+  Future<void> _save() async {
+    if (_saving || !(_formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await AuthService().changePassword(
+        currentPassword: _currentController.text,
+        newPassword: _newController.text,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on AuthServiceException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -270,6 +315,8 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_error != null)
+              Text(_error!, style: const TextStyle(color: Colors.red)),
             TextFormField(
               controller: _currentController,
               obscureText: true,
@@ -302,7 +349,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
           child: Text('Cancelar', style: AppTextStyles.settingsRowValue),
         ),
         FilledButton(
-          onPressed: _save,
+          onPressed: _saving ? null : _save,
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.settingsAccent,
           ),

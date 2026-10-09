@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
+import 'package:nikara_app/features/settings/data/settings_controller.dart';
 import 'package:nikara_app/features/auth/presentation/widgets/origin_completion_gate.dart';
 import 'package:nikara_app/features/profile/presentation/screens/edit_public_profile_screen.dart';
 import 'package:nikara_app/core/models/user_model.dart';
@@ -31,6 +32,7 @@ void main() {
   var profile = <String, dynamic>{};
   var failLoad = false;
   var failSave = false;
+  var usernameAvailable = true;
   final writes = <http.Request>[];
   final signups = <http.Request>[];
 
@@ -64,6 +66,8 @@ void main() {
               'user_metadata': {},
             },
           };
+        } else if (request.url.path.endsWith('/rpc/username_available')) {
+          body = usernameAvailable;
         } else if (request.url.path.endsWith('/signup')) {
           signups.add(request);
           body = {
@@ -113,6 +117,7 @@ void main() {
     signups.clear();
     failLoad = false;
     failSave = false;
+    usernameAvailable = true;
     await Supabase.instance.client.auth.signInWithPassword(
       email: 'ana@example.com',
       password: 'password',
@@ -468,7 +473,7 @@ void main() {
         fullName: 'Ana Pérez',
         email: 'new@example.com',
         password: 'password',
-        phone: '+505 88888888',
+        username: 'Ana.perez',
         origin: const UserOrigin(),
       );
       expect(invalid.success, isFalse);
@@ -477,7 +482,7 @@ void main() {
         fullName: 'Ana Pérez',
         email: 'new@example.com',
         password: 'password',
-        phone: '+505 88888888',
+        username: 'Ana.perez',
         origin: localOrigin,
       );
       expect(result.success, isTrue);
@@ -488,6 +493,51 @@ void main() {
       expect(metadata['origin_city'], 'Masaya');
       expect(metadata['origin_municipality'], 'Masaya');
       expect(metadata.containsKey('role'), isFalse);
+      expect(metadata['username'], 'ana.perez');
+      expect(metadata.containsKey('phone'), isFalse);
+    },
+  );
+  test('username must be available before creating the Auth account', () async {
+    usernameAvailable = false;
+    final result = await AuthService().signUp(
+      fullName: 'Ana Perez',
+      email: 'new@example.com',
+      password: 'password',
+      username: 'ana.perez',
+      origin: localOrigin,
+    );
+    expect(result.success, isFalse);
+    expect(signups, isEmpty);
+  });
+  test(
+    'settings confirm remote writes and survive another controller',
+    () async {
+      final first = SettingsController();
+      final second = SettingsController();
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      await first.loadProfile();
+      await first.updateProfile(
+        name: 'Ana del servidor',
+        email: 'ana@example.com',
+        phone: '',
+        username: 'ANA.actualizada',
+      );
+      await first.setOffers(true);
+      await second.loadProfile();
+      expect(second.name, 'Ana del servidor');
+      expect(second.username, 'ana.actualizada');
+      expect(second.offers, isTrue);
+      expect(profile['offers'], isTrue);
+      expect(
+        (await SharedPreferences.getInstance()).containsKey('local_username'),
+        isFalse,
+      );
+      failSave = true;
+      await first.setOffers(false);
+      expect(first.offers, isTrue);
+      expect(first.error, isNotNull);
+      expect(profile['offers'], isTrue);
     },
   );
   testWidgets('extranjero puede buscar su país sin tildes', (tester) async {

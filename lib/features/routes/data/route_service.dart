@@ -507,6 +507,12 @@ class RouteService {
           table: 'routes',
           callback: (_) => onChange(),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'route_stops',
+          callback: (_) => onChange(),
+        )
         .subscribe();
     return () => _client.removeChannel(channel);
   }

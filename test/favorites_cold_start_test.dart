@@ -8,16 +8,8 @@ import 'package:nikara_app/features/profile/presentation/screens/profile_screen.
 import 'package:nikara_app/shared/widgets/main_layout.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-/// Regresión de "marco favoritos, cierro la app, la abro y Inicio no los
-/// muestra hasta que entro a Perfil".
-///
-/// Inicio y Mapa solo escuchan `FavoritesService.idsNotifier`, que nace vacío y
-/// solo se llenaba cuando alguien pedía los favoritos —y el único que lo hacía
-/// al arrancar era Perfil, que el `PageView` no construye hasta visitarlo.
-///
-/// Sin sesión real la lectura va por la ruta de invitado (`SharedPreferences`),
-/// que es la parte que no depende de Supabase; el defecto era el mismo: nadie
-/// pedía la carga.
+/// Guests never adopt device favorites, including after remounting the shell.
+/// Account persistence and cross-device behavior have separate remote tests.
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -64,7 +56,7 @@ void main() {
   }
 
   group('app recién abierta, sin pasar por el Perfil', () {
-    testWidgets('Inicio ya tiene los favoritos cargados', (tester) async {
+    testWidgets('Inicio ignora favoritos locales de invitados', (tester) async {
       SharedPreferences.setMockInitialValues({
         'favorite_ids_guest': ['laguna-de-apoyo', 'ometepe'],
       });
@@ -75,10 +67,7 @@ void main() {
 
       // Perfil no se construyó: lo único que pudo cargarlos fue el arranque.
       expect(find.byType(ProfileScreen), findsNothing);
-      expect(FavoritesService().idsNotifier.value, {
-        'laguna-de-apoyo',
-        'ometepe',
-      });
+      expect(FavoritesService().idsNotifier.value, isEmpty);
 
       await unmount(tester);
     });
@@ -104,7 +93,7 @@ void main() {
       });
       FavoritesService().invalidate();
       await mountMainLayout(tester, key: const ValueKey('primera'));
-      expect(FavoritesService().idsNotifier.value, {'ometepe'});
+      expect(FavoritesService().idsNotifier.value, isEmpty);
 
       // AuthService.signOut / switchAccount invalidan el singleton y la
       // navegación crea un MainLayout nuevo: eso es lo que se reproduce.
@@ -115,7 +104,7 @@ void main() {
       });
 
       await mountMainLayout(tester, key: const ValueKey('segunda'));
-      expect(FavoritesService().idsNotifier.value, {'laguna-de-apoyo'});
+      expect(FavoritesService().idsNotifier.value, isEmpty);
 
       await unmount(tester);
     });
@@ -136,9 +125,7 @@ void main() {
         // …y su resultado se descarta: el notifier no se llenó con datos viejos
         // y la siguiente lectura sí carga normalmente.
         expect(FavoritesService().idsNotifier.value, isEmpty);
-        expect(await FavoritesService().getFavoriteIds(), {
-          'de-la-cuenta-anterior',
-        });
+        expect(await FavoritesService().getFavoriteIds(), isEmpty);
       },
     );
   });
@@ -151,7 +138,7 @@ void main() {
       FavoritesService().invalidate();
 
       expect(await FavoritesService().preload(), isTrue);
-      expect(FavoritesService().idsNotifier.value, {'ometepe'});
+      expect(FavoritesService().idsNotifier.value, isEmpty);
       // Ya cargado: otra llamada es inmediata y no cambia nada.
       expect(await FavoritesService().preload(), isTrue);
     });
@@ -176,7 +163,7 @@ void main() {
       ]);
 
       expect(results, [true, true, true]);
-      expect(notifications, 1, reason: 'publicó una sola vez');
+      expect(notifications, 0, reason: 'no local data adopted');
     });
 
     test('el mensaje de error es el acordado, en español', () {

@@ -127,7 +127,7 @@ void main() {
 
         expect(find.text('NOTIFICACIONES'), findsOneWidget);
         expect(find.text('PRIVACIDAD'), findsOneWidget);
-        expect(find.byType(Switch), findsNWidgets(5));
+        expect(find.byType(Switch), findsNWidgets(4));
       },
     );
 
@@ -188,26 +188,31 @@ void main() {
   });
 
   group('Ajustes: el estado sobrevive a volver al menú', () {
-    testWidgets('un interruptor conserva su valor al salir y reabrir', (
-      tester,
-    ) async {
-      await _pumpSettings(tester);
+    testWidgets(
+      'un invitado recibe error de guardado y no conserva cambios locales',
+      (tester) async {
+        await _pumpSettings(tester);
 
-      await tester.tap(find.widgetWithText(SettingsMenuButton, 'Preferencias'));
-      await _settle(tester);
-      // "Ofertas y promociones" arranca apagado.
-      expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isFalse);
-      await tester.tap(find.byType(Switch).at(2));
-      await tester.pump();
-      expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isTrue);
+        await tester.tap(
+          find.widgetWithText(SettingsMenuButton, 'Preferencias'),
+        );
+        await _settle(tester);
+        // "Ofertas y promociones" arranca apagado.
+        expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isFalse);
+        await tester.tap(find.byType(Switch).at(2));
+        await tester.pump();
+        expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isFalse);
 
-      await tester.tap(find.bySemanticsLabel('Volver'));
-      await _settle(tester);
-      await tester.tap(find.widgetWithText(SettingsMenuButton, 'Preferencias'));
-      await _settle(tester);
+        await tester.tap(find.bySemanticsLabel('Volver'));
+        await _settle(tester);
+        await tester.tap(
+          find.widgetWithText(SettingsMenuButton, 'Preferencias'),
+        );
+        await _settle(tester);
 
-      expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isTrue);
-    });
+        expect(tester.widget<Switch>(find.byType(Switch).at(2)).value, isFalse);
+      },
+    );
   });
 
   group('Ajustes: filas con valor a la derecha', () {
