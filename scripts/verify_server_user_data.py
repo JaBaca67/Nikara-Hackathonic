@@ -16,6 +16,9 @@ CHECKS = {
     "passport_trips": "user_id,trip_id,business_id,started_at,completed_at,postcard",
     "route_visit_progress": "user_id,route_id,visit_key,status,updated_at",
     "assistant_conversations": "id,user_id,title,messages,updated_at",
+    # Exercise the actual embed too: new FKs can make an existing query
+    # ambiguous even when every table and column is present.
+    "routes": "*,route_stops(*),public_profiles!routes_owner_id_fkey(id,full_name,avatar_url)",
 }
 
 def main():

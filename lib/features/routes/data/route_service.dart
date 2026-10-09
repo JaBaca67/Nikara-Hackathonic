@@ -112,8 +112,10 @@ class RouteService {
   // `030_public_profiles_view.sql`: la tabla solo deja leer la fila propia,
   // así que en Comunidad —donde las rutas son justamente de otra gente— el
   // embed a la tabla devolvería `null` y las rutas aparecerían sin autor.
+  // Se indica la FK del creador: `route_visit_progress` también relaciona
+  // rutas con perfiles, por lo que el embed sin FK resulta ambiguo (PGRST201).
   static const _select =
-      '*, route_stops(*), public_profiles(id, full_name, avatar_url)';
+      '*, route_stops(*), public_profiles!routes_owner_id_fkey(id, full_name, avatar_url)';
 
   /// Las rutas de la cuenta con sesión abierta, la más reciente primero.
   /// Lista vacía para un invitado: una ruta necesita `owner_id`.

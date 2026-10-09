@@ -117,6 +117,16 @@ Supabase es el punto compartido: cada teléfono usa HTTPS y su sesión para acce
 
 ## Validación ejecutada y límites
 
+### Corrección de carga de rutas después de 049
+
+La prueba desde el teléfono reveló una regresión que los 14 controles SQL no cubrían: `route_visit_progress` agregó una segunda relación entre `routes` y `public_profiles`. El embed del creador sin una FK explícita devolvía HTTP 300 / `PGRST201` y bloqueaba la carga de rutas propias, Comunidad y detalle. Las rutas no se habían eliminado.
+
+Se corrigió la consulta compartida para usar `public_profiles!routes_owner_id_fkey`, conservando el perfil del creador y las restricciones de la vista pública. También se corrigió el verificador del catálogo y se agregó esa consulta completa a `verify_server_user_data.py`; comprobar solo columnas con `LIMIT 0` no detectaba la relación ambigua.
+
+La [verificación remota de rutas](verificacion_rutas_049.json) confirmó HTTP 200 y **6 rutas públicas con 61 paradas**, de las cuales 5 son del catálogo. Los embeds de reseñas, actividades ECO y participantes también respondieron HTTP 200 con `LIMIT 0`. Las pruebas de servicio y modelo de rutas aprobaron **32 casos**, incluyendo la relación del creador en las tres lecturas y perfiles ocultos. No se modificaron datos del servidor durante esta comprobación.
+
+Después de recompilar e instalar la corrección en el Samsung SM A566E, se comprobó la pantalla mediante la jerarquía de accesibilidad de Android: Activas mostró **2 rutas propias** y Comunidad mostró las tarjetas de los circuitos del catálogo con sus descripciones y paradas. Se dejó la app abierta en Comunidad para continuar las pruebas. Esta comprobación real valida la carga de esas pantallas; los demás casos de aceptación entre dispositivos siguen pendientes. El análisis de los dos archivos Dart afectados terminó sin diagnósticos.
+
 - `flutter test --no-pub`: **570 pruebas aprobadas**, código de salida 0, 63 segundos. Incluye servicios HTTP simulados para dos clientes, aislamiento por usuario, reintentos, migración y errores; no son dos teléfonos físicos.
 - Tras incorporar la edición del username de cuentas existentes se repitieron las pruebas de registro y Ajustes: **35 aprobadas**, código de salida 0. `git diff --check` también pasó.
 - La migración fue analizada con el parser PostgreSQL `pglast`: **81 sentencias SQL y 14 bloques PL/pgSQL**, sin errores de sintaxis. Esto no prueba tipos, permisos o ejecución en el proyecto real.

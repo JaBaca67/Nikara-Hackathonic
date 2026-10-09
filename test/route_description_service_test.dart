@@ -25,6 +25,11 @@ void main() {
     'days': 1,
     'is_public': true,
     'created_at': '2026-10-08T00:00:00Z',
+    'public_profiles': {
+      'id': owner,
+      'full_name': 'Creador de la ruta',
+      'avatar_url': 'https://example.com/avatar.jpg',
+    },
   };
 
   setUpAll(() async {
@@ -56,9 +61,23 @@ void main() {
           writes.add(request);
         } else if (request.url.path.endsWith('/routes')) {
           reads.add(request);
-          body = request.url.queryParameters['is_public'] == 'eq.true'
-              ? [existing]
-              : existing;
+          final select = request.url.queryParameters['select'] ?? '';
+          // El esquema real tiene dos relaciones: creador y progreso de
+          // visitantes. PostgREST rechaza elegir el perfil sin indicar la FK.
+          if (!select.contains('public_profiles!routes_owner_id_fkey(')) {
+            status = 300;
+            body = {
+              'code': 'PGRST201',
+              'message':
+                  'More than one relationship between routes and public_profiles',
+            };
+          } else {
+            body =
+                request.url.queryParameters['is_public'] == 'eq.true' ||
+                    request.url.queryParameters.containsKey('owner_id')
+                ? [existing]
+                : existing;
+          }
         }
         return http.Response(
           jsonEncode(body),
@@ -95,8 +114,37 @@ void main() {
     missingDescription = false;
     existing['owner_id'] = owner;
     existing.remove('catalog_name');
+    existing['public_profiles'] = {
+      'id': owner,
+      'full_name': 'Creador de la ruta',
+      'avatar_url': 'https://example.com/avatar.jpg',
+    };
   });
   tearDownAll(() => Supabase.instance.dispose());
+
+  test(
+    'propias, comunidad y detalle cargan al creador y no al visitante',
+    () async {
+      final mine = await RouteService().getMyRoutes();
+      final community = await RouteService().getPublicRoutes();
+      final detail = await RouteService().getRouteById(routeId);
+
+      for (final route in [mine.single, community.single, detail!]) {
+        expect(route.creatorName, 'Creador de la ruta');
+        expect(route.creatorAvatarUrl, 'https://example.com/avatar.jpg');
+      }
+      expect(reads, hasLength(3));
+      expect(reads.first.url.queryParameters['owner_id'], 'eq.$owner');
+    },
+  );
+
+  test('un perfil oculto no impide cargar la ruta ni sus paradas', () async {
+    existing['public_profiles'] = null;
+    final routes = await RouteService().getPublicRoutes();
+    expect(routes.single.id, routeId);
+    expect(routes.single.creatorName, isNull);
+    expect(routes.single.creatorDisplayName, 'Alguien de Níkara');
+  });
 
   test('Comunidad incluye las rutas públicas de la cuenta promotora', () async {
     final routes = await RouteService().getPublicRoutes();

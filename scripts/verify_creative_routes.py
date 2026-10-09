@@ -16,7 +16,7 @@ headers = {'apikey': anon_key, 'Authorization': 'Bearer ' + anon_key}
 route_ids = [stable_id('route', r['slug']) for r in catalog['routes']]
 response = requests.get(url + '/rest/v1/routes', headers=headers, params={
     'id': 'in.(' + ','.join(route_ids) + ')',
-    'select': '*,route_stops(*),public_profiles(id,full_name,avatar_url)',
+    'select': '*,route_stops(*),public_profiles!routes_owner_id_fkey(id,full_name,avatar_url)',
 }, timeout=30)
 response.raise_for_status()
 routes = response.json()
