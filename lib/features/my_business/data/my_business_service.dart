@@ -175,11 +175,11 @@ class MyBusinessService {
   }
 
   Future<List<DashboardMetric>> _businessHeadline(String businessId) async {
-    var saved = 0;
+    int? saved;
     try {
       saved = await FavoritesService().countFavoritesForBusiness(businessId);
     } on FavoritesServiceException {
-      // Se muestra 0 en vez de romper: ver la nota del método.
+      // A failed query is not a confirmed zero.
     }
 
     var summary = RatingSummary.empty;
@@ -204,7 +204,8 @@ class MyBusinessService {
       ),
       DashboardMetric(
         label: 'Guardados',
-        value: '$saved',
+        value: saved?.toString() ?? '—',
+        caption: saved == null ? 'No disponible' : null,
         icon: Icons.favorite_rounded,
         accent: MetricAccent.community,
       ),

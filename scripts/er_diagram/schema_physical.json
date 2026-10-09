@@ -1,0 +1,1159 @@
+{
+  "generated_from": "supabase/sql/*.sql",
+  "migrations": 49,
+  "tables": [
+    {
+      "name": "audit_logs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "table_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "timestamp",
+          "type": "timestamptz",
+          "quoted": true
+        }
+      ],
+      "source": "035_audit_logs.sql"
+    },
+    {
+      "name": "business_posts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "image_url",
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "037_business_subcategory_day_pass_posts.sql"
+    },
+    {
+      "name": "businesses",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "city",
+          "type": "text"
+        },
+        {
+          "name": "address_text",
+          "type": "text"
+        },
+        {
+          "name": "location",
+          "type": "geography(Point,4326)"
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "instagram_handle",
+          "type": "text"
+        },
+        {
+          "name": "photos",
+          "type": "text[]"
+        },
+        {
+          "name": "is_verified",
+          "type": "boolean"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "schedules",
+          "type": "text"
+        },
+        {
+          "name": "facebook_handle",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "logo_url",
+          "type": "text"
+        },
+        {
+          "name": "show_host",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "amenities",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "activities",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "eco_seal_requested",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "eco_practices",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "access_details",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "other_notes",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "tiktok_handle",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "secondary_phone",
+          "type": "text"
+        },
+        {
+          "name": "manual_open_override",
+          "type": "boolean"
+        },
+        {
+          "name": "subcategory",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_price",
+          "type": "numeric"
+        },
+        {
+          "name": "day_pass_includes",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_schedule",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_notes",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        }
+      ],
+      "source": "dashboard (sin DDL)"
+    },
+    {
+      "name": "device_push_tokens",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "token",
+          "type": "text",
+          "unique": true,
+          "not_null": true
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "last_seen_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "025_push_tokens.sql"
+    },
+    {
+      "name": "eco_activities",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "latitude",
+          "type": "double precision"
+        },
+        {
+          "name": "longitude",
+          "type": "double precision"
+        },
+        {
+          "name": "start_time",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "max_capacity",
+          "type": "integer"
+        },
+        {
+          "name": "organizer_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "organizer_name",
+          "type": "text"
+        },
+        {
+          "name": "organizer_verified",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "requirements",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "references": "organizations.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "image_url",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        },
+        {
+          "name": "moments_enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "moments_max_messages",
+          "type": "integer"
+        },
+        {
+          "name": "moments_max_accounts",
+          "type": "integer"
+        },
+        {
+          "name": "moments_max_per_account",
+          "type": "integer"
+        },
+        {
+          "name": "contact_phone",
+          "type": "text"
+        },
+        {
+          "name": "instagram_link",
+          "type": "text"
+        },
+        {
+          "name": "facebook_link",
+          "type": "text"
+        }
+      ],
+      "source": "009_eco_activities.sql"
+    },
+    {
+      "name": "eco_participants",
+      "columns": [
+        {
+          "name": "activity_id",
+          "type": "uuid",
+          "references": "eco_activities.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "009_eco_activities.sql"
+    },
+    {
+      "name": "legal_identities",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "unique": true,
+          "references": "users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "document_number",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "document_photo_url",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "verified_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "verified_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "document_photo_back_url",
+          "type": "text"
+        }
+      ],
+      "source": "023_legal_identities.sql"
+    },
+    {
+      "name": "notification_automation_settings",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "pk": true,
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "next_business_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "last_business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public"
+        }
+      ],
+      "source": "045_action_notification_automations.sql"
+    },
+    {
+      "name": "notification_completed_trips",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "trip_id",
+          "type": "text",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "started_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "045_action_notification_automations.sql"
+    },
+    {
+      "name": "notification_event_receipts",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "event_key",
+          "type": "text",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "045_action_notification_automations.sql"
+    },
+    {
+      "name": "notifications",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "reference_id",
+          "type": "uuid"
+        },
+        {
+          "name": "is_read",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql"
+    },
+    {
+      "name": "organizations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "handle",
+          "type": "text",
+          "unique": true,
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "logo_url",
+          "type": "text"
+        },
+        {
+          "name": "banner_url",
+          "type": "text"
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "is_verified",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        }
+      ],
+      "source": "010_organizations.sql"
+    },
+    {
+      "name": "origin_places",
+      "columns": [
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "municipality",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "aliases",
+          "type": "text[]",
+          "not_null": true
+        }
+      ],
+      "source": "041_origin_place_catalog.sql",
+      "unique_keys": [
+        [
+          "city",
+          "municipality"
+        ]
+      ]
+    },
+    {
+      "name": "profiles",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "references": "users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "full_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "role",
+          "type": "user_role"
+        },
+        {
+          "name": "points",
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "avatar_url",
+          "type": "text"
+        },
+        {
+          "name": "residence_type",
+          "type": "text"
+        },
+        {
+          "name": "origin_country_code",
+          "type": "text"
+        },
+        {
+          "name": "origin_city",
+          "type": "text"
+        },
+        {
+          "name": "origin_municipality",
+          "type": "text"
+        },
+        {
+          "name": "public_display_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "bio",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "show_origin",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "show_origin_details",
+          "type": "boolean",
+          "not_null": true
+        }
+      ],
+      "source": "dashboard (sin DDL)",
+      "foreign_keys": [
+        {
+          "name": "profiles_origin_place_catalog",
+          "columns": [
+            "origin_city",
+            "origin_municipality"
+          ],
+          "references_table": "origin_places",
+          "references_schema": "public",
+          "references_columns": [
+            "city",
+            "municipality"
+          ],
+          "not_valid": true
+        }
+      ]
+    },
+    {
+      "name": "reviews",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "target_type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "target_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "rating",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "media_urls",
+          "type": "text[]",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql"
+    },
+    {
+      "name": "reviews_backup",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "user_id",
+          "type": "uuid"
+        },
+        {
+          "name": "target_type",
+          "type": "text"
+        },
+        {
+          "name": "target_id",
+          "type": "uuid"
+        },
+        {
+          "name": "rating",
+          "type": "integer"
+        },
+        {
+          "name": "comment",
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "media_urls",
+          "type": "text[]"
+        }
+      ],
+      "source": "inventario Supabase del usuario + verificación REST LIMIT 0"
+    },
+    {
+      "name": "route_stops",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "route_id",
+          "type": "uuid",
+          "references": "routes.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "day_number",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "eco_activity_id",
+          "type": "uuid",
+          "references": "eco_activities.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "destination_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "subtitle",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "image_path",
+          "type": "text"
+        },
+        {
+          "name": "latitude",
+          "type": "double precision"
+        },
+        {
+          "name": "longitude",
+          "type": "double precision"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "011_routes.sql",
+      "unique_keys": [
+        [
+          "route_id",
+          "day_number",
+          "kind",
+          "business_id",
+          "eco_activity_id",
+          "destination_id"
+        ]
+      ]
+    },
+    {
+      "name": "routes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "days",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "is_public",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "cloned_from_route_id",
+          "type": "uuid",
+          "references": "routes.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "image_urls",
+          "type": "text[]",
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "source_url",
+          "type": "text"
+        },
+        {
+          "name": "catalog_name",
+          "type": "text"
+        }
+      ],
+      "source": "011_routes.sql"
+    },
+    {
+      "name": "user_favorites",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "item_type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "item_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql",
+      "unique_keys": [
+        [
+          "user_id",
+          "item_type",
+          "item_id"
+        ]
+      ]
+    }
+  ]
+}

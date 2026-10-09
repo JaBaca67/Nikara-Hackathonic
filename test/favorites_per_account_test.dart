@@ -1,92 +1,95 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:nikara_app/core/services/favorites_service.dart';
+import 'support/account_data_server.dart';
 
-/// Regresión de "al cambiar de cuenta se ven los datos del perfil anterior".
-///
-/// El síntoma reportado fue el avatar (que vivía en `SharedPreferences` bajo
-/// una clave global en vez de en `profiles.avatar_url`), pero [FavoritesService]
-/// tenía exactamente el mismo defecto y además uno peor: su caché en memoria
-/// (`_hydratedKey`) es estado de un singleton, y el cambio de cuenta hace
-/// `pushAndRemoveUntil` — recrea la UI, no el proceso. Sin re-hidratar por
-/// dueño, los favoritos del perfil anterior sobrevivían hasta reiniciar la app.
-///
-/// Sin sesión real toda lectura cae en la clave de invitado, así que lo que se
-/// puede cubrir acá es la parte que no depende de Supabase: adopción de la
-/// clave legacy y invalidación del caché. La separación por usuario se
-/// verifica leyendo directamente las claves escritas.
 void main() {
-  setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
-    await Supabase.initialize(
-      url: 'https://example.supabase.co',
-      publishableKey: 'test-anon-key-not-real',
-    );
-  });
-
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
-    FavoritesService().invalidate();
-  });
-
-  test('adopta la lista global anterior y borra la clave legacy', () async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late AccountDataServer server;
+  late SupabaseClient client;
+  late FavoritesService service;
+  setUp(() async {
     SharedPreferences.setMockInitialValues({
-      'favorite_destination_ids': ['laguna-de-apoyo', 'ometepe'],
+      'favorite_ids_guest': [placeB],
+      'favorite_cache_$userA': [placeB],
     });
-    FavoritesService().invalidate();
-
-    final ids = await FavoritesService().getFavoriteIds();
-    expect(ids, {'laguna-de-apoyo', 'ometepe'});
-
-    final prefs = await SharedPreferences.getInstance();
-    // Migrada a la clave con dueño y borrada la vieja, para que no se vuelva a
-    // adoptar desde otra cuenta.
-    expect(prefs.getStringList('favorite_destination_ids'), isNull);
-    expect(prefs.getStringList('favorite_ids_guest'), isNotNull);
+    server = AccountDataServer();
+    client = server.newClient();
+    await client.auth.recoverSession(accountSession(userA));
+    service = FavoritesService.forTesting(client);
   });
-
-  test('escribe bajo la clave con dueño, no bajo la global', () async {
-    await FavoritesService().toggleFavorite('ometepe');
-
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getStringList('favorite_ids_guest'), ['ometepe']);
-    expect(prefs.getStringList('favorite_destination_ids'), isNull);
+  tearDown(() async {
+    service.invalidate();
+    await client.dispose();
   });
-
-  test('invalidate vacía el snapshot en memoria', () async {
-    await FavoritesService().toggleFavorite('ometepe');
-    expect(FavoritesService().idsNotifier.value, {'ometepe'});
-
-    FavoritesService().invalidate();
-    expect(FavoritesService().idsNotifier.value, isEmpty);
-
-    // Y la siguiente lectura vuelve a SharedPreferences, no al snapshot viejo.
-    expect(await FavoritesService().getFavoriteIds(), {'ometepe'});
-  });
-
   test(
-    'no arrastra favoritos de otra cuenta guardados en su propia clave',
+    'server confirmation survives a second device and does not write preferences',
     () async {
-      SharedPreferences.setMockInitialValues({
-        'favorite_ids_otro-usuario': ['solo-del-otro'],
-      });
-      FavoritesService().invalidate();
-
-      // La sesión de este test es de invitado: lee su propia clave, vacía.
-      expect(await FavoritesService().getFavoriteIds(), isEmpty);
+      expect(await service.toggleFavorite(placeA), isTrue);
+      final second = server.newClient();
+      await second.auth.recoverSession(accountSession(userA));
+      final otherDevice = FavoritesService.forTesting(second);
+      expect(await otherDevice.getFavoriteIds(), {placeA});
+      expect(
+        (await SharedPreferences.getInstance()).getStringList(
+          'favorite_cache_$userA',
+        ),
+        [placeB],
+      );
+      expect(await otherDevice.toggleFavorite(placeA), isFalse);
+      expect(await service.getFavoriteIds(), isEmpty);
+      otherDevice.invalidate();
+      await second.dispose();
     },
   );
-
-  test('toggle devuelve el estado nuevo y persiste ambos sentidos', () async {
-    expect(await FavoritesService().toggleFavorite('ometepe'), isTrue);
-    expect(await FavoritesService().isFavorite('ometepe'), isTrue);
-
-    expect(await FavoritesService().toggleFavorite('ometepe'), isFalse);
-    expect(await FavoritesService().isFavorite('ometepe'), isFalse);
-
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getStringList('favorite_ids_guest'), isEmpty);
-  });
+  test(
+    'switching account discards the prior snapshot and filters by actual user',
+    () async {
+      await service.toggleFavorite(placeA);
+      await client.auth.recoverSession(accountSession(userB));
+      expect(await service.getFavoriteIds(), isEmpty);
+      await service.toggleFavorite(placeB);
+      expect(server.favorites[userA], {placeA});
+      expect(server.favorites[userB], {placeB});
+    },
+  );
+  test(
+    'explicit add is idempotent even when another device has already added it',
+    () async {
+      server.favorites[userA] = {placeA};
+      expect(await service.setFavorite(placeA, true), isTrue);
+      expect(await service.setFavorite(placeA, true), isTrue);
+      expect(server.favorites[userA], {placeA});
+      expect(await service.countFavoritesForBusiness(placeA), 1);
+    },
+  );
+  test(
+    'owner count includes distinct users rather than the current private list',
+    () async {
+      server.favorites[userA] = {placeA};
+      server.favorites[userB] = {placeA};
+      expect(await service.countFavoritesForBusiness(placeA), 2);
+      expect(
+        server.requests.last.url.path,
+        endsWith('/rpc/business_favorite_count'),
+      );
+    },
+  );
+  test(
+    'guest and demo IDs cannot be saved locally or sent to the database',
+    () async {
+      await expectLater(
+        service.toggleFavorite('ometepe'),
+        throwsA(isA<FavoritesServiceException>()),
+      );
+      await client.auth.signOut(scope: SignOutScope.local);
+      expect(await service.getFavoriteIds(), isEmpty);
+      await expectLater(
+        service.toggleFavorite(placeA),
+        throwsA(isA<FavoritesServiceException>()),
+      );
+      expect(server.favorites.values.every((ids) => ids.isEmpty), isTrue);
+    },
+  );
 }

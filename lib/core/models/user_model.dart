@@ -36,6 +36,7 @@ class UserModel {
     required this.email,
     required this.role,
     this.phone = '',
+    this.username = '',
     this.points = 0,
     this.avatarUrl,
     this.origin = const UserOrigin(),
@@ -43,6 +44,10 @@ class UserModel {
     this.bio = '',
     this.showOrigin = true,
     this.showOriginDetails = true,
+    this.tripAlerts = true,
+    this.ecoCampaigns = true,
+    this.offers = false,
+    this.publicProfile = true,
   });
 
   final String id;
@@ -50,11 +55,16 @@ class UserModel {
   final String email;
   final UserRole role;
   final String phone;
+  final String username;
   final UserOrigin origin;
   final String publicDisplayName;
   final String bio;
   final bool showOrigin;
   final bool showOriginDetails;
+  final bool tripAlerts;
+  final bool ecoCampaigns;
+  final bool offers;
+  final bool publicProfile;
 
   String get publicName =>
       publicDisplayName.trim().isEmpty ? fullName : publicDisplayName.trim();
@@ -101,6 +111,7 @@ class UserModel {
       email: row['email'] as String? ?? '',
       role: _roleFromString(row['role'] as String?),
       phone: row['phone'] as String? ?? '',
+      username: row['username'] as String? ?? '',
       points: (row['points'] as num?)?.toInt() ?? 0,
       avatarUrl: row['avatar_url'] as String?,
       origin: UserOrigin.fromRow(row),
@@ -108,6 +119,10 @@ class UserModel {
       bio: row['bio'] as String? ?? '',
       showOrigin: row['show_origin'] as bool? ?? true,
       showOriginDetails: row['show_origin_details'] as bool? ?? true,
+      tripAlerts: row['trip_alerts'] as bool? ?? true,
+      ecoCampaigns: row['eco_campaigns'] as bool? ?? true,
+      offers: row['offers'] as bool? ?? false,
+      publicProfile: row['public_profile'] as bool? ?? true,
     );
   }
 }

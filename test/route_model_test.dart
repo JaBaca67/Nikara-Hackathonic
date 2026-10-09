@@ -48,6 +48,48 @@ RouteModel _route(
 }
 
 void main() {
+  test('catálogo global identifica el circuito sin un dueño personal', () {
+    final route = RouteModel.fromRow({
+      'id': 'catalog-1',
+      'owner_id': null,
+      'catalog_name': 'Circuito Creativo Xolotlán',
+      'title': 'Ruta Natural',
+      'is_public': true,
+      'created_at': '2026-10-08T00:00:00Z',
+    });
+    expect(route.isCatalog, isTrue);
+    expect(route.ownerId, isEmpty);
+    expect(route.isOwnedBy('owner-1'), isFalse);
+    expect(route.isOwnedBy(''), isFalse);
+    expect(route.creatorDisplayName, 'Circuito Creativo Xolotlán');
+    expect(
+      route.copyWith(description: 'Actualizada').catalogName,
+      route.catalogName,
+    );
+  });
+
+  test('descripción opcional, edición, borrado y procedencia de la copia', () {
+    final row = <String, dynamic>{
+      'id': 'route-1',
+      'owner_id': 'owner-1',
+      'title': 'Xolotlán',
+      'created_at': '2026-10-08T00:00:00Z',
+    };
+    expect(RouteModel.fromRow(row).description, isEmpty);
+    final route = RouteModel.fromRow({
+      ...row,
+      'description': 'Arte y gastronomía de Managua.',
+      'source_url': 'https://ciudadcreativa.managua.gob.ni/circuitos-creativos',
+    });
+    expect(route.copyWith(title: 'Mi viaje').description, route.description);
+    expect(
+      route.copyWith(description: 'Nueva descripción').description,
+      'Nueva descripción',
+    );
+    expect(route.copyWith(description: '').description, isEmpty);
+    expect(route.copyWith(description: '').sourceUrl, route.sourceUrl);
+  });
+
   group('RouteModel.sortStops', () {
     test('ordena por día y, dentro del día, por posición', () {
       final sorted = RouteModel.sortStops([

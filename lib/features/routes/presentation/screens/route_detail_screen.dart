@@ -3,6 +3,7 @@ import 'route_overview_screen.dart';
 import 'route_travel_screen.dart';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/features/routes/data/route_service.dart';
@@ -43,6 +44,25 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
   String? get _currentUserId => AuthService().currentAuthUser?.id;
 
   bool get _isOwner => _route.isOwnedBy(_currentUserId);
+
+  Future<void> _openSource() async {
+    final uri = Uri.tryParse(_route.sourceUrl ?? '');
+    try {
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.host.isEmpty ||
+          !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw const FormatException('Fuente no disponible');
+      }
+    } on Exception {
+      if (mounted) {
+        AppSnackbar.showError(
+          context,
+          'No se pudo abrir la fuente de la ruta.',
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -272,6 +292,28 @@ class _RouteDetailScreenState extends State<RouteDetailScreen> {
                   AppSpacing.xxl,
                 ),
                 children: [
+                  if (route.sourceUrl != null) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: _openSource,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.oliveText,
+                          minimumSize: const Size(0, 48),
+                        ),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        label: const Text('Consultar fuente del circuito'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (route.description.trim().isNotEmpty) ...[
+                    Text(
+                      route.description,
+                      style: AppTextStyles.settingsSubtitle,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Text(
                     'Tu recorrido',
                     style: AppTextStyles.sectionTitle.copyWith(

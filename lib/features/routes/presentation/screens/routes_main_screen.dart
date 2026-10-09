@@ -16,7 +16,7 @@ import 'package:nikara_app/theme/app_theme.dart';
 
 /// Las 3 pestañas pill de `RoutesMainScreen` — las dos primeras filtran las
 /// rutas propias por [RouteStatus]; "Comunidad" es una fuente de datos
-/// aparte (las rutas públicas de otras personas, ver
+/// aparte (todas las rutas públicas, ver
 /// `RouteService.getPublicRoutes`), no un estado de una ruta propia.
 enum _RoutesTab {
   active('Activas'),

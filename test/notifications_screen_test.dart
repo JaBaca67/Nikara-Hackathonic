@@ -217,6 +217,95 @@ void main() {
 
       expect(tapped, 1);
     });
+
+    testWidgets(
+      'mantener presionada expande toda la tarjeta sin abrir el destino',
+      (tester) async {
+        var tapped = 0;
+        final notification = _sample(
+          title:
+              'Confirmación de tu próxima jornada ECO con todos los detalles',
+          body: 'Mensaje completo con fecha, lugar y requisitos. ' * 20,
+        );
+        await tester.pumpWidget(
+          _wrap(
+            ListView(
+              children: [
+                NotificationTile(
+                  notification: notification,
+                  onTap: () => tapped++,
+                  now: _now,
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(tester.widget<Text>(find.text(notification.body)).maxLines, 3);
+
+        await tester.longPress(find.text(notification.title));
+        await tester.pump();
+        expect(tapped, 0);
+        expect(
+          tester.widget<Text>(find.text(notification.title)).maxLines,
+          isNull,
+        );
+        expect(
+          tester.widget<Text>(find.text(notification.body)).maxLines,
+          isNull,
+        );
+        expect(find.text('25/08/2026 · 10:00 · No leída'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        await tester.scrollUntilVisible(find.text('Ver menos'), 300);
+        await tester.tap(find.text('Ver menos'));
+        await tester.pump();
+        expect(tester.widget<Text>(find.text(notification.body)).maxLines, 3);
+        expect(tapped, 0);
+      },
+    );
+
+    testWidgets(
+      'un mensaje expandido se puede leer con texto grande y pantalla estrecha',
+      (tester) async {
+        final notification = _sample(
+          title: 'Nuevo logro: ' * 10,
+          body: 'Todas las indicaciones de la actividad. ' * 25,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: Scaffold(
+              body: MediaQuery(
+                data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+                child: Center(
+                  child: SizedBox(
+                    width: 320,
+                    child: ListView(
+                      children: [
+                        NotificationTile(
+                          notification: notification,
+                          onTap: () {},
+                          now: _now,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.longPress(find.text(notification.title));
+        await tester.pump();
+        expect(
+          tester.widget<Text>(find.text(notification.body)).maxLines,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('Estados de la pantalla', () {

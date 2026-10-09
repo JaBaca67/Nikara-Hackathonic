@@ -1,0 +1,1422 @@
+{
+  "researched_at": "2026-10-08",
+  "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+  "data_source_url": "https://ciudadcreativa.managua.gob.ni/mc-map/circuits",
+  "businesses": [
+    {
+      "official_id": "171",
+      "slug": "xolotlan-171",
+      "name": "Puerto Salvador Allende",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Complejo a orillas del lago Xolotlán con restaurantes, paseos peatonales, actividades familiares y embarcaciones turísticas hacia la Isla del Amor.",
+      "city": "Managua",
+      "address_text": "Contiguo al lago Xolotlán",
+      "latitude": 12.162432123166,
+      "longitude": -86.275498837613,
+      "phone": "+(505) 2266-3039",
+      "schedules": "Lunes a domingo: 8:00 a.m. a 11:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/puerto-salvador-allende",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/puerto-salvador-allende",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_salvador%20allende_1.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_salvador%20allende_2.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "111",
+      "slug": "xolotlan-111",
+      "name": "Paseo de los Estudiantes",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Paseo del malecón entre el Puerto Salvador Allende y el Paseo Xolotlán. Reúne espacios de recreación y réplicas de casas vinculadas a la historia nicaragüense.",
+      "city": "Managua",
+      "address_text": "Entre el Paseo Xolotlán y el Puerto Salvador Allende",
+      "latitude": 12.160458044195,
+      "longitude": -86.273670352909,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/paseo-de-los-estudiantes",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/paseo-de-los-estudiantes",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_Paseo%20de%20los%20Estudiantes_1.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_Paseo%20de%20los%20Estudiantes_2.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "170",
+      "slug": "xolotlan-170",
+      "name": "Paseo Xolotlán",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Paseo junto al lago con maquetas de la antigua Managua, casas réplica, áreas infantiles y espacios gastronómicos para una visita familiar.",
+      "city": "Managua",
+      "address_text": "Contiguo a la Plaza de la Revolución",
+      "latitude": 12.159185289454,
+      "longitude": -86.271324747684,
+      "phone": "",
+      "schedules": "Lunes a domingo - 9:00 a.m. a 9:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/paseo-xolotlan",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/paseo-xolotlan",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_%20paseo-xolotlan_1.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_%20paseo-xolotlan_2.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "173",
+      "slug": "xolotlan-173",
+      "name": "Arboretum Nacional",
+      "category": "Eco-destino",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Bosque urbano dedicado a la educación ambiental. Permite conocer árboles y plantas de las distintas regiones bioclimáticas de Nicaragua.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.147780456397,
+      "longitude": -86.27408838331,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m. | Sábado 8:00 am a 12m",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/arboretum-nacional",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/arboretum-nacional",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Arboretum.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Arboretum_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "160",
+      "slug": "xolotlan-160",
+      "name": "Laguna de Tiscapa",
+      "category": "Eco-destino",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Laguna volcánica y reserva natural en el centro de Managua. Su entorno ofrece paisajes de la capital y de la Loma de Tiscapa.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.141648693289,
+      "longitude": -86.27256394406,
+      "phone": "",
+      "schedules": "",
+      "access_details": "Coordenada de referencia de la laguna, publicada en el mapa municipal; no identifica una entrada peatonal. Consultar el acceso al parque antes de desplazarse.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-tiscapa",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-tiscapa",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_laguna-tiscapa.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_laguna-tiscapa_1_0.webp"
+      ],
+      "navigation_reference_only": true
+    },
+    {
+      "official_id": "192",
+      "slug": "xolotlan-192",
+      "name": "Parque Amistad Japón Nicaragua",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Parque en Los Robles que celebra la amistad entre Japón y Nicaragua mediante jardines, puentes ornamentales, senderos y espacios de convivencia.",
+      "city": "Managua",
+      "address_text": "Residencial Los Robles, sobre la pista Miguel Obando y Bravo",
+      "latitude": 12.125459559991,
+      "longitude": -86.260286684176,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 08:00 am a 09:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/parque-amistad-japon-nicaragua",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/parque-amistad-japon-nicaragua",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_parque-japones.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_parque-japones_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "174",
+      "slug": "xolotlan-174",
+      "name": "Parque Divina Misericordia",
+      "category": "Eco-destino",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Parque de Villa Fontana con áreas verdes y senderos para caminar, descansar y compartir en familia cerca de la parroquia Divina Misericordia.",
+      "city": "Managua",
+      "address_text": "Parque Villa Fontana, sobre la Pista Jean Paul Genie, contiguo a la Parroquia Jesús de la Divina Misericordia y en las cercanías de la UNAN-Managua, Managua, Nicaragua.",
+      "latitude": 12.103580663107,
+      "longitude": -86.268035124284,
+      "phone": "",
+      "schedules": "Lunes a Domingo - 6 am a 7 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/parque-divina-misericordia",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/parque-divina-misericordia",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_Parque%20Divina%20Misericordia.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_Parque%20Divina%20Misericordia_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "122",
+      "slug": "xolotlan-122",
+      "name": "Laguna de Nejapa",
+      "category": "Eco-destino",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Laguna de origen volcánico en el suroeste de Managua, rodeada de elevaciones y paisajes naturales. Integra la Ruta Natural del Circuito Xolotlán.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.119966939065,
+      "longitude": -86.321155791206,
+      "phone": "",
+      "schedules": "",
+      "access_details": "El punto del mapa municipal representa la laguna. Confirmar el acceso autorizado antes de la visita.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-nejapa",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-nejapa",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_laguna-nejapa_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_laguna-nejapa_1.webp"
+      ],
+      "navigation_reference_only": true
+    },
+    {
+      "official_id": "120",
+      "slug": "xolotlan-120",
+      "name": "Laguna de Asososca",
+      "category": "Eco-destino",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Laguna cratérica que constituye una reserva hídrica de Managua. Su paisaje forma parte de la Ruta Natural y su condición de protección requiere respetar los accesos autorizados.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.137616773108,
+      "longitude": -86.313371388445,
+      "phone": "",
+      "schedules": "",
+      "access_details": "Reserva hídrica protegida. Confirmar los accesos autorizados antes de la visita; el punto municipal representa la laguna.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-asososca",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/laguna-de-asososca",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_laguna-asososca_0.webp"
+      ],
+      "navigation_reference_only": true
+    },
+    {
+      "official_id": "125",
+      "slug": "xolotlan-125",
+      "name": "Tiangue Hugo Chávez",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Tiangue de gastronomía y comercio local inspirado en los mercados tradicionales. Ofrece un espacio de encuentro para emprendedores y visitantes.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.146252279117,
+      "longitude": -86.274268365503,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/tiangue-hugo-chavez",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/tiangue-hugo-chavez",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-hugo-chavez_3_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-hugo-chavez.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "133",
+      "slug": "xolotlan-133",
+      "name": "La Refresquería (en el Arboretum)",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Espacio gastronómico del Arboretum Nacional dedicado a refrescos de frutas y bebidas tradicionales nicaragüenses.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.148135591781,
+      "longitude": -86.274359932406,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/la-refresqueria-en-el-arboretum",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/la-refresqueria-en-el-arboretum",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_refresqueria_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_refresqueria_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "124",
+      "slug": "xolotlan-124",
+      "name": "La Casona",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Café y restaurante de la Avenida de Bolívar a Chávez que reúne cocina nicaragüense, café y actividades culturales en un ambiente familiar.",
+      "city": "Managua",
+      "address_text": "Rotonda Hugo Chávez, 1 cuadra al norte, Managua.",
+      "latitude": 12.148267931543,
+      "longitude": -86.274827149615,
+      "phone": "+505 7827 9106",
+      "schedules": "Lunes a Domingo: 08:00 am a 09:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/la-casona",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/la-casona",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_la%20casona_3.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_la%20casona.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "175",
+      "slug": "xolotlan-175",
+      "name": "Las Cuatro Esquinas",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Espacio de ambiente colonial con distintas propuestas de comida y recreación, incluyendo cafetería, helados, fritanga y otras opciones gastronómicas.",
+      "city": "Managua",
+      "address_text": "Ave. Bolívar a Chávez, contiguo a donde fue Servigob",
+      "latitude": 12.148796359829,
+      "longitude": -86.274141691567,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 07:00 am a 09:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/las-cuatro-esquinas",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/las-cuatro-esquinas",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_cuatro-esquinas_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_cuatro-esquinas_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "126",
+      "slug": "xolotlan-126",
+      "name": "Tiangue La Purísima",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Tiangue de comercio y gastronomía tradicional que evoca la celebración de La Purísima y reúne propuestas de emprendimientos locales.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.148856079718,
+      "longitude": -86.274702963247,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/tiangue-la-purisima",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/tiangue-la-purisima",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-la-purisima_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-la-purisima_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "131",
+      "slug": "xolotlan-131",
+      "name": "La Hormiga de Oro",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Espacio familiar de gastronomía y recreación que recuerda la sorbetería de la vieja Managua. Forma parte de la Ruta Gastronómica municipal.",
+      "city": "Managua",
+      "address_text": "De los semaforos de la Asamblea Nacional 1c Al Oeste",
+      "latitude": 12.150675671944,
+      "longitude": -86.275508604304,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 010:00 am a 08:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/la-hormiga-de-oro",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/la-hormiga-de-oro",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_hormiga-de-oro_6_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_hormiga-de-oro_5.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "163",
+      "slug": "xolotlan-163",
+      "name": "Kioscos La Criollería y La Chivería",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Kioscos del centro histórico que ofrecen comidas criollas, antojos y bebidas tradicionales junto al Palacio Nacional.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.155762799747,
+      "longitude": -86.272657977895,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/kioscos-la-criolleria-y-la-chiveria",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/kioscos-la-criolleria-y-la-chiveria",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_comidas-kioscos.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_comidas-kioscos_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "193",
+      "slug": "xolotlan-193",
+      "name": "Comidas Criollas",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Corredor de pequeños emprendimientos gastronómicos frente al Parque Central con baho, vigorón, asados, dulces y refrescos nicaragüenses.",
+      "city": "Managua",
+      "address_text": "Frente al Parque Central, Managua.",
+      "latitude": 12.156828722292,
+      "longitude": -86.273706300148,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 08:00 am a 08:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/comidas-criollas",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/comidas-criollas",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_comidas-criollas.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_comidas-criollas_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "194",
+      "slug": "xolotlan-194",
+      "name": "La Chumila",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Comidería del centro histórico con buffet y fritanga que promueve la cocina tradicional nicaragüense cerca del Teatro Nacional Rubén Darío.",
+      "city": "Managua",
+      "address_text": "Teatro Nacional Rubén Dario, media cuadra al sur, Managua.",
+      "latitude": 12.157542317072,
+      "longitude": -86.273646561525,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 07:00 am a 08:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/la-chumila",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/la-chumila",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_la-chumila_2.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_la-chumila_3.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "127",
+      "slug": "xolotlan-127",
+      "name": "Tiangue La Fe",
+      "category": "Restaurante",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Tiangue del centro de Managua dedicado al comercio y la gastronomía local, con espacios para la economía familiar y los emprendimientos.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.157847213738,
+      "longitude": -86.273550562917,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/tiangue-la-fe",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/tiangue-la-fe",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-la-fe.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tiangue-la-fe_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "85",
+      "slug": "xolotlan-85",
+      "name": "Centro Cultural Colonia Dambach",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Conjunto arquitectónico histórico adaptado para actividades artísticas y culturales. Su historia está vinculada a la construcción de la antigua Catedral de Managua.",
+      "city": "Managua",
+      "address_text": "Parque Candelaria, 300 mts al este",
+      "latitude": 12.155366142742,
+      "longitude": -86.264654639957,
+      "phone": "",
+      "schedules": "08:00 am a 05:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-colonia-dambach",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-colonia-dambach",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_Colonia%20Dambach_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "93",
+      "slug": "xolotlan-93",
+      "name": "Centro Cultural Tino López Guerra",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Centro cultural dedicado al compositor Tino López Guerra. Acoge conciertos, exposiciones y actividades de formación y encuentro artístico.",
+      "city": "Managua",
+      "address_text": "Contiguo al Puerto Salvador Allende",
+      "latitude": 12.161106576875,
+      "longitude": -86.274661199086,
+      "phone": "",
+      "schedules": "Horarios de acuerdo a agenda de actividades",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-tino-lopez-guerra",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-tino-lopez-guerra",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tino%20lopez.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_tino%20lopez_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "164",
+      "slug": "xolotlan-164",
+      "name": "Teatro Nacional Rubén Darío",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Teatro nacional dedicado a Rubén Darío y sede de presentaciones musicales, danza y otras artes escénicas. Las visitas dependen de su programación.",
+      "city": "Managua",
+      "address_text": "Frente al Paseo Xolotlan",
+      "latitude": 12.158319287175,
+      "longitude": -86.272755154247,
+      "phone": "",
+      "schedules": "Horarios de acuerdo a agenda de actividades",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/teatro-nacional-ruben-dario",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/teatro-nacional-ruben-dario",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_teatro-ruben-dario_4.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_teatro-ruben-dario_2.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "165",
+      "slug": "xolotlan-165",
+      "name": "Parque Central",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Parque del centro histórico junto al Palacio Nacional. Es uno de los espacios patrimoniales incluidos en el circuito municipal.",
+      "city": "Managua",
+      "address_text": "Avenida a Bolívar, contiguo al Palacio Nacional",
+      "latitude": 12.156409762382,
+      "longitude": -86.272969597883,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/parque-central",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/parque-central",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_parque%20central_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "88",
+      "slug": "xolotlan-88",
+      "name": "Plaza de la Revolución",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Plaza del centro histórico rodeada por edificios emblemáticos de Managua. Ofrece un punto de encuentro con la memoria y el patrimonio de la capital.",
+      "city": "Managua",
+      "address_text": "Ubicada en el Centro Histórico de Managua, en la Avenida de Bolívar",
+      "latitude": 12.156363231204,
+      "longitude": -86.272210153021,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/plaza-de-la-revolucion",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/plaza-de-la-revolucion",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Plaza%20de%20la%20Revoluci%C3%B3n.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_%20plaza-de-la-revolucion.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "87",
+      "slug": "xolotlan-87",
+      "name": "Catedral Santiago de los Caballeros de Managua",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Antigua Catedral de Managua, construida en el siglo XX y dañada por el terremoto de 1972. Se contempla desde el exterior según la indicación municipal.",
+      "city": "Managua",
+      "address_text": "Plaza de la Revolución, a un costado del Palacio Nacional.",
+      "latitude": 12.156290309188,
+      "longitude": -86.271486229433,
+      "phone": "",
+      "schedules": "",
+      "access_details": "Visita únicamente desde el exterior, según la ficha municipal.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/catedral-santiago-de-los-caballeros-de-managua",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/catedral-santiago-de-los-caballeros-de-managua",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_catedral-vieja-managua_10.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_catedral-vieja-managua_8.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "89",
+      "slug": "xolotlan-89",
+      "name": "Casa de los Pueblos",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Edificio conocido también como Casa Presidencial o Casa Naranja. Integra el patrimonio arquitectónico del centro histórico y su visita se limita al exterior.",
+      "city": "Managua",
+      "address_text": "Costado Norte de la antigua Catedral de Managua y Plaza la Fé.",
+      "latitude": 12.157200096742,
+      "longitude": -86.272016917286,
+      "phone": "",
+      "schedules": "",
+      "access_details": "Visita únicamente desde el exterior, según la ficha municipal.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-de-los-pueblos",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-de-los-pueblos",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_casa%20de%20los%20pueblos.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "260",
+      "slug": "xolotlan-260",
+      "name": "Museo de Arte Contemporáneo Julio Cortázar",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Museo incluido por la Alcaldía en la Ruta Histórica Patrimonial del Circuito Xolotlán. La ficha oficial publica su ubicación y fotografías; no detalla horarios ni contacto.",
+      "city": "Managua",
+      "address_text": "De Telcor 1c al norte, 1/2c al este.",
+      "latitude": 12.156682302176,
+      "longitude": -86.274330882115,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/museo-de-arte-contemporaneo-julio-cortazar",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/museo-de-arte-contemporaneo-julio-cortazar",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-08/frente%20casa%20julio-cortazar_1.jpg",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-08/cortazar5_0.jpg"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "90",
+      "slug": "xolotlan-90",
+      "name": "Parque Héroes de la Dignidad Nacional",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Parque conmemorativo de la Avenida de Bolívar a Chávez con estelas dedicadas a personajes de la historia y la soberanía nacional.",
+      "city": "Managua",
+      "address_text": "Avenida de Bolívar a Chávez, Dupla Sur, Managua",
+      "latitude": 12.150582275488,
+      "longitude": -86.274764889926,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/parque-heroes-de-la-dignidad-nacional",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/parque-heroes-de-la-dignidad-nacional",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_%20Dignidad%20Nacional.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_%20Dignidad%20Nacional_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "166",
+      "slug": "xolotlan-166",
+      "name": "Mirador Loma de Tiscapa",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Mirador y parque histórico en la Loma de Tiscapa para conocer la historia de Managua y contemplar el paisaje urbano y la laguna.",
+      "city": "Managua",
+      "address_text": "Loma de Tiscapa, ubicada en el centro de Managua, a 2 km de la costa del lago de Managua",
+      "latitude": 12.141648693289,
+      "longitude": -86.27256394406,
+      "phone": "",
+      "schedules": "Lunes a Domingo: 08:00 am a 09:00 pm",
+      "access_details": "El mapa municipal comparte este punto con la Laguna de Tiscapa; no identifica la entrada al mirador. Consultar el acceso al parque antes de desplazarse.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/mirador-loma-de-tiscapa",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/mirador-loma-de-tiscapa",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_loma-de-tiscapa_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_loma-de-tiscapa_1.webp"
+      ],
+      "navigation_reference_only": true
+    },
+    {
+      "official_id": "204",
+      "slug": "xolotlan-204",
+      "name": "Huellas de Acahualinca",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Sitio arqueológico con huellas humanas preservadas en depósitos volcánicos cerca del lago Xolotlán. La ficha municipal indica que está en remodelación.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.161034862975,
+      "longitude": -86.291832699348,
+      "phone": "",
+      "schedules": "",
+      "access_details": "Sitio en remodelación según la ficha municipal. Confirmar reapertura antes de la visita.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/huellas-de-acahualinca",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/huellas-de-acahualinca",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_huellas%20acahualinca.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_huellas%20acahualinca_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "180",
+      "slug": "xolotlan-180",
+      "name": "Palacio Nacional de la Cultura",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Palacio del centro histórico que alberga espacios de conservación, estudio y divulgación del patrimonio cultural y natural de Nicaragua.",
+      "city": "Managua",
+      "address_text": "Plaza de la Revolución, Managua",
+      "latitude": 12.15555768838,
+      "longitude": -86.272182879782,
+      "phone": "",
+      "schedules": "Martes a Viernes 8:00 am a 5:00 pm | Sábado 9:00 am a 4:00 pm | Domingo 10:00 am a 5:00 pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/palacio-nacional-de-la-cultura",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/palacio-nacional-de-la-cultura",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_palacio-nacional_9_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_palacio-nacional_7_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "151",
+      "slug": "xolotlan-151",
+      "name": "Casa Réplica E.D.S.N. Blanca Arauz",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa réplica vinculada a Blanca Aráuz y a la historia del Ejército Defensor de la Soberanía Nacional, inspirada en su sede de San Rafael del Norte.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.159816508512,
+      "longitude": -86.272595066387,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-edsn-blanca-arauz",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-edsn-blanca-arauz",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-Blanca-Arauz.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-Blanca-Arauz_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "95",
+      "slug": "xolotlan-95",
+      "name": "Casa Réplica - Museo Rubén Darío",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casas réplica que permiten acercarse a la vida y al legado literario de Rubén Darío mediante referencias a sus hogares históricos.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.159958964909,
+      "longitude": -86.272214732072,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-museo-ruben-dario",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-museo-ruben-dario",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-ruben-dario_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-ruben-dario_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "96",
+      "slug": "xolotlan-96",
+      "name": "Casa Réplica - Museo Hacienda San Jacinto",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Réplica de la Hacienda San Jacinto que presenta la memoria de la batalla y su importancia en la historia nicaragüense.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.157299951787,
+      "longitude": -86.26641913072,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-museo-hacienda-san-jacinto",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-replica-museo-hacienda-san-jacinto",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-%20HaciendaSan-Jacinto-_4.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_Casa-Replica-%20HaciendaSan-Jacinto-.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "97",
+      "slug": "xolotlan-97",
+      "name": "Maquetas de Representación de la Vieja Managua",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Maquetas del Paseo Xolotlán que muestran edificios y espacios de la Managua anterior al terremoto de 1972.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.158544124108,
+      "longitude": -86.269880241492,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/maquetas-de-representacion-de-la-vieja-managua",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/maquetas-de-representacion-de-la-vieja-managua",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_maquetas_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_maquetas_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "167",
+      "slug": "xolotlan-167",
+      "name": "Cinemateca Nacional",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Institución dedicada a conservar y difundir el patrimonio audiovisual nicaragüense mediante archivos, proyecciones y formación artística.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.155125765906,
+      "longitude": -86.273069524624,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/cinemateca-nacional",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/cinemateca-nacional",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_cinemateca.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "168",
+      "slug": "xolotlan-168",
+      "name": "Museo Lolita Soriano",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Museo de Bolonia dedicado al legado educativo, histórico y cultural de Lolita Soriano y Julián Guerrero.",
+      "city": "Managua",
+      "address_text": "Óptica Nicaragüense 2 cuadras arriba (Este), 150 metros al Sur. Bolonia, Managua",
+      "latitude": 12.13792154389,
+      "longitude": -86.279038801864,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/museo-lolita-soriano",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/museo-lolita-soriano",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_lolita_14.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_lolita.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "100",
+      "slug": "xolotlan-100",
+      "name": "Museo Leonel Rugama",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa museo dedicada al poeta Leonel Rugama, ubicada en el lugar vinculado a su muerte en 1970. Presenta un espacio de memoria histórica y cultural.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.140204272857,
+      "longitude": -86.238067876897,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/museo-leonel-rugama",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/museo-leonel-rugama",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_museo%20leonel%20rugama_5_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_museo%20leonel%20rugama_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "101",
+      "slug": "xolotlan-101",
+      "name": "Casa de Cultura y Creatividad Otto de la Rocha",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa de cultura de Bolonia dedicada a Otto de la Rocha que ofrece formación en distintas expresiones artísticas.",
+      "city": "Managua",
+      "address_text": "Bolonia, DDF la Óptica Nicaragüense, 2 cuadras al este, 170 metros al sur",
+      "latitude": 12.137630885426,
+      "longitude": -86.278660736464,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-otto-de-la-rocha",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-otto-de-la-rocha",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_otto_casa_de_cultura.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_otto_casa_de_cultura_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "102",
+      "slug": "xolotlan-102",
+      "name": "Casa de Cultura y Creatividad Camilo Zapata",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa de cultura en homenaje a Camilo Zapata, con formación musical en instrumentos y canto para promover el patrimonio musical nicaragüense.",
+      "city": "Managua",
+      "address_text": "Altamira, DDF la Vicky, 2 cuadras al sur, 2 cuadras al este.",
+      "latitude": 12.118202349392,
+      "longitude": -86.253520277513,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-camilo-zapata",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-camilo-zapata",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_camilo_zapata_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_camilo_zapata_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "103",
+      "slug": "xolotlan-103",
+      "name": "Casa de Cultura y Creatividad Hugo Hernández Oviedo",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa de cultura dedicada al actor Hugo Hernández Oviedo, orientada a la formación audiovisual y teatral.",
+      "city": "Managua",
+      "address_text": "Puente Paraisito, 1 ½ cuadras al sur",
+      "latitude": 12.138051043621,
+      "longitude": -86.246485507505,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-hugo-hernandez-oviedo",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-hugo-hernandez-oviedo",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_hugo-hernandez.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/Alcaldia-Managua_hugo-hernandez_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "105",
+      "slug": "xolotlan-105",
+      "name": "Casa de Cultura y Creatividad Alejandro Cuadra",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Casa de cultura en memoria del maestro Alejandro Cuadra con formación en danza y otras disciplinas artísticas.",
+      "city": "Managua",
+      "address_text": "Farmacia Simón Bolívar, 1 ½ cuadra al sur",
+      "latitude": 12.143198338169,
+      "longitude": -86.278524359994,
+      "phone": "",
+      "schedules": "Lunes a viernes - 8:00 am a 5:00 p.m.",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-alejandro-cuadra",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/casa-de-cultura-y-creatividad-alejandro-cuadra",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_alejandro%20cuadra_1_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_alejandro%20cuadra.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "169",
+      "slug": "xolotlan-169",
+      "name": "Centro de Convenciones Olof Palme",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Centro de convenciones que recibe ferias, festivales y encuentros relacionados con cultura, gastronomía y emprendimientos nacionales e internacionales.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.149254779851,
+      "longitude": -86.271642918866,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/centro-de-convenciones-olof-palme",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/centro-de-convenciones-olof-palme",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_olof-palme_3.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_olof-palme_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "107",
+      "slug": "xolotlan-107",
+      "name": "Centro Nacional de Desarrollo del Talento Nieves Cajina",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Centro de formación especializada para desarrollar talentos en moda, diseño, gastronomía, comunicación, arte digital y gestión artística.",
+      "city": "Managua",
+      "address_text": "Rotonda El Güegüense, 4c Oeste, 1c al Norte. Managua",
+      "latitude": 12.137794353345,
+      "longitude": -86.287394054687,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/centro-nacional-de-desarrollo-del-talento-nieves-cajina",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/centro-nacional-de-desarrollo-del-talento-nieves-cajina",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_nives_cajina_9_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_nives_cajina.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "108",
+      "slug": "xolotlan-108",
+      "name": "Centro Cultural y Politécnico José Coronel Urtecho",
+      "category": "Cultura",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Centro cultural y politécnico con cursos y carreras técnicas en arte, economía creativa, comercio, servicios e industria.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.15185786314,
+      "longitude": -86.235093489743,
+      "phone": "(505) 2251 3386",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-y-politecnico-jose-coronel-urtecho",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/centro-cultural-y-politecnico-jose-coronel-urtecho",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_coronel_urtecho_6_0.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_coronel_urtecho.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "185",
+      "slug": "xolotlan-185",
+      "name": "Isla del Amor",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Complejo turístico en una isla del lago Xolotlán con piscinas, senderos y espacios de descanso. Se accede en embarcación desde el Puerto Salvador Allende.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.175751142179,
+      "longitude": -86.316419830501,
+      "phone": "+505 2266 3039",
+      "schedules": "",
+      "access_details": "Acceso por embarcación desde el Puerto Salvador Allende. Confirmar salidas y condiciones con el operador.",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/isla-del-amor · Otro teléfono publicado: 2268 0252",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/isla-del-amor",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_isla%20del%20amor.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "112",
+      "slug": "xolotlan-112",
+      "name": "Anfiteatro Tomás Borge",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Anfiteatro al aire libre del centro histórico, junto al Palacio de la Cultura, destinado a presentaciones y actividades artísticas.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.155551749733,
+      "longitude": -86.272724707632,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/anfiteatro-tomas-borge",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/anfiteatro-tomas-borge",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_anfiteatro%20tomas%20borge.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_anfiteatro%20tomas%20borge_1.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "172",
+      "slug": "xolotlan-172",
+      "name": "Plaza Soberanía",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Plaza peatonal del centro histórico con espacios para el encuentro familiar y actividades cívicas y recreativas.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.154962455305,
+      "longitude": -86.272073294327,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/plaza-soberania",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/plaza-soberania",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_plaza%20soberania.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_plaza%20soberania_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "116",
+      "slug": "xolotlan-116",
+      "name": "Polideportivo Alexis Argüello",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Complejo deportivo y cultural del centro histórico dedicado al boxeador Alexis Argüello, sede de actividades y eventos.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.153331084565,
+      "longitude": -86.275209217349,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/polideportivo-alexis-arguello",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/polideportivo-alexis-arguello",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_polideportivo-alexis-arguello.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_polideportivo-alexis-arguello_3_0.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "115",
+      "slug": "xolotlan-115",
+      "name": "Piscinas Michelle Richardson",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Complejo de piscinas de nivel olímpico dedicado a Michelle Richardson, junto al Polideportivo Alexis Argüello.",
+      "city": "Managua",
+      "address_text": "Avenida de Bolivar a Chavéz. Contiguo al Polideportivo Alexis Argüello",
+      "latitude": 12.151803038541,
+      "longitude": -86.274547585829,
+      "phone": "",
+      "schedules": "Lunes a Viernes 5:00am a 9:00pm",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/piscinas-michelle-richardson",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/piscinas-michelle-richardson",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/%7Balcaldia%20de%20managua%7D_michelle%20richardson_1.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-05/%7Balcaldia%20de%20managua%7D_michelle%20richardson_2.webp"
+      ],
+      "navigation_reference_only": false
+    },
+    {
+      "official_id": "114",
+      "slug": "xolotlan-114",
+      "name": "Parque Luis Alfonso Velásquez Flores",
+      "category": "Tour",
+      "subcategory": "Circuito Creativo Xolotlán",
+      "description": "Parque histórico y recreativo del centro de Managua con áreas verdes y espacios para el esparcimiento familiar.",
+      "city": "Managua",
+      "address_text": "",
+      "latitude": 12.152340921316,
+      "longitude": -86.271084127059,
+      "phone": "",
+      "schedules": "",
+      "access_details": "",
+      "other_notes": "Ficha municipal consultada el 8 de octubre de 2026. Promoción turística en Níkara; administración del registro de demostración, sin representación comercial del lugar. Fuente: https://ciudadcreativa.managua.gob.ni/lugar/parque-luis-alfonso-velasquez-flores",
+      "source_url": "https://ciudadcreativa.managua.gob.ni/lugar/parque-luis-alfonso-velasquez-flores",
+      "images": [
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_luis%20alfonso.webp",
+        "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/Alcaldia-Managua_luis%20alfonso_1_0.webp"
+      ],
+      "navigation_reference_only": false
+    }
+  ],
+  "routes": [
+    {
+      "slug": "ruta-natural",
+      "title": "Xolotlán · Ruta Natural",
+      "description": "Recorrido por espacios ecológicos, lagunas y miradores que destacan la riqueza natural de Managua. Los puntos de lagunas son referencias del mapa; confirmar accesos autorizados.",
+      "days": 1,
+      "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+      "official_name": "Ruta Natural",
+      "official_duration_minutes": 240,
+      "official_distance_metres": 15000,
+      "official_cover_url": "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/natural%20imagen-ruta.png",
+      "stops": [
+        {
+          "official_id": "171",
+          "order": 1
+        },
+        {
+          "official_id": "111",
+          "order": 2
+        },
+        {
+          "official_id": "170",
+          "order": 3
+        },
+        {
+          "official_id": "173",
+          "order": 4
+        },
+        {
+          "official_id": "160",
+          "order": 5
+        },
+        {
+          "official_id": "192",
+          "order": 6
+        },
+        {
+          "official_id": "174",
+          "order": 7
+        },
+        {
+          "official_id": "122",
+          "order": 8
+        },
+        {
+          "official_id": "120",
+          "order": 9
+        }
+      ]
+    },
+    {
+      "slug": "ruta-gastronmica",
+      "title": "Xolotlán · Ruta Gastronómica",
+      "description": "Ruta que conecta restaurantes y espacios culinarios que representan la diversidad gastronómica de Managua.",
+      "days": 1,
+      "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+      "official_name": "Ruta Gastronómica",
+      "official_duration_minutes": 240,
+      "official_distance_metres": 12000,
+      "official_cover_url": "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/vigoron%20gastro-ruta.png",
+      "stops": [
+        {
+          "official_id": "125",
+          "order": 1
+        },
+        {
+          "official_id": "133",
+          "order": 2
+        },
+        {
+          "official_id": "124",
+          "order": 3
+        },
+        {
+          "official_id": "175",
+          "order": 4
+        },
+        {
+          "official_id": "126",
+          "order": 5
+        },
+        {
+          "official_id": "131",
+          "order": 6
+        },
+        {
+          "official_id": "163",
+          "order": 7
+        },
+        {
+          "official_id": "193",
+          "order": 8
+        },
+        {
+          "official_id": "194",
+          "order": 9
+        },
+        {
+          "official_id": "127",
+          "order": 10
+        },
+        {
+          "official_id": "171",
+          "order": 11
+        }
+      ]
+    },
+    {
+      "slug": "ruta-histrica-patrimonial",
+      "title": "Xolotlán · Histórica patrimonial",
+      "description": "Recorrido por sitios emblemáticos que reflejan la historia y patrimonio cultural de Managua alrededor del lago Xolotlán. Acahualinca figura en remodelación; confirmar su reapertura.",
+      "days": 1,
+      "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+      "official_name": "Ruta Histórica - Patrimonial",
+      "official_duration_minutes": 180,
+      "official_distance_metres": 8000,
+      "official_cover_url": "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/huellas-ruta--1-ruta.png",
+      "stops": [
+        {
+          "official_id": "85",
+          "order": 1
+        },
+        {
+          "official_id": "93",
+          "order": 2
+        },
+        {
+          "official_id": "164",
+          "order": 3
+        },
+        {
+          "official_id": "165",
+          "order": 4
+        },
+        {
+          "official_id": "88",
+          "order": 5
+        },
+        {
+          "official_id": "87",
+          "order": 6
+        },
+        {
+          "official_id": "89",
+          "order": 7
+        },
+        {
+          "official_id": "260",
+          "order": 8
+        },
+        {
+          "official_id": "90",
+          "order": 9
+        },
+        {
+          "official_id": "166",
+          "order": 10
+        },
+        {
+          "official_id": "204",
+          "order": 11
+        }
+      ]
+    },
+    {
+      "slug": "ruta-cultural",
+      "title": "Xolotlán · Ruta Cultural",
+      "description": "Circuito enfocado en espacios de arte, formación creativa e industrias culturales de la ciudad.",
+      "days": 1,
+      "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+      "official_name": "Ruta Cultural",
+      "official_duration_minutes": 240,
+      "official_distance_metres": 10000,
+      "official_cover_url": "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-06/cultura%20imagen%20ruta.png",
+      "stops": [
+        {
+          "official_id": "180",
+          "order": 1
+        },
+        {
+          "official_id": "93",
+          "order": 2
+        },
+        {
+          "official_id": "151",
+          "order": 3
+        },
+        {
+          "official_id": "95",
+          "order": 4
+        },
+        {
+          "official_id": "96",
+          "order": 5
+        },
+        {
+          "official_id": "97",
+          "order": 6
+        },
+        {
+          "official_id": "167",
+          "order": 7
+        },
+        {
+          "official_id": "168",
+          "order": 8
+        },
+        {
+          "official_id": "100",
+          "order": 9
+        },
+        {
+          "official_id": "101",
+          "order": 10
+        },
+        {
+          "official_id": "102",
+          "order": 11
+        },
+        {
+          "official_id": "103",
+          "order": 12
+        },
+        {
+          "official_id": "105",
+          "order": 13
+        },
+        {
+          "official_id": "169",
+          "order": 14
+        },
+        {
+          "official_id": "107",
+          "order": 15
+        },
+        {
+          "official_id": "108",
+          "order": 16
+        }
+      ]
+    },
+    {
+      "slug": "ruta-de-recreacin-y-esparcimiento",
+      "title": "Xolotlán · Recreación y esparcimiento",
+      "description": "Ruta orientada al esparcimiento familiar, turismo y actividades recreativas en espacios urbanos. La Isla del Amor requiere transporte en embarcación.",
+      "days": 1,
+      "source_url": "https://ciudadcreativa.managua.gob.ni/circuitos-creativos",
+      "official_name": "Ruta de Recreación y Esparcimiento",
+      "official_duration_minutes": 180,
+      "official_distance_metres": 9000,
+      "official_cover_url": "https://ciudadcreativa.managua.gob.ni/sites/default/files/2026-04/route-3.png",
+      "stops": [
+        {
+          "official_id": "171",
+          "order": 1
+        },
+        {
+          "official_id": "185",
+          "order": 2
+        },
+        {
+          "official_id": "111",
+          "order": 3
+        },
+        {
+          "official_id": "170",
+          "order": 4
+        },
+        {
+          "official_id": "112",
+          "order": 5
+        },
+        {
+          "official_id": "172",
+          "order": 6
+        },
+        {
+          "official_id": "116",
+          "order": 7
+        },
+        {
+          "official_id": "115",
+          "order": 8
+        },
+        {
+          "official_id": "114",
+          "order": 9
+        },
+        {
+          "official_id": "90",
+          "order": 10
+        },
+        {
+          "official_id": "192",
+          "order": 11
+        }
+      ]
+    }
+  ]
+}

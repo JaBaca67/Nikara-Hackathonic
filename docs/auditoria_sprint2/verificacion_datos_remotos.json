@@ -1,0 +1,57 @@
+{
+  "checked_at_utc": "2026-10-09T03:54:07.623360+00:00",
+  "project_host": "taxtvsqfpmrrkvezwwpb.supabase.co",
+  "method": "GET explicit columns LIMIT 0 with public anon key",
+  "limits": "401/403 may only mean access is restricted. These checks do not validate authenticated writes, RLS isolation, SQL triggers, RPC behavior or device Realtime delivery.",
+  "checks": [
+    {
+      "table": "profiles",
+      "columns": "username,trip_alerts,eco_campaigns,offers,public_profile",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "public_profiles",
+      "columns": "username",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "businesses",
+      "columns": "favorites_count",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "passport_trips",
+      "columns": "user_id,trip_id,business_id,started_at,completed_at,postcard",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "route_visit_progress",
+      "columns": "user_id,route_id,visit_key,status,updated_at",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "assistant_conversations",
+      "columns": "id,user_id,title,messages,updated_at",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    },
+    {
+      "table": "routes",
+      "columns": "*,route_stops(*),public_profiles!routes_owner_id_fkey(id,full_name,avatar_url)",
+      "http_status": 200,
+      "error": null,
+      "rows_returned": 0
+    }
+  ]
+}

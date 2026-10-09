@@ -68,6 +68,8 @@ class _FakeEco {
 
   int posts = 0;
   int deletes = 0;
+  final List<Map<String, dynamic>> notifications = [];
+  bool notificationsFail = false;
 
   Map<String, dynamic> row({bool hideMe = false}) => {
     'id': _activityId,
@@ -95,6 +97,24 @@ class _FakeEco {
 
   http.Client get client => MockClient((request) async {
     final path = request.url.path;
+    if (path.endsWith('/rpc/notify_eco_participation')) {
+      return http.Response(
+        jsonEncode({
+          'code': 'PGRST202',
+          'message': 'Migración pendiente (simulada)',
+        }),
+        404,
+        request: request,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (path.endsWith('/notifications') && request.method == 'POST') {
+      if (notificationsFail) return _error(request);
+      notifications.addAll(
+        (jsonDecode(request.body) as List).cast<Map<String, dynamic>>(),
+      );
+      return http.Response('', 201, request: request);
+    }
     if (path.endsWith('/eco_activities') && request.method == 'GET') {
       if (!up) return _error(request);
       final pastOnly =
@@ -178,7 +198,9 @@ void main() {
       ..postGate = null
       ..staleReads = 0
       ..posts = 0
-      ..deletes = 0;
+      ..deletes = 0
+      ..notificationsFail = false
+      ..notifications.clear();
     SharedPreferences.setMockInitialValues({});
     await Supabase.instance.client.auth.recoverSession(_sessionJson());
   });
@@ -236,12 +258,36 @@ void main() {
       await tapAndWait(tester, find.text('Unirme'));
 
       expect(eco.posts, 1);
+      expect(eco.notifications, hasLength(2));
+      expect(eco.notifications.map((row) => row['type']), [
+        'eco_activity_joined',
+        'eco_activity_preparation',
+      ]);
+      expect(eco.notifications.every((row) => row['user_id'] == _me), isTrue);
+      expect(
+        eco.notifications.every((row) => row['reference_id'] == _activityId),
+        isTrue,
+      );
       expect(snack(_joinedMsg), findsOneWidget);
       expect(find.byType(SnackBar), findsOneWidget, reason: 'un solo aviso');
       expect(find.text('Abandonar actividad'), findsOneWidget);
       expect(find.text('Unirme'), findsNothing);
       // El estado se actualiza al instante, sin recargar la pantalla.
       expect(find.text('Participando'), findsOneWidget);
+    });
+
+    testWidgets('si fallan los avisos, la inscripción sigue confirmada', (
+      tester,
+    ) async {
+      await openDetail(tester);
+      eco.notificationsFail = true;
+
+      await tapAndWait(tester, find.text('Unirme'));
+
+      expect(eco.posts, 1);
+      expect(eco.notifications, isEmpty);
+      expect(snack(_joinedMsg), findsOneWidget);
+      expect(find.text('Abandonar actividad'), findsOneWidget);
     });
 
     testWidgets('sin conexión: error con "Reintentar" y el botón no cambia', (
@@ -261,6 +307,7 @@ void main() {
       );
       expect(snack(_retry), findsOneWidget);
       expect(snack(_joinedMsg), findsNothing);
+      expect(eco.notifications, isEmpty);
       // No finge que te uniste.
       expect(find.text('Unirme'), findsOneWidget);
       expect(find.text('Abandonar actividad'), findsNothing);

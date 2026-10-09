@@ -111,7 +111,9 @@ void main() {
     const migrated = <String, (int, int)>{
       'lib/features/business/presentation/screens/manage_business_posts_screen.dart':
           (1, 0),
-      'lib/features/settings/presentation/screens/settings_screen.dart': (2, 1),
+      'lib/features/settings/presentation/screens/settings_screen.dart': (2, 0),
+      'lib/features/settings/presentation/screens/settings_account_screen.dart':
+          (0, 1),
       'lib/features/profile/presentation/screens/face_profile_screen.dart': (
         1,
         0,

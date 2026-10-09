@@ -66,8 +66,9 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout>
 
   /// Un solo reloj para toda la entrada de la pantalla: la tarjeta se
   /// desliza desde abajo y, al mismo tiempo (mismo controlador, misma
-  /// curva), las ilustraciones de [AuthSceneBackdrop] se desvanecen hacia
-  /// adentro — así se leen como una sola escena que se arma, no como dos
+  /// curva base), las ilustraciones de [AuthSceneBackdrop] aparecen con fade y
+  /// un deslizamiento corto (ellas aplican su propia curva y desfase sobre
+  /// este progreso lineal) — así se leen como una sola escena que se arma, no como dos
   /// elementos apareciendo por separado.
   late final AnimationController _entranceController = AnimationController(
     vsync: this,
@@ -86,13 +87,6 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout>
         ),
       );
 
-  /// Misma curva que la tarjeta (sin rebote: un overshoot en opacidad se
-  /// saldría del rango 0-1 y parpadearía) para que las dos se sientan como
-  /// un solo movimiento, no dos velocidades distintas.
-  late final Animation<double> _illustrationsOpacity = CurvedAnimation(
-    parent: _entranceController,
-    curve: AppMotion.decelerate,
-  );
   bool _entranceStarted = false;
   Timer? _entranceStartTimer;
 
@@ -144,7 +138,7 @@ class _AuthBottomSheetLayoutState extends State<AuthBottomSheetLayout>
                 Positioned.fill(
                   child: AuthSceneBackdrop(
                     showIllustrations: widget.showIllustrations,
-                    illustrationsReveal: _illustrationsOpacity,
+                    illustrationsReveal: _entranceController,
                   ),
                 ),
                 AnimatedBuilder(

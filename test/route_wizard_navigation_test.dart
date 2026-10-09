@@ -4,12 +4,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/features/routes/presentation/screens/create_route_wizard_screen.dart';
+import 'package:nikara_app/features/routes/domain/models/route_model.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
@@ -18,8 +20,10 @@ const _kExitTooltip = 'Salir de crear ruta';
 
 void main() {
   bool failCatalog = false;
+  bool emptyCatalog = false;
   Completer<void>? catalogGate;
   setUpAll(() async {
+    GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
       url: 'https://example.supabase.co',
@@ -28,7 +32,20 @@ void main() {
         if (catalogGate != null) await catalogGate!.future;
         return http.Response(
           jsonEncode(
-            failCatalog ? {'code': '42501', 'message': 'fallo simulado'} : [],
+            failCatalog
+                ? {'code': '42501', 'message': 'fallo simulado'}
+                : !emptyCatalog && request.url.path.endsWith('/businesses')
+                ? [
+                    {
+                      'id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+                      'name': 'Parque Central',
+                      'city': 'Managua',
+                      'category': 'Cultura',
+                      'status': 'aprobado',
+                      'location': 'POINT(-86.273 12.156)',
+                    },
+                  ]
+                : [],
           ),
           failCatalog ? 403 : 200,
           request: request,
@@ -40,6 +57,7 @@ void main() {
 
   setUp(() {
     failCatalog = false;
+    emptyCatalog = false;
     catalogGate = null;
     SharedPreferences.setMockInitialValues({});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -52,7 +70,10 @@ void main() {
 
   /// Abre el wizard encima de una pantalla "Rutas" para poder comprobar si
   /// se volvió a ella.
-  Future<void> openWizard(WidgetTester tester) async {
+  Future<void> openWizard(
+    WidgetTester tester, {
+    RouteModel? initialRoute,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -64,7 +85,8 @@ void main() {
               child: TextButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const CreateRouteWizardScreen(),
+                    builder: (_) =>
+                        CreateRouteWizardScreen(initialRoute: initialRoute),
                   ),
                 ),
                 child: const Text('Rutas'),
@@ -100,7 +122,10 @@ void main() {
   }
 
   Future<void> goToStepTwo(WidgetTester tester) async {
-    await tester.enterText(find.byType(TextField), 'Fin de semana en Granada');
+    await tester.enterText(
+      find.byType(TextField).first,
+      'Fin de semana en Granada',
+    );
     await tester.pump();
     await tapPrimary(tester);
     expect(find.textContaining('Paso 2 de 3'), findsOneWidget);
@@ -132,6 +157,39 @@ void main() {
   }
 
   Finder headerButton(String tooltip) => find.byTooltip(tooltip);
+
+  testWidgets(
+    'editar precarga la descripción y permite modificarla o borrarla',
+    (tester) async {
+      await openWizard(
+        tester,
+        initialRoute: RouteModel(
+          id: 'route-1',
+          ownerId: 'owner-1',
+          title: 'Xolotlán',
+          description: 'Descripción anterior',
+          createdAt: DateTime(2026),
+        ),
+      );
+      final finder = find.byKey(const ValueKey('route-description'));
+      await tester.ensureVisible(finder);
+      expect(
+        tester.widget<TextField>(finder).controller!.text,
+        'Descripción anterior',
+      );
+      await tester.enterText(finder, 'Nueva descripción');
+      await tapPrimary(tester);
+      await tester.tap(headerButton(_kBackTooltip));
+      await settle(tester);
+      await tester.ensureVisible(finder);
+      expect(
+        tester.widget<TextField>(finder).controller!.text,
+        'Nueva descripción',
+      );
+      await tester.enterText(finder, '');
+      expect(tester.widget<TextField>(finder).controller!.text, isEmpty);
+    },
+  );
 
   group('paso 1', () {
     testWidgets('solo tiene la flecha: no hay botón Salir ni X', (
@@ -362,24 +420,24 @@ void main() {
 
     testWidgets('un nombre de 2 letras sigue siendo inválido', (tester) async {
       await openWizard(tester);
-      await tester.enterText(find.byType(TextField), 'ab');
+      await tester.enterText(find.byType(TextField).first, 'ab');
       await tester.pump();
       await tapPrimary(tester);
 
       expect(find.textContaining('mínimo 3 letras'), findsOneWidget);
       expect(find.textContaining('Paso 1 de 3'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField), 'abc');
+      await tester.enterText(find.byType(TextField).first, 'abc');
       await tester.pump();
       expect(find.textContaining('mínimo 3 letras'), findsNothing);
     });
 
     testWidgets('el nombre se limita a 60 caracteres', (tester) async {
       await openWizard(tester);
-      await tester.enterText(find.byType(TextField), 'a' * 80);
+      await tester.enterText(find.byType(TextField).first, 'a' * 80);
       await tester.pump();
 
-      final field = tester.widget<TextField>(find.byType(TextField));
+      final field = tester.widget<TextField>(find.byType(TextField).first);
       expect(field.controller!.text.length, 60);
     });
 
@@ -390,6 +448,7 @@ void main() {
     });
 
     testWidgets('paso 2: sin ningún lugar avisa y no avanza', (tester) async {
+      emptyCatalog = true;
       await openWizard(tester);
       await goToStepTwo(tester);
 

@@ -58,6 +58,14 @@ class AccountSwitcherService {
         .nonNulls
         .toList();
     accounts.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    if (decoded.whereType<Map<String, dynamic>>().any(
+      (row) =>
+          row.containsKey('full_name') ||
+          row.containsKey('role') ||
+          row.containsKey('avatar_url'),
+    )) {
+      await _write(accounts);
+    }
     return List.unmodifiable(accounts);
   }
 

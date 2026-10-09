@@ -22,10 +22,9 @@ class RouteServiceException implements Exception {
 /// Rutas. Mismo patrón de servicio singleton que [EcoService] y
 /// [BusinessStorageService].
 ///
-/// RLS está deshabilitada en este proyecto, así que la pertenencia se
-/// valida acá: [updateRoute], [replaceStops] y [deleteRoute] solo tocan
-/// filas de quien tiene la sesión abierta, y [cloneRoute] exige que la ruta
-/// ajena sea pública antes de copiarla.
+/// RLS protege las rutas personales y permite leer las públicas. Las
+/// mutaciones también filtran por dueño en Dart. Los circuitos del catálogo
+/// global no tienen dueño personal: se copian para adaptarlos o recorrerlos.
 class RouteService {
   factory RouteService() => RouteService.instance;
 
@@ -99,7 +98,8 @@ class RouteService {
   /// sin fotos de portada propias en vez de fallar por completo — el
   /// collage de la tarjeta sigue funcionando con las fotos de las paradas.
   static bool _isMissingImageUrlsColumn(PostgrestException e) =>
-      e.code == 'PGRST204' || e.code == '42703';
+      (e.code == 'PGRST204' || e.code == '42703') &&
+      e.message.contains('image_urls');
 
   // `public_profiles(id, full_name)` embebe por `routes.owner_id ->
   // profiles.id` (la misma FK desde 011_routes.sql, no hace falta ninguna
@@ -112,8 +112,10 @@ class RouteService {
   // `030_public_profiles_view.sql`: la tabla solo deja leer la fila propia,
   // así que en Comunidad —donde las rutas son justamente de otra gente— el
   // embed a la tabla devolvería `null` y las rutas aparecerían sin autor.
+  // Se indica la FK del creador: `route_visit_progress` también relaciona
+  // rutas con perfiles, por lo que el embed sin FK resulta ambiguo (PGRST201).
   static const _select =
-      '*, route_stops(*), public_profiles(id, full_name, avatar_url)';
+      '*, route_stops(*), public_profiles!routes_owner_id_fkey(id, full_name, avatar_url)';
 
   /// Las rutas de la cuenta con sesión abierta, la más reciente primero.
   /// Lista vacía para un invitado: una ruta necesita `owner_id`.
@@ -145,15 +147,15 @@ class RouteService {
     }
   }
 
-  /// Rutas que otras personas publicaron en la comunidad — las que se
-  /// pueden abrir y copiar. Excluye las propias: esas ya salen en
-  /// [getMyRoutes].
+  /// Rutas publicadas en la comunidad, incluidas las de la cuenta promotora.
+  /// Así quien publica un circuito también puede verlo en el catálogo público.
   Future<List<RouteModel>> getPublicRoutes() async {
     try {
-      final userId = AuthService().currentAuthUser?.id;
-      var query = _client.from('routes').select(_select).eq('is_public', true);
-      if (userId != null) query = query.neq('owner_id', userId);
-      final rows = await query.order('created_at', ascending: false);
+      final rows = await _client
+          .from('routes')
+          .select(_select)
+          .eq('is_public', true)
+          .order('created_at', ascending: false);
       return _mapRows(rows);
     } on PostgrestException catch (e) {
       throw RouteServiceException(
@@ -186,6 +188,8 @@ class RouteService {
   /// Alta desde el wizard: inserta la ruta y sus paradas ya renumeradas.
   Future<RouteModel> createRoute({
     required String title,
+    String description = '',
+    String? sourceUrl,
     required int days,
     required bool isPublic,
     List<RouteStopModel> stops = const [],
@@ -199,6 +203,8 @@ class RouteService {
       final row = await _insertRoute(
         userId: userId,
         title: title,
+        description: _validatedDescription(description),
+        sourceUrl: sourceUrl,
         days: days,
         isPublic: isPublic,
         imageUrls: imageUrls,
@@ -224,6 +230,8 @@ class RouteService {
   Future<Map<String, dynamic>> _insertRoute({
     required String userId,
     required String title,
+    required String description,
+    String? sourceUrl,
     required int days,
     required bool isPublic,
     required List<String> imageUrls,
@@ -232,6 +240,8 @@ class RouteService {
     final payload = {
       'owner_id': userId,
       'title': title,
+      'description': description,
+      'source_url': ?sourceUrl,
       'days': days,
       'is_public': isPublic,
       'image_urls': imageUrls,
@@ -255,6 +265,7 @@ class RouteService {
   Future<void> updateRoute(
     String routeId, {
     String? title,
+    String? description,
     int? days,
     bool? isPublic,
     RouteStatus? status,
@@ -265,6 +276,8 @@ class RouteService {
     );
     final changes = <String, dynamic>{
       'title': ?title,
+      if (description != null)
+        'description': _validatedDescription(description),
       'days': ?days,
       'is_public': ?isPublic,
       'status': ?status?.name,
@@ -272,8 +285,7 @@ class RouteService {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     try {
-      // El filtro por dueño es la validación de pertenencia: sin RLS, es
-      // lo que impide editar la ruta de otra persona.
+      // El filtro por dueño acompaña a RLS y excluye originales del catálogo.
       await _updateRoute(routeId, userId, changes);
       revision.value++;
     } on PostgrestException {
@@ -400,6 +412,8 @@ class RouteService {
     return createRoute(
       title: source.isOwnedBy(userId) ? '${fresh.title} (copia)' : fresh.title,
       days: fresh.days,
+      description: fresh.description,
+      sourceUrl: fresh.sourceUrl,
       isPublic: false,
       stops: fresh.stops,
       // Las fotos de portada se mantienen tal cual en la copia — son la
@@ -448,8 +462,8 @@ class RouteService {
     );
   }
 
-  /// Trae la ruta y confirma que [userId] es su dueño — el chequeo que
-  /// reemplaza a las políticas RLS que este proyecto no usa.
+  /// Confirma pertenencia antes de escribir las paradas; RLS vuelve a
+  /// comprobarla en el servidor.
   Future<RouteModel> _assertOwnership(String routeId, String userId) async {
     final route = await getRouteById(routeId);
     if (route == null) {
@@ -465,6 +479,16 @@ class RouteService {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) throw RouteServiceException(message);
     return userId;
+  }
+
+  static String _validatedDescription(String description) {
+    final trimmed = description.trim();
+    if (trimmed.runes.length > RouteModel.maxDescriptionLength) {
+      throw const RouteServiceException(
+        'La descripción debe tener como máximo 500 caracteres.',
+      );
+    }
+    return trimmed;
   }
 
   List<RouteModel> _mapRows(dynamic rows) => (rows as List<dynamic>)
@@ -483,6 +507,12 @@ class RouteService {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'routes',
+          callback: (_) => onChange(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'route_stops',
           callback: (_) => onChange(),
         )
         .subscribe();

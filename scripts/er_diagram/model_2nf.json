@@ -1,0 +1,2091 @@
+{
+  "normal_form": "2FN",
+  "source_tables": 18,
+  "excluded_archive_tables": [
+    {
+      "name": "reviews_backup",
+      "reason": "Copia de respaldo sin clave primaria ni UNIQUE, fuera del ciclo de la aplicación; incluida solo en el esquema físico."
+    }
+  ],
+  "tables_created_for_1nf": [
+    "business_photos",
+    "business_amenities",
+    "business_activities",
+    "business_eco_practices",
+    "day_pass_items",
+    "eco_activity_requirements",
+    "review_media",
+    "route_images",
+    "origin_place_aliases"
+  ],
+  "total_tables": 28,
+  "modules": [
+    "Identidad y cuentas",
+    "Negocios",
+    "Módulo ECO",
+    "Rutas y viajes",
+    "Interacción social",
+    "Avisos y automatización"
+  ],
+  "tables": [
+    {
+      "name": "audit_logs",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "action",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "table_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "timestamp",
+          "type": "timestamptz",
+          "quoted": true
+        }
+      ],
+      "source": "035_audit_logs.sql",
+      "module": "Identidad y cuentas",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "auth_users",
+      "schema": "auth",
+      "physical_name": "users",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "Supabase Auth (entidad externa; solo clave referenciada)",
+      "external": true,
+      "module": "Identidad y cuentas",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "business_activities",
+      "columns": [
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "businesses.id"
+        },
+        {
+          "name": "activity",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone businesses.activities",
+      "derived": true,
+      "note": "",
+      "module": "Negocios",
+      "pk": [
+        "business_id",
+        "activity"
+      ]
+    },
+    {
+      "name": "business_amenities",
+      "columns": [
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "businesses.id"
+        },
+        {
+          "name": "amenity",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone businesses.amenities",
+      "derived": true,
+      "note": "",
+      "module": "Negocios",
+      "pk": [
+        "business_id",
+        "amenity"
+      ]
+    },
+    {
+      "name": "business_eco_practices",
+      "columns": [
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "businesses.id"
+        },
+        {
+          "name": "practice",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone businesses.eco_practices",
+      "derived": true,
+      "note": "",
+      "module": "Negocios",
+      "pk": [
+        "business_id",
+        "practice"
+      ]
+    },
+    {
+      "name": "business_photos",
+      "columns": [
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "businesses.id"
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "photo_url",
+          "type": "text",
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone businesses.photos",
+      "derived": true,
+      "note": "El orden define cuál es la foto de portada.",
+      "module": "Negocios",
+      "pk": [
+        "business_id",
+        "position"
+      ]
+    },
+    {
+      "name": "business_posts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "auth_users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "image_url",
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "037_business_subcategory_day_pass_posts.sql",
+      "module": "Negocios",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "businesses",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "name",
+          "type": "text"
+        },
+        {
+          "name": "category",
+          "type": "text"
+        },
+        {
+          "name": "description",
+          "type": "text"
+        },
+        {
+          "name": "city",
+          "type": "text"
+        },
+        {
+          "name": "address_text",
+          "type": "text"
+        },
+        {
+          "name": "location",
+          "type": "geography(Point,4326)"
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "instagram_handle",
+          "type": "text"
+        },
+        {
+          "name": "is_verified",
+          "type": "boolean"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "schedules",
+          "type": "text"
+        },
+        {
+          "name": "facebook_handle",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "logo_url",
+          "type": "text"
+        },
+        {
+          "name": "show_host",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "eco_seal_requested",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "access_details",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "other_notes",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "tiktok_handle",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "secondary_phone",
+          "type": "text"
+        },
+        {
+          "name": "manual_open_override",
+          "type": "boolean"
+        },
+        {
+          "name": "subcategory",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_price",
+          "type": "numeric"
+        },
+        {
+          "name": "day_pass_schedule",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "day_pass_notes",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        }
+      ],
+      "source": "dashboard (sin DDL)",
+      "module": "Negocios",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "day_pass_items",
+      "columns": [
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "businesses.id"
+        },
+        {
+          "name": "item",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone businesses.day_pass_includes",
+      "derived": true,
+      "note": "Qué incluye el day pass de hospedaje.",
+      "module": "Negocios",
+      "pk": [
+        "business_id",
+        "item"
+      ]
+    },
+    {
+      "name": "device_push_tokens",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "token",
+          "type": "text",
+          "unique": true,
+          "not_null": true
+        },
+        {
+          "name": "platform",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "last_seen_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "025_push_tokens.sql",
+      "module": "Avisos y automatización",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "eco_activities",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "location",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "latitude",
+          "type": "double precision"
+        },
+        {
+          "name": "longitude",
+          "type": "double precision"
+        },
+        {
+          "name": "start_time",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "max_capacity",
+          "type": "integer"
+        },
+        {
+          "name": "organizer_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "organizer_name",
+          "type": "text"
+        },
+        {
+          "name": "organizer_verified",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "organization_id",
+          "type": "uuid",
+          "references": "organizations.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "image_url",
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        },
+        {
+          "name": "moments_enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "moments_max_messages",
+          "type": "integer"
+        },
+        {
+          "name": "moments_max_accounts",
+          "type": "integer"
+        },
+        {
+          "name": "moments_max_per_account",
+          "type": "integer"
+        },
+        {
+          "name": "contact_phone",
+          "type": "text"
+        },
+        {
+          "name": "instagram_link",
+          "type": "text"
+        },
+        {
+          "name": "facebook_link",
+          "type": "text"
+        }
+      ],
+      "source": "009_eco_activities.sql",
+      "module": "Módulo ECO",
+      "pk": [
+        "id"
+      ],
+      "transitive_debt": [
+        "organizer_name",
+        "organizer_verified"
+      ]
+    },
+    {
+      "name": "eco_activity_requirements",
+      "columns": [
+        {
+          "name": "activity_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "eco_activities.id"
+        },
+        {
+          "name": "requirement",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone eco_activities.requirements",
+      "derived": true,
+      "note": "Checklist de 'Requisitos y qué llevar'.",
+      "module": "Módulo ECO",
+      "pk": [
+        "activity_id",
+        "requirement"
+      ]
+    },
+    {
+      "name": "eco_participants",
+      "columns": [
+        {
+          "name": "activity_id",
+          "type": "uuid",
+          "references": "eco_activities.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "009_eco_activities.sql",
+      "module": "Módulo ECO",
+      "pk": [
+        "activity_id",
+        "user_id"
+      ]
+    },
+    {
+      "name": "legal_identities",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "unique": true,
+          "references": "auth_users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "document_number",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "document_photo_url",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "verified_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "verified_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "document_photo_back_url",
+          "type": "text"
+        }
+      ],
+      "source": "023_legal_identities.sql",
+      "module": "Identidad y cuentas",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "notification_automation_settings",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "pk": true,
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "next_business_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "last_business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public"
+        }
+      ],
+      "source": "045_action_notification_automations.sql",
+      "module": "Avisos y automatización",
+      "pk": [
+        "user_id"
+      ]
+    },
+    {
+      "name": "notification_completed_trips",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "trip_id",
+          "type": "text",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "started_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "045_action_notification_automations.sql",
+      "module": "Avisos y automatización",
+      "pk": [
+        "user_id",
+        "trip_id"
+      ]
+    },
+    {
+      "name": "notification_event_receipts",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "event_key",
+          "type": "text",
+          "not_null": true,
+          "pk": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "045_action_notification_automations.sql",
+      "module": "Avisos y automatización",
+      "pk": [
+        "user_id",
+        "event_key"
+      ]
+    },
+    {
+      "name": "notifications",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "reference_id",
+          "type": "uuid"
+        },
+        {
+          "name": "is_read",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql",
+      "module": "Avisos y automatización",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "organizations",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "handle",
+          "type": "text",
+          "unique": true,
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "logo_url",
+          "type": "text"
+        },
+        {
+          "name": "banner_url",
+          "type": "text"
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "is_verified",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text"
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "references": "origin_places.municipality_code",
+          "references_schema": "public"
+        }
+      ],
+      "source": "010_organizations.sql",
+      "module": "Módulo ECO",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "origin_place_aliases",
+      "columns": [
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "pk": true,
+          "not_null": true,
+          "references": "origin_places.municipality_code"
+        },
+        {
+          "name": "alias",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone origin_places.aliases",
+      "derived": true,
+      "note": "Variantes de nombre para búsqueda y normalización.",
+      "module": "Identidad y cuentas",
+      "pk": [
+        "municipality_code",
+        "alias"
+      ]
+    },
+    {
+      "name": "origin_places",
+      "columns": [
+        {
+          "name": "municipality_code",
+          "type": "text",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "city",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "municipality",
+          "type": "text",
+          "not_null": true
+        }
+      ],
+      "source": "041_origin_place_catalog.sql",
+      "unique_keys": [
+        [
+          "city",
+          "municipality"
+        ]
+      ],
+      "module": "Identidad y cuentas",
+      "pk": [
+        "municipality_code"
+      ]
+    },
+    {
+      "name": "profiles",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "references": "auth_users.id",
+          "references_schema": "auth",
+          "not_null": true
+        },
+        {
+          "name": "full_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "phone",
+          "type": "text"
+        },
+        {
+          "name": "role",
+          "type": "user_role"
+        },
+        {
+          "name": "points",
+          "type": "integer"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        },
+        {
+          "name": "avatar_url",
+          "type": "text"
+        },
+        {
+          "name": "residence_type",
+          "type": "text"
+        },
+        {
+          "name": "origin_country_code",
+          "type": "text"
+        },
+        {
+          "name": "origin_city",
+          "type": "text"
+        },
+        {
+          "name": "origin_municipality",
+          "type": "text"
+        },
+        {
+          "name": "public_display_name",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "bio",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "show_origin",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "show_origin_details",
+          "type": "boolean",
+          "not_null": true
+        }
+      ],
+      "source": "dashboard (sin DDL)",
+      "foreign_keys": [
+        {
+          "name": "profiles_origin_place_catalog",
+          "columns": [
+            "origin_city",
+            "origin_municipality"
+          ],
+          "references_table": "origin_places",
+          "references_schema": "public",
+          "references_columns": [
+            "city",
+            "municipality"
+          ],
+          "not_valid": true
+        }
+      ],
+      "module": "Identidad y cuentas",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "review_media",
+      "columns": [
+        {
+          "name": "review_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "reviews.id"
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "media_url",
+          "type": "text",
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone reviews.media_urls",
+      "derived": true,
+      "note": "",
+      "module": "Interacción social",
+      "pk": [
+        "review_id",
+        "position"
+      ]
+    },
+    {
+      "name": "reviews",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "target_type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "target_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "rating",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql",
+      "module": "Interacción social",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "route_images",
+      "columns": [
+        {
+          "name": "route_id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true,
+          "references": "routes.id"
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "image_url",
+          "type": "text",
+          "not_null": true
+        }
+      ],
+      "source": "1FN: descompone routes.image_urls",
+      "derived": true,
+      "note": "",
+      "module": "Rutas y viajes",
+      "pk": [
+        "route_id",
+        "position"
+      ]
+    },
+    {
+      "name": "route_stops",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "route_id",
+          "type": "uuid",
+          "references": "routes.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "day_number",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "position",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "business_id",
+          "type": "uuid",
+          "references": "businesses.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "eco_activity_id",
+          "type": "uuid",
+          "references": "eco_activities.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "destination_id",
+          "type": "text"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "subtitle",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "image_path",
+          "type": "text"
+        },
+        {
+          "name": "latitude",
+          "type": "double precision"
+        },
+        {
+          "name": "longitude",
+          "type": "double precision"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "011_routes.sql",
+      "unique_keys": [
+        [
+          "route_id",
+          "day_number",
+          "kind",
+          "business_id",
+          "eco_activity_id",
+          "destination_id"
+        ]
+      ],
+      "module": "Rutas y viajes",
+      "pk": [
+        "id"
+      ],
+      "transitive_debt": [
+        "title",
+        "subtitle",
+        "category",
+        "image_path",
+        "latitude",
+        "longitude"
+      ]
+    },
+    {
+      "name": "routes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "owner_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": false
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "days",
+          "type": "integer",
+          "not_null": true
+        },
+        {
+          "name": "is_public",
+          "type": "boolean",
+          "not_null": true
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "cloned_from_route_id",
+          "type": "uuid",
+          "references": "routes.id",
+          "references_schema": "public"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamptz",
+          "not_null": true
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "source_url",
+          "type": "text"
+        },
+        {
+          "name": "catalog_name",
+          "type": "text"
+        }
+      ],
+      "source": "011_routes.sql",
+      "module": "Rutas y viajes",
+      "pk": [
+        "id"
+      ]
+    },
+    {
+      "name": "user_favorites",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "pk": true,
+          "not_null": true
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "references": "profiles.id",
+          "references_schema": "public",
+          "not_null": true
+        },
+        {
+          "name": "item_type",
+          "type": "text",
+          "not_null": true
+        },
+        {
+          "name": "item_id",
+          "type": "uuid",
+          "not_null": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz",
+          "not_null": true
+        }
+      ],
+      "source": "013_final_schema_additions.sql",
+      "unique_keys": [
+        [
+          "user_id",
+          "item_type",
+          "item_id"
+        ]
+      ],
+      "module": "Interacción social",
+      "pk": [
+        "id"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": "auth_users",
+      "to": "business_posts",
+      "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "auth_users",
+      "to": "legal_identities",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:1",
+      "optional": false
+    },
+    {
+      "from": "auth_users",
+      "to": "profiles",
+      "fk": "id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "id"
+      ],
+      "kind": "1:1",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "business_activities",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "business_amenities",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "business_eco_practices",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "business_photos",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "business_posts",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "day_pass_items",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "notification_automation_settings",
+      "fk": "last_business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "last_business_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "businesses",
+      "to": "notification_completed_trips",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "businesses",
+      "to": "notifications",
+      "fk": "reference_id (type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "businesses",
+      "to": "reviews",
+      "fk": "target_id (target_type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "businesses",
+      "to": "route_stops",
+      "fk": "business_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "business_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "businesses",
+      "to": "user_favorites",
+      "fk": "item_id (item_type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "eco_activities",
+      "to": "eco_activity_requirements",
+      "fk": "activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "activity_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "eco_activities",
+      "to": "eco_participants",
+      "fk": "activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "activity_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "eco_activities",
+      "to": "notifications",
+      "fk": "reference_id (type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "eco_activities",
+      "to": "reviews",
+      "fk": "target_id (target_type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "eco_activities",
+      "to": "route_stops",
+      "fk": "eco_activity_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "eco_activity_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "eco_activities",
+      "to": "user_favorites",
+      "fk": "item_id (item_type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "organizations",
+      "to": "eco_activities",
+      "fk": "organization_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "organization_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "organizations",
+      "to": "notifications",
+      "fk": "reference_id (type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    },
+    {
+      "from": "origin_places",
+      "to": "businesses",
+      "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "origin_places",
+      "to": "eco_activities",
+      "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "origin_places",
+      "to": "organizations",
+      "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "origin_places",
+      "to": "origin_place_aliases",
+      "fk": "municipality_code",
+      "from_columns": [
+        "municipality_code"
+      ],
+      "to_columns": [
+        "municipality_code"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "origin_places",
+      "to": "profiles",
+      "fk": "origin_city, origin_municipality",
+      "from_columns": [
+        "city",
+        "municipality"
+      ],
+      "to_columns": [
+        "origin_city",
+        "origin_municipality"
+      ],
+      "kind": "1:N",
+      "optional": true,
+      "not_valid": true,
+      "composite": true
+    },
+    {
+      "from": "profiles",
+      "to": "audit_logs",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "businesses",
+      "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "businesses",
+      "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "device_push_tokens",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "eco_activities",
+      "fk": "organizer_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "organizer_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "eco_activities",
+      "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "eco_participants",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "legal_identities",
+      "fk": "verified_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "verified_by"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "notification_automation_settings",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:1",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "notification_completed_trips",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "notification_event_receipts",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "notifications",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "organizations",
+      "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "organizations",
+      "fk": "reviewed_by",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "reviewed_by"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "reviews",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "profiles",
+      "to": "routes",
+      "fk": "owner_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "owner_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "profiles",
+      "to": "user_favorites",
+      "fk": "user_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "user_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "reviews",
+      "to": "review_media",
+      "fk": "review_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "review_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "routes",
+      "to": "route_images",
+      "fk": "route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "route_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "routes",
+      "to": "route_stops",
+      "fk": "route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "route_id"
+      ],
+      "kind": "1:N",
+      "optional": false
+    },
+    {
+      "from": "routes",
+      "to": "routes",
+      "fk": "cloned_from_route_id",
+      "from_columns": [
+        "id"
+      ],
+      "to_columns": [
+        "cloned_from_route_id"
+      ],
+      "kind": "1:N",
+      "optional": true
+    },
+    {
+      "from": "routes",
+      "to": "user_favorites",
+      "fk": "item_id (item_type)",
+      "kind": "1:N",
+      "optional": true,
+      "polymorphic": true
+    }
+  ],
+  "notes": {
+    "2nf": "PK compuestas heredadas: eco_participants(activity_id, user_id), notification_event_receipts(user_id, event_key) y notification_completed_trips(user_id, trip_id). Se considera la inscripción, el evento por usuario y el viaje por usuario como unidad de identificación. Sus atributos no clave dependen de la clave completa bajo esas reglas de negocio. En fotos y medios, la URL depende de (entidad_id, position); en las otras tablas nuevas todos los atributos integran la PK. Las claves alternativas UNIQUE con columnas NOT NULL se revisan también; un identificador simple no elimina por sí solo las posibles dependencias parciales de claves alternativas.",
+    "out_of_scope_3nf": {
+      "route_stops": [
+        "title",
+        "subtitle",
+        "category",
+        "image_path",
+        "latitude",
+        "longitude"
+      ],
+      "eco_activities": [
+        "organizer_name",
+        "organizer_verified"
+      ]
+    }
+  }
+}

@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:nikara_app/core/services/auth_service.dart';
@@ -16,7 +17,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 /// Registro best-effort a propósito: un fallo acá (permiso denegado, sin
 /// internet, Firebase todavía sin inicializar) nunca debe impedir el login ni
 /// romper las notificaciones in-app, que no dependen de esto.
-class PushTokenService {
+class PushTokenService with WidgetsBindingObserver {
   factory PushTokenService() => instance;
 
   PushTokenService._internal();
@@ -29,6 +30,8 @@ class PushTokenService {
 
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<String>? _tokenRefreshSub;
+  Future<void> _registration = Future<void>.value();
+  bool _observingLifecycle = false;
 
   /// Eventos en los que el token de este dispositivo se re-registra: cubre
   /// login normal, login OAuth y `AuthService.switchAccount` (los tres
@@ -48,6 +51,10 @@ class PushTokenService {
 
   void startTracking() {
     if (!_platformSupportsPush) return;
+    if (!_observingLifecycle) {
+      WidgetsBinding.instance.addObserver(this);
+      _observingLifecycle = true;
+    }
     _authSub ??= AuthService().authStateChanges.listen((state) {
       if (state.event == AuthChangeEvent.signedOut) {
         unawaited(_unregisterCurrentDevice());
@@ -60,9 +67,32 @@ class PushTokenService {
     _tokenRefreshSub ??= FirebaseMessaging.instance.onTokenRefresh.listen((_) {
       unawaited(_registerCurrentDevice());
     });
+    // Supabase restaura la sesión antes de inicializar Firebase. El evento
+    // initialSession puede haber pasado cuando nos suscribimos: registrar
+    // también la sesión actual permite recibir push al reabrir la app.
+    if (AuthService().currentAuthUser != null) {
+      unawaited(_registerCurrentDevice());
+    }
   }
 
-  Future<void> _registerCurrentDevice() async {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Recupera el registro si el arranque ocurrió sin conexión o si el
+    // usuario volvió de habilitar las notificaciones en Ajustes.
+    if (state == AppLifecycleState.resumed &&
+        AuthService().currentAuthUser != null) {
+      unawaited(_registerCurrentDevice());
+    }
+  }
+
+  Future<void> _registerCurrentDevice() {
+    // initialSession y onTokenRefresh pueden coincidir. Serializar impide
+    // que dos registros intenten renovar el mismo token a la vez.
+    _registration = _registration.then((_) => _registerCurrentDeviceNow());
+    return _registration;
+  }
+
+  Future<void> _registerCurrentDeviceNow() async {
     final userId = AuthService().currentAuthUser?.id;
     if (userId == null) return;
     try {
@@ -71,17 +101,36 @@ class PushTokenService {
 
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
+      if (AuthService().currentAuthUser?.id != userId) return;
 
-      await _client.from(_table).upsert({
+      try {
+        await _saveToken(userId, token);
+      } on PostgrestException catch (e) {
+        if (e.code != '42501' || AuthService().currentAuthUser?.id != userId) {
+          rethrow;
+        }
+        // El teléfono puede conservar un token que pertenece a otra cuenta.
+        // RLS impide reasignarlo; renovarlo en Firebase invalida el anterior
+        // y permite insertar uno propio sin relajar las políticas.
+        await FirebaseMessaging.instance.deleteToken();
+        final freshToken = await FirebaseMessaging.instance.getToken();
+        if (freshToken == null || AuthService().currentAuthUser?.id != userId) {
+          return;
+        }
+        await _saveToken(userId, freshToken);
+      }
+    } catch (e) {
+      debugPrint('[PushTokenService] No se pudo registrar el dispositivo: $e');
+    }
+  }
+
+  Future<void> _saveToken(String userId, String token) =>
+      _client.from(_table).upsert({
         'user_id': userId,
         'token': token,
         'platform': _platformName,
         'last_seen_at': DateTime.now().toUtc().toIso8601String(),
       }, onConflict: 'token');
-    } catch (_) {
-      // Best-effort — ver docstring de la clase.
-    }
-  }
 
   /// Al cerrar sesión de verdad (no un simple cambio de cuenta) el
   /// dispositivo deja de recibir push hasta el próximo login: si no se
@@ -92,8 +141,8 @@ class PushTokenService {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
       await _client.from(_table).delete().eq('token', token);
-    } catch (_) {
-      // Best-effort — ver docstring de la clase.
+    } catch (e) {
+      debugPrint('[PushTokenService] No se pudo retirar el dispositivo: $e');
     }
   }
 

@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "function": "username_available",
+  "parameter": "invalid format (!)",
+  "http_status": 200,
+  "result": false,
+  "read_only": true
+}

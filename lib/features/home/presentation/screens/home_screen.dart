@@ -15,6 +15,7 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/services/passport_service.dart';
 import 'package:nikara_app/features/admin/presentation/screens/admin_shell_screen.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/domain/models/business_model.dart';
@@ -235,6 +236,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_loadUnreadNotifications());
       unawaited(_loadPosition(forceRefresh: true));
       _startLocationUpdates();
     } else {
@@ -320,9 +322,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _restartPhotoTimer();
       _unsubscribeBusinessChanges ??= _businessStorageService
           .subscribeToBusinessChanges(_onBusinessesChanged);
+      if (!GuestSessionService().isGuest) {
+        unawaited(_initializeNotificationAutomations());
+      }
     } on BusinessServiceException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);
+    }
+  }
+
+  Future<void> _initializeNotificationAutomations() async {
+    final ownerId = AuthService().currentAuthUser?.id;
+    if (ownerId == null) return;
+    await NotificationService().enableAutomations();
+    if (AuthService().currentAuthUser?.id != ownerId) return;
+    try {
+      final collection = await PassportService().getCollection();
+      await NotificationService().syncPassportProgress(
+        ownerId: ownerId,
+        trips: collection.notificationTrips,
+      );
+    } on PassportServiceException catch (e) {
+      debugPrint(
+        'No se pudieron recuperar los avisos del pasaporte: ${e.message}',
+      );
     }
   }
 

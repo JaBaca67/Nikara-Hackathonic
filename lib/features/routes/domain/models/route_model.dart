@@ -21,6 +21,9 @@ class RouteModel {
     required this.id,
     required this.ownerId,
     required this.title,
+    this.description = '',
+    this.sourceUrl,
+    this.catalogName,
     this.days = 1,
     this.isPublic = false,
     this.status = RouteStatus.active,
@@ -35,6 +38,13 @@ class RouteModel {
   final String id;
   final String ownerId;
   final String title;
+  final String description;
+  final String? sourceUrl;
+  final String? catalogName;
+
+  bool get isCatalog => catalogName?.trim().isNotEmpty ?? false;
+
+  static const maxDescriptionLength = 500;
   final int days;
   final bool isPublic;
   final RouteStatus status;
@@ -66,12 +76,14 @@ class RouteModel {
 
   bool get isClone => clonedFromRouteId != null;
 
-  bool isOwnedBy(String? userId) => userId != null && userId == ownerId;
+  bool isOwnedBy(String? userId) =>
+      !isCatalog && ownerId.isNotEmpty && userId != null && userId == ownerId;
 
   /// "Alguien de Níkara" cuando [creatorName] no llegó a cargarse — nunca
   /// un nombre inventado, mismo criterio que `organizerDisplayName` del
   /// módulo ECO.
   String get creatorDisplayName {
+    if (isCatalog) return catalogName!;
     final name = creatorName;
     return (name == null || name.trim().isEmpty) ? 'Alguien de Níkara' : name;
   }
@@ -133,6 +145,7 @@ class RouteModel {
 
   RouteModel copyWith({
     String? title,
+    String? description,
     int? days,
     bool? isPublic,
     RouteStatus? status,
@@ -143,6 +156,9 @@ class RouteModel {
       id: id,
       ownerId: ownerId,
       title: title ?? this.title,
+      description: description ?? this.description,
+      sourceUrl: sourceUrl,
+      catalogName: catalogName,
       days: days ?? this.days,
       isPublic: isPublic ?? this.isPublic,
       status: status ?? this.status,
@@ -194,6 +210,9 @@ class RouteModel {
       id: row['id'] as String,
       ownerId: row['owner_id'] as String? ?? '',
       title: row['title'] as String? ?? '',
+      description: row['description'] as String? ?? '',
+      sourceUrl: row['source_url'] as String?,
+      catalogName: row['catalog_name'] as String?,
       days: (row['days'] as num?)?.toInt() ?? 1,
       isPublic: row['is_public'] as bool? ?? false,
       status: RouteStatus.fromName(row['status'] as String?),

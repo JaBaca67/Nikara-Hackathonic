@@ -82,13 +82,21 @@ dev_dependencies:
 
 # flutter_launcher_icons config — image_path/adaptive_icon_foreground son PNGs
 # porque la herramienta no acepta SVG como fuente. Hoy componen el isotipo
-# monograma "N + hojas" (propuesta de Claude Design del 2026-08-26) sobre el
-# gradiente cálido de marca; el logotipo horizontal anterior quedó archivado en
+# monograma "N + hojas" sobre el gradiente "lima sol" (entregable del
+# 2026-10-08, archivado sin tocar en assets/icon/Isotipo_Níkara_lima_sol_2048.png):
+# diagonal oliveFill -> goldFill -> background, con la textura topográfica
+# encima. El logotipo horizontal anterior quedó archivado en
 # assets/icon/_propuestas/v1_logotipo/ — se leía ilegible a 48dp.
+# Los tres PNGs se derivan del entregable, no se dibujan aparte: el background
+# es ese mismo arte con el monograma removido y la textura rellenada, y el
+# foreground el monograma recortado con alfa. Importante: el filo claro entre
+# el contorno marrón y cada hoja es transparente, no crema — ahí se ve el
+# gradiente del background, y pintarlo opaco rompe la fidelidad al entregable.
 # El foreground se escala a 580/1024 px: la máscara adaptativa de Android solo
 # garantiza el 66% central del canvas (círculo de 682 px), y a ese ancho el punto
 # más lejano del isotipo queda en radio 316 contra los 341 disponibles. A 620 ya
-# roza el borde. El icono legacy va a 740 px, que no pasa por esa máscara.
+# roza el borde. El icono legacy conserva el encuadre del entregable (monograma
+# de 756 px), que no pasa por esa máscara.
 # Regenerar los 3 PNGs si el logo o el gradiente cambian.
 flutter_launcher_icons:
   android: true
@@ -99,8 +107,8 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "assets/icon/app_icon.png"
-    background_color: "#FFCC33"
-    theme_color: "#FFCC33"
+    background_color: "#FDBE02"
+    theme_color: "#FDBE02"
   windows:
     generate: true
     image_path: "assets/icon/app_icon.png"
@@ -113,6 +121,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Tipografía de la landing, empaquetada para la pantalla de membresías.
+  fonts:
+    - family: NikaraMembership
+      fonts:
+        - asset: assets/fonts/membership/Philosopher-Regular.ttf
+        - asset: assets/fonts/membership/Philosopher-Bold.ttf
+          weight: 700
+
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
@@ -124,7 +140,7 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # Sin fuentes empaquetadas: toda la tipografía sale de `google_fonts`
+  # La tipografía general sale de `google_fonts`
   # (League Spartan + Nunito, ver lib/theme/app_theme.dart). La familia
   # Leelawadee se removió junto con assets/fonts/ — no la usaba ninguna
   # pantalla, solo dos etiquetas numéricas de pines de mapa.

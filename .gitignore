@@ -78,3 +78,9 @@ app.*.map.json
 # podrá recrear la base de datos ni desplegar el push sin estos archivos, así
 # que conviene respaldarlos aparte (la bóveda de Obsidian es repo privado).
 /supabase/
+
+# Estado local del exportador del ER a Miro (ids de items + board id).
+# No es secreto, pero es basura de corrida: cada maquina/board genera el suyo.
+/scripts/er_diagram/.miro_state.json
+/scripts/er_diagram/.miro_token
+/scripts/er_diagram/.miro_board

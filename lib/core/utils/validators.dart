@@ -111,6 +111,9 @@ final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$');
 /// se muestra como identificador público, así que admitir acentos o eñes haría
 /// que dos usuarios distintos se vieran casi iguales ("josé" / "jose").
 String? validateUsername(String? value) {
+  if ((value?.trim().length ?? 0) > 60) {
+    return 'El nombre de usuario admite hasta 60 caracteres.';
+  }
   final username = sanitizeText(value, maxLength: InputLimits.handle);
   if (username.isEmpty) return 'Elige un nombre de usuario.';
   if (username.length < 3) {

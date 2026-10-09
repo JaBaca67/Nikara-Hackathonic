@@ -11,6 +11,7 @@ import 'package:nikara_app/core/models/user_model.dart';
 import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/services/favorites_service.dart';
 import 'package:nikara_app/core/services/location_service.dart';
+import 'package:nikara_app/core/utils/spanish_date_format.dart';
 import 'package:nikara_app/features/business/data/business_post_service.dart';
 import 'package:nikara_app/features/business/data/business_storage_service.dart';
 import 'package:nikara_app/features/business/data/review_service.dart';
@@ -32,15 +33,34 @@ import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/eco_badge.dart';
 import 'package:nikara_app/shared/widgets/favorite_toggle.dart';
 import 'package:nikara_app/shared/widgets/app_loading.dart';
+import 'package:nikara_app/shared/widgets/app_confirm_dialog.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
 /// Pantalla de detalle de [BusinessModel], sin precio ni CTA de reserva — mismo pivote "discovery-first" ya aplicado al rediseño del Mapa.
 class BusinessDetailScreen extends StatefulWidget {
-  const BusinessDetailScreen({super.key, required this.business});
+  const BusinessDetailScreen({
+    super.key,
+    required this.business,
+    @visibleForTesting this.userIdOverride,
+    @visibleForTesting this.saveReviewOverride,
+    @visibleForTesting this.deleteReviewOverride,
+  });
 
   final BusinessModel business;
+
+  /// Solo para pruebas: la sesión no se puede simular sin un backend real, y
+  /// de ella depende saber cuál reseña es "mía".
+  final String? userIdOverride;
+
+  /// Solo para pruebas: sustituyen la escritura/borrado reales en Supabase.
+  final Future<ReviewWriteOutcome> Function(
+    BusinessModel business,
+    ReviewModel review,
+  )?
+  saveReviewOverride;
+  final Future<void> Function(BusinessModel business)? deleteReviewOverride;
 
   @override
   State<BusinessDetailScreen> createState() => _BusinessDetailScreenState();
@@ -195,12 +215,27 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
   /// vuelve a mostrar prellenada.
   ReviewDraft? _failedReviewDraft;
 
+  /// La reseña de la persona con sesión en este negocio, si ya escribió una.
+  /// Hay una sola por persona: escribir de nuevo la edita.
+  String? get _userId =>
+      widget.userIdOverride ?? _authService.currentAuthUser?.id;
+
+  ReviewModel? get _myReview {
+    final userId = _userId;
+    if (userId == null) return null;
+    for (final review in _business.countedReviews) {
+      if (review.authorId == userId) return review;
+    }
+    return null;
+  }
+
   /// Con [retry] la hoja se abre con la reseña fallida y la envía sola, para
   /// que el spinner se vea en el botón "Enviar reseña".
   Future<void> _openWriteReview({bool retry = false}) async {
     if (_isSubmittingReview) return;
     if (!await FaceGuard.allow(context, FaceLimitedAction.resena)) return;
     if (!mounted) return;
+    final myReview = _myReview;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -209,7 +244,16 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => WriteReviewSheet(
-        initialDraft: _failedReviewDraft,
+        isEditing: myReview != null,
+        initialDraft:
+            _failedReviewDraft ??
+            (myReview == null
+                ? null
+                : ReviewDraft(
+                    rating: myReview.rating,
+                    comment: myReview.comment,
+                    mediaPaths: const [],
+                  )),
         autoSubmit: retry && _failedReviewDraft != null,
         onSubmit: _submitReview,
       ),
@@ -227,15 +271,23 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       // Desde que las reseñas van a la tabla `reviews`, publicar puede fallar
       // por red. Solo se agrega a la lista en pantalla si la fila se escribió:
       // mostrarla igual haría creer que quedó publicada para todos.
-      final review = await _publishReview(draft).timeout(_reviewPublishTimeout);
+      final (review, outcome) = await _publishReview(
+        draft,
+      ).timeout(_reviewPublishTimeout);
       if (!mounted) return true;
       setState(() {
         _failedReviewDraft = null;
+        // Reemplaza la reseña propia si ya existía: nunca quedan dos.
         _businessState = _businessState.copyWith(
-          reviews: [..._businessState.reviews, review],
+          reviews: upsertReviewByAuthor(_businessState.reviews, review),
         );
       });
-      AppSnackbar.showSuccess(context, '¡Gracias por tu reseña!');
+      AppSnackbar.showSuccess(
+        context,
+        outcome == ReviewWriteOutcome.updated
+            ? 'Actualizaste tu reseña'
+            : '¡Gracias por tu reseña!',
+      );
       return true;
     } on TimeoutException {
       _failReview(
@@ -257,23 +309,28 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
     return false;
   }
 
-  Future<ReviewModel> _publishReview(ReviewDraft draft) async {
+  Future<(ReviewModel, ReviewWriteOutcome)> _publishReview(
+    ReviewDraft draft,
+  ) async {
     final profile = _currentProfile ?? await _authService.getCurrentProfile();
     final authorName = profile != null && profile.fullName.trim().isNotEmpty
         ? profile.fullName
         : 'Viajero Níkara';
 
+    // Al editar se conserva el id y la fecha de la reseña original.
+    final previous = _myReview;
     final review = ReviewModel(
-      id: const Uuid().v4(),
+      id: previous?.id ?? const Uuid().v4(),
       authorName: authorName,
-      authorId: _authService.currentAuthUser?.id ?? '',
+      authorId: _userId ?? '',
       rating: draft.rating,
       comment: draft.comment,
-      date: DateTime.now(),
+      date: previous?.date ?? DateTime.now(),
       mediaPaths: draft.mediaPaths,
     );
-    await _businessStorageService.addReview(_business, review);
-    return review;
+    final save = widget.saveReviewOverride ?? _businessStorageService.addReview;
+    final outcome = await save(_business, review);
+    return (review, outcome);
   }
 
   /// Guarda la reseña y avisa con un "Reintentar". La hoja se cierra después
@@ -287,6 +344,76 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
       message,
       actionLabel: 'Reintentar',
       onAction: () => unawaited(_openWriteReview(retry: true)),
+    );
+  }
+
+  /// Desde que se toca "Eliminar" (antes incluso del diálogo) hasta que el
+  /// servidor responde: el segundo toque se ignora y no se abren dos
+  /// confirmaciones ni se borra dos veces.
+  bool _isDeletingReview = false;
+
+  /// "Eliminar" del menú de la tarjeta: confirma y borra la reseña propia.
+  Future<void> _deleteMyReview() async {
+    if (_isDeletingReview || _isSubmittingReview) return;
+    setState(() => _isDeletingReview = true);
+    final confirmed = await AppConfirmDialog.show(
+      context,
+      title: '¿Eliminar tu reseña?',
+      message: 'Tu calificación y tu comentario se quitarán del negocio.',
+      confirmLabel: 'Eliminar',
+    );
+    if (!mounted) return;
+    if (!confirmed) {
+      setState(() => _isDeletingReview = false);
+      return;
+    }
+    await _runDeleteReview();
+  }
+
+  /// El borrado en sí, también lo reutiliza "Reintentar" (ya se confirmó).
+  /// La tarjeta sale de la lista solo cuando el servidor confirma.
+  Future<void> _runDeleteReview() async {
+    if (!mounted) return;
+    setState(() => _isDeletingReview = true);
+    final userId = _userId;
+    try {
+      final delete =
+          widget.deleteReviewOverride ?? _businessStorageService.deleteReview;
+      await delete(_business).timeout(_reviewPublishTimeout);
+      if (!mounted) return;
+      setState(() {
+        _failedReviewDraft = null;
+        if (userId != null) {
+          _businessState = _businessState.copyWith(
+            reviews: removeReviewsByAuthor(_businessState.reviews, userId),
+          );
+        }
+      });
+      AppSnackbar.showInfo(context, 'Eliminaste tu reseña');
+    } on TimeoutException {
+      _failDeleteReview(
+        'Eliminar tu reseña tardó demasiado. Verifica tu internet e intenta '
+        'de nuevo.',
+      );
+    } on ReviewServiceException catch (e) {
+      _failDeleteReview(e.message);
+    } on Exception {
+      _failDeleteReview(
+        'No se pudo eliminar tu reseña. Verifica tu internet e intenta de '
+        'nuevo.',
+      );
+    } finally {
+      if (mounted) setState(() => _isDeletingReview = false);
+    }
+  }
+
+  void _failDeleteReview(String message) {
+    if (!mounted) return;
+    AppSnackbar.showError(
+      context,
+      message,
+      actionLabel: 'Reintentar',
+      onAction: () => unawaited(_runDeleteReview()),
     );
   }
 
@@ -379,6 +506,10 @@ class _BusinessDetailScreenState extends State<BusinessDetailScreen> {
                         : _ReviewsTab(
                             business: _business,
                             onWriteReview: _openWriteReview,
+                            hasOwnReview: _myReview != null,
+                            currentUserId: _userId,
+                            onEditReview: _openWriteReview,
+                            onDeleteReview: _deleteMyReview,
                           ),
                   ),
                 ],
@@ -424,7 +555,7 @@ class _CoverCaption extends StatelessWidget {
         Row(
           children: [
             Icon(
-              business.reviews.isEmpty
+              business.reviewCount == 0
                   ? Icons.star_border_rounded
                   : Icons.star_rounded,
               size: 15,
@@ -439,7 +570,7 @@ class _CoverCaption extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text(
-              '(${business.reviews.length} reseñas)',
+              '(${business.reviewCount} reseñas)',
               style: AppTextStyles.detailRatingCount.copyWith(
                 color: AppColors.surface100.withValues(alpha: 0.8),
               ),
@@ -1331,10 +1462,26 @@ class _ReportLinkSection extends StatelessWidget {
 }
 
 class _ReviewsTab extends StatelessWidget {
-  const _ReviewsTab({required this.business, required this.onWriteReview});
+  const _ReviewsTab({
+    required this.business,
+    required this.onWriteReview,
+    required this.hasOwnReview,
+    required this.currentUserId,
+    required this.onEditReview,
+    required this.onDeleteReview,
+  });
 
   final BusinessModel business;
   final VoidCallback onWriteReview;
+
+  /// Ya reseñó este negocio: el botón pasa a editar esa misma reseña.
+  final bool hasOwnReview;
+
+  /// Sirve para reconocer las reseñas propias y ofrecerles el menú; `null`
+  /// (invitado o sin sesión) no se la ofrece a ninguna.
+  final String? currentUserId;
+  final VoidCallback onEditReview;
+  final VoidCallback onDeleteReview;
 
   @override
   Widget build(BuildContext context) {
@@ -1345,8 +1492,13 @@ class _ReviewsTab extends StatelessWidget {
           width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: onWriteReview,
-            icon: const Icon(Icons.rate_review_outlined, size: 18),
-            label: const Text('Escribir una reseña'),
+            icon: Icon(
+              hasOwnReview ? Icons.edit_outlined : Icons.rate_review_outlined,
+              size: 18,
+            ),
+            label: Text(
+              hasOwnReview ? 'Editar mi reseña' : 'Escribir una reseña',
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary500,
               side: const BorderSide(color: AppColors.primary500),
@@ -1358,7 +1510,7 @@ class _ReviewsTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        if (business.reviews.isEmpty)
+        if (business.reviewCount == 0)
           const _ReviewsEmptyState()
         else ...[
           _RatingSummaryCard(business: business),
@@ -1389,8 +1541,16 @@ class _ReviewsTab extends StatelessWidget {
           const SizedBox(height: 20),
           Text('Opiniones', style: AppTextStyles.detailSectionTitle),
           const SizedBox(height: 10),
-          for (final review in business.reviews) ...[
-            _ReviewCard(review: review),
+          for (final review in business.countedReviews) ...[
+            _ReviewCard(
+              review: review,
+              isMine:
+                  currentUserId != null &&
+                  review.authorId.isNotEmpty &&
+                  review.authorId == currentUserId,
+              onEdit: onEditReview,
+              onDelete: onDeleteReview,
+            ),
             const SizedBox(height: 12),
           ],
         ],
@@ -1436,9 +1596,9 @@ class _RatingSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = business.reviews.length;
+    final total = business.reviewCount;
     final counts = List<int>.filled(6, 0);
-    for (final review in business.reviews) {
+    for (final review in business.countedReviews) {
       final rounded = review.rating.round().clamp(1, 5);
       counts[rounded]++;
     }
@@ -1548,10 +1708,22 @@ class _RatingBarRow extends StatelessWidget {
   }
 }
 
+enum _ReviewMenuAction { edit, delete }
+
 class _ReviewCard extends StatelessWidget {
-  const _ReviewCard({required this.review});
+  const _ReviewCard({
+    required this.review,
+    this.isMine = false,
+    this.onEdit,
+    this.onDelete,
+  });
 
   final ReviewModel review;
+
+  /// Solo en la reseña de la persona con sesión: muestra "Editar"/"Eliminar".
+  final bool isMine;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   void _openAuthor(BuildContext context) {
     if (review.authorId.isEmpty) return;
@@ -1564,13 +1736,71 @@ class _ReviewCard extends StatelessWidget {
     );
   }
 
-  String get _relativeDate {
-    final days = DateTime.now().difference(review.date).inDays;
-    if (days <= 0) return 'hoy';
-    if (days == 1) return 'hace 1 día';
-    if (days < 7) return 'hace $days días';
-    if (days < 30) return 'hace ${(days / 7).floor()} semana(s)';
-    return 'hace ${(days / 30).floor()} mes(es)';
+  String get _publishedAt => formatShortDateTime(review.date);
+
+  /// Tres puntos con zona táctil de 48dp; el nombre de la persona cede el
+  /// ancho que haga falta (ya admite dos líneas).
+  Widget _buildMenu() {
+    return PopupMenuButton<_ReviewMenuAction>(
+      tooltip: 'Opciones de tu reseña',
+      padding: EdgeInsets.zero,
+      color: AppColors.surface100,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.md),
+      ),
+      onSelected: (action) => switch (action) {
+        _ReviewMenuAction.edit => onEdit?.call(),
+        _ReviewMenuAction.delete => onDelete?.call(),
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: _ReviewMenuAction.edit,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: AppColors.settingsTextDark,
+              ),
+              const SizedBox(width: 10),
+              Text('Editar', style: AppTextStyles.settingsRowTitle),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _ReviewMenuAction.delete,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: AppColors.destructive,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Eliminar',
+                style: AppTextStyles.settingsRowTitle.copyWith(
+                  color: AppColors.destructive,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      child: Semantics(
+        button: true,
+        label: 'Opciones de tu reseña',
+        child: const SizedBox(
+          width: 48,
+          height: 48,
+          child: Icon(
+            Icons.more_vert,
+            size: 20,
+            color: AppColors.settingsTextMuted,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1618,7 +1848,11 @@ class _ReviewCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(_relativeDate, style: AppTextStyles.reviewMeta),
+                      // Fecha y hora locales de publicación. Cabe en una línea;
+                      // con texto del sistema muy grande baja de línea en vez
+                      // de recortarse: la hora importa tanto como el día.
+                      if (_publishedAt.isNotEmpty)
+                        Text(_publishedAt, style: AppTextStyles.reviewMeta),
                     ],
                   ),
                 ),
@@ -1634,6 +1868,7 @@ class _ReviewCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (isMine) _buildMenu(),
             ],
           ),
           const SizedBox(height: 6),
@@ -1803,9 +2038,14 @@ class WriteReviewSheet extends StatefulWidget {
     required this.onSubmit,
     this.initialDraft,
     this.autoSubmit = false,
+    this.isEditing = false,
   });
 
   final Future<bool?> Function(ReviewDraft draft) onSubmit;
+
+  /// La persona ya reseñó este negocio: la hoja edita esa reseña (título y
+  /// botón lo dicen) en vez de crear una nueva.
+  final bool isEditing;
 
   /// Reseña que no se pudo publicar: la hoja se abre con ese texto.
   final ReviewDraft? initialDraft;
@@ -1925,7 +2165,9 @@ class _WriteReviewSheetState extends State<WriteReviewSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Escribir una reseña',
+                    widget.isEditing
+                        ? 'Editar mi reseña'
+                        : 'Escribir una reseña',
                     style: AppTextStyles.detailSectionTitle,
                   ),
                   GestureDetector(
@@ -2078,7 +2320,7 @@ class _WriteReviewSheetState extends State<WriteReviewSheet> {
               SizedBox(
                 width: double.infinity,
                 child: AppLoadingButton(
-                  label: 'Enviar reseña',
+                  label: widget.isEditing ? 'Guardar cambios' : 'Enviar reseña',
                   isLoading: _isPublishing,
                   onPressed: _submit,
                 ),

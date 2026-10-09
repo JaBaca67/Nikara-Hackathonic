@@ -1,0 +1,34 @@
+{
+  "checked_at_utc": "2026-10-09T03:54:06.506748+00:00",
+  "method": "GET only; public routes counted without retaining route or profile records",
+  "previous_error": {
+    "http_status": 300,
+    "code": "PGRST201",
+    "cause": "routes_owner_id_fkey and route_visit_progress both relate routes to public_profiles"
+  },
+  "checks": [
+    {
+      "check": "routes_fixed_query",
+      "http_status": 200,
+      "rows_returned": 6,
+      "stop_count": 61,
+      "catalog_routes": 5,
+      "owner_profile_shape_valid": true
+    },
+    {
+      "check": "reviews_embed",
+      "http_status": 200,
+      "rows_returned": 0
+    },
+    {
+      "check": "eco_embed",
+      "http_status": 200,
+      "rows_returned": 0
+    },
+    {
+      "check": "participants_embed",
+      "http_status": 200,
+      "rows_returned": 0
+    }
+  ]
+}

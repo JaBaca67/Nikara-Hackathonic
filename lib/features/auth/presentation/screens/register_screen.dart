@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,41 +6,27 @@ import 'package:nikara_app/core/services/auth_service.dart';
 import 'package:nikara_app/core/models/user_origin.dart';
 import 'package:nikara_app/shared/widgets/origin_form_fields.dart';
 import 'package:nikara_app/core/services/guest_session_service.dart';
-import 'package:nikara_app/core/services/local_profile_extras_service.dart';
-import 'package:nikara_app/core/utils/input_formatters.dart';
 import 'package:nikara_app/core/utils/validators.dart';
-import 'package:nikara_app/features/auth/domain/models/country_dial_code.dart';
 import 'package:nikara_app/shared/widgets/app_page_transition.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_bottom_sheet_layout.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_header.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_primary_button.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_prompt.dart';
 import 'package:nikara_app/shared/widgets/auth/auth_text_field.dart';
-import 'package:nikara_app/shared/widgets/auth/country_code_picker.dart';
 import 'package:nikara_app/shared/widgets/auth/password_strength_checker.dart';
 import 'package:nikara_app/shared/widgets/auth/social_login_row.dart';
 import 'package:nikara_app/shared/widgets/app_snackbar.dart';
 import 'package:nikara_app/shared/widgets/auth/step_progress_indicator.dart';
 import 'package:nikara_app/shared/widgets/local_image.dart';
 import 'package:nikara_app/shared/widgets/main_layout.dart';
-import 'package:nikara_app/shared/widgets/otp_input_row.dart';
 import 'package:nikara_app/shared/widgets/splash_transition_screen.dart';
 import 'package:nikara_app/theme/app_motion.dart';
 import 'package:nikara_app/theme/app_spacing.dart';
 import 'package:nikara_app/theme/app_theme.dart';
 
-const _kStepLabels = ['Identidad', 'Perfil', 'Verificación'];
+const _kStepLabels = ['Identidad', 'Perfil'];
 
-/// Registro en 3 pasos: Identidad (correo + contraseña), Perfil (avatar,
-/// nombre, usuario, celular) y Verificación (OTP).
-///
-/// La cuenta real de Supabase se crea al final de Perfil (necesita
-/// email/contraseña de Identidad y el teléfono de este paso) — Verificación
-/// es onboarding de una cuenta que ya existe.
-///
-/// No hay proveedor de OTP por SMS/email configurado en Supabase: "Verificar
-/// código" es un stub honesto (nunca finge éxito) y "Saltar por ahora"
-/// —que guarda `isPhoneVerified: false` localmente— es el camino soportado.
+/// Registro de identidad y perfil remoto, sin teléfono ni paso SMS.
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -52,7 +36,6 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _authService = AuthService();
-  final _extrasService = LocalProfileExtrasService();
 
   int _step = 0;
   AuthStatus _status = AuthStatus.idle;
@@ -68,20 +51,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _usernameController = TextEditingController();
-  final _phoneController = TextEditingController();
 
   /// Foto elegida en el paso "Perfil", antes de que la cuenta exista. Se sube
   /// a Storage recién después del signUp, cuando ya hay sesión y un user id
   /// bajo el que guardarla (ver [AuthService.updateAvatar]).
   XFile? _avatarImage;
   UserOrigin _origin = const UserOrigin();
-  CountryDialCode _selectedCountry = kDefaultCountryDialCode;
   AutovalidateMode _step2AutovalidateMode = AutovalidateMode.disabled;
-
-  // Paso 10c: Verificación.
-  String _otpCode = '';
-  Timer? _resendTimer;
-  int _resendCooldown = 0;
 
   @override
   void initState() {
@@ -98,8 +74,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _firstNameController.dispose();
     _lastNameController.dispose();
     _usernameController.dispose();
-    _phoneController.dispose();
-    _resendTimer?.cancel();
     super.dispose();
   }
 
@@ -164,17 +138,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _avatarImage = picked);
   }
 
-  Future<void> _showCountryPicker() async {
-    final picked = await showCountryDialCodePicker(context);
-    if (picked != null && mounted) {
-      setState(() => _selectedCountry = picked);
-    }
-  }
-
-  /// Valida Perfil, crea la cuenta real en Supabase (necesita email y
-  /// contraseña de Identidad más el teléfono de acá) y guarda
-  /// usuario/foto localmente — no hay "Atrás" después de esto.
   Future<void> _createAccountAndContinue() async {
+    if (_status == AuthStatus.loading) return;
     FocusScope.of(context).unfocus();
     if (!(_step2FormKey.currentState?.validate() ?? false)) {
       setState(
@@ -187,13 +152,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final fullName =
         '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
             .trim();
-    final phone = '${_selectedCountry.dialCode} ${_phoneController.text.trim()}'
-        .trim();
     final result = await _authService.signUp(
       fullName: fullName,
       email: _emailController.text.trim(),
-      password: _passwordController.text.trim(),
-      phone: phone,
+      password: _passwordController.text,
+      username: _usernameController.text.trim(),
       origin: _origin,
     );
     if (!mounted) return;
@@ -207,13 +170,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    // Best-effort: la cuenta real ya existe, así que si estas escrituras
-    // fallan no bloquean el flujo.
-    final username = _usernameController.text.trim();
-    if (username.isNotEmpty) {
-      await _extrasService.updateUsername(username);
-    }
-    if (!mounted) return;
     final avatarImage = _avatarImage;
     if (avatarImage != null) {
       if (!_authService.isLoggedIn) {
@@ -242,41 +198,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     await GuestSessionService().exitGuestMode();
     if (!mounted) return;
     TextInput.finishAutofillContext();
-    setState(() {
-      _status = AuthStatus.success;
-      _step = 2;
-    });
-    _startResendCooldown();
-  }
-
-  void _startResendCooldown() {
-    _resendTimer?.cancel();
-    setState(() => _resendCooldown = 30);
-    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      if (_resendCooldown <= 1) {
-        timer.cancel();
-        setState(() => _resendCooldown = 0);
-        return;
-      }
-      setState(() => _resendCooldown -= 1);
-    });
-  }
-
-  void _attemptVerifyOtp() {
-    AppSnackbar.showInfo(
-      context,
-      'La verificación por SMS todavía no está disponible. Usa '
-      '"Saltar por ahora" para continuar — no afecta tu cuenta.',
-    );
-  }
-
-  Future<void> _skipVerification() async {
-    await _extrasService.updateIsPhoneVerified(false);
-    if (!mounted) return;
+    if (!_authService.isLoggedIn) {
+      AppSnackbar.showInfo(
+        context,
+        'Confirma tu correo e inicia sesión para continuar.',
+      );
+      Navigator.of(context).pop();
+      return;
+    }
     pushFadeThroughAndRemoveUntil(
       context,
       const SplashTransitionScreen(nextPage: MainLayout()),
@@ -289,14 +218,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// `setState`, nunca hace pop de la ruta a mitad del wizard, así que
   /// cada controller sobrevive.
   Future<void> _handleBackRequest() async {
+    if (_status == AuthStatus.loading) return;
     FocusScope.of(context).unfocus();
     if (_step == 1) {
       _goToIdentityStep();
-      return;
-    }
-    if (_step >= 2) {
-      // La cuenta ya existe en este punto, no hay datos en progreso que proteger.
-      Navigator.of(context).pop();
       return;
     }
     // Solo acá salir borra de verdad lo tipeado, por eso se confirma antes.
@@ -413,8 +338,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         child: switch (_step) {
           0 => _buildStepIdentity(),
-          1 => _buildStepProfile(),
-          _ => _buildStepVerification(),
+          _ => _buildStepProfile(),
         },
       ),
     );
@@ -540,29 +464,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 validator: validateUsername,
               ),
               const SizedBox(height: 14),
-              AuthTextField(
-                label: 'Celular',
-                hintText: '8545-9245',
-                controller: _phoneController,
-                prefix: CountryPrefixBadge(
-                  country: _selectedCountry,
-                  onTap: _showCountryPicker,
-                ),
-                keyboardType: TextInputType.phone,
-                inputFormatters: _selectedCountry.dialCode == '+505'
-                    ? const [NicaraguaPhoneInputFormatter()]
-                    : [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(12),
-                      ],
-                autofillHints: const [AutofillHints.telephoneNumber],
-                // El código de país vive en el selector de al lado, no en
-                // el campo: sin pasarlo, un número de otro país se leería
-                // como nicaragüense y el error hablaría de Nicaragua.
-                validator: (v) =>
-                    validatePhone(v, dialCode: _selectedCountry.dialCode),
-              ),
-              const SizedBox(height: 18),
               OriginFormFields(
                 initialValue: _origin,
                 onChanged: (value) => _origin = value,
@@ -579,57 +480,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildStepVerification() {
-    final canResend = _resendCooldown == 0;
-    return KeyedSubtree(
-      key: const ValueKey('register-step-10c'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildStepBackRow(),
-          StepProgressIndicator(step: 2, labels: _kStepLabels),
-          const SizedBox(height: 16),
-          const AuthHeader(
-            title: 'Verifica tu número',
-            subtitle:
-                'La verificación por SMS estará disponible pronto. Mientras '
-                'tanto, puedes continuar sin problema.',
-          ),
-          const SizedBox(height: 22),
-          OtpInputRow(
-            length: 6,
-            onChanged: (code) => setState(() => _otpCode = code),
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: GestureDetector(
-              onTap: canResend ? _startResendCooldown : null,
-              child: Text(
-                canResend
-                    ? 'Reenviar código'
-                    : 'Reenviar código en 0:${_resendCooldown.toString().padLeft(2, '0')}',
-                style: AppTextStyles.linkSm.copyWith(
-                  color: canResend ? AppColors.authLink : AppColors.authMuted,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          AuthOutlinedButton(
-            label: 'Verificar código',
-            onPressed: _otpCode.length == 6 ? _attemptVerifyOtp : null,
-          ),
-          const SizedBox(height: 12),
-          AuthPrimaryButton(
-            label: 'Saltar por ahora',
-            onPressed: _skipVerification,
-            trailingIcon: null,
-          ),
-        ],
       ),
     );
   }

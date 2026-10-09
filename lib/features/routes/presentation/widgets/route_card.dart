@@ -65,6 +65,15 @@ class RouteCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
+            if (route.description.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                route.description,
+                style: AppTextStyles.settingsSubtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
             const SizedBox(height: 8),
             Row(
               children: [
@@ -133,13 +142,28 @@ class _CreatorHeader extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              UserAvatar(
-                avatarUrl: route.creatorAvatarUrl,
-                initials: route.creatorInitials,
-                size: 32,
-                background: AppColors.warmChipBackground,
-                foreground: AppColors.settingsTextDark,
-              ),
+              if (route.isCatalog)
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: const BoxDecoration(
+                    color: AppColors.warmChipBackground,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.route_rounded,
+                    size: 18,
+                    color: AppColors.oliveText,
+                  ),
+                )
+              else
+                UserAvatar(
+                  avatarUrl: route.creatorAvatarUrl,
+                  initials: route.creatorInitials,
+                  size: 32,
+                  background: AppColors.warmChipBackground,
+                  foreground: AppColors.settingsTextDark,
+                ),
               const SizedBox(width: 10),
             ],
           ),
